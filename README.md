@@ -1,0 +1,120 @@
+# vidkit
+
+A three-panel video compositor with a 9:16 portrait canvas, multi-track timeline, and properties editor. Runs as a Python WebSocket backend with a vanilla JS browser frontend.
+
+```
+┌─────────────────────────────────────────┐
+│  toolbar                                │
+├───────────────────────┬─────────────────┤
+│                       │                 │
+│   canvas (9:16)       │   properties    │
+│                       │                 │
+├───────────────────────┴─────────────────┤
+│  timeline  [audio] [text] [visual]      │
+└─────────────────────────────────────────┘
+```
+
+## Stack
+
+- **Backend** — Python 3.11+, `websockets`, PyQt5 (desktop mode) or headless WS server
+- **Frontend** — Vanilla JS ES modules, HTML5 Canvas, no build step
+- **Protocol** — JSON over WebSocket at `ws://localhost:8765`
+
+## Install
+
+```cmd
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+## Run
+
+**Backend**
+```cmd
+python backend/main.py
+```
+
+**Frontend** — open `frontend/editor.html` in a browser via any static file server, e.g.:
+```cmd
+python -m http.server 5173 --directory frontend
+```
+Then visit `http://localhost:5173`.
+
+The frontend connects to the backend WebSocket automatically and shows a green dot in the toolbar when live. It works offline too — all editing is local; the WS connection is only needed for render.
+
+## Project files
+
+Save/load projects as `.vkit` (JSON). Example:
+
+```json
+{
+  "name": "my-video",
+  "canvas_w": 1080,
+  "canvas_h": 1920,
+  "fps": 30,
+  "duration": 30.0,
+  "clips": [...]
+}
+```
+
+## Backend
+
+```
+backend/
+├── main.py
+├── models.py
+├── project_store.py
+├── playback.py
+└── websocket_server.py
+```
+
+| File | Responsibility |
+|------|---------------|
+| `main.py` | Entry point — starts the WS server |
+| `models.py` | `Clip`, `Project`, `new_clip()`, `CLIP_TYPE_TRACK` |
+| `project_store.py` | `save_project()`, `load_project()` — reads/writes `.vkit` JSON |
+| `playback.py` | `PlaybackController` — tick loop, seek, play/pause state |
+| `websocket_server.py` | `VideoEditorServer` — handles all client messages, broadcasts project state |
+
+### Message flow
+
+Frontend sends an action:
+```json
+{ "action": "add_clip", "clip_type": "narration", "start": 10.5 }
+```
+
+Backend mutates the project and broadcasts the full updated state to all connected clients:
+```json
+{ "type": "project", "data": { "name": "...", "clips": [...] } }
+```
+
+### Actions
+
+| Action | Payload fields |
+|--------|---------------|
+| `add_clip` | `clip_type`, `start` |
+| `delete_clip` | `id` |
+| `duplicate_clip` | `id` |
+| `update_clip` | `id`, + any clip fields to patch |
+| `select_clip` | `id` |
+| `play` | — |
+| `pause` | — |
+| `seek` | `t` |
+| `new_project` | — |
+| `load_project` | `path` |
+| `save_project` | `path` (optional) |
+| `render` | — |
+
+## Keyboard shortcuts
+
+| Key | Action |
+|-----|--------|
+| `Space` | Play / Pause |
+| `Delete` | Delete selected clip |
+| `Ctrl+D` | Duplicate selected clip |
+| `Ctrl+X / C / V` | Cut / Copy / Paste |
+| `Ctrl+S` | Save |
+| `Ctrl+Shift+S` | Save As |
+| `Ctrl+N / O` | New / Open |
+| `Ctrl+R` | Render |

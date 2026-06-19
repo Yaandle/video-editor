@@ -3,6 +3,7 @@ import { CanvasWidget } from './canvas.js';
 import { TimelineWidget } from './timeline.js';
 import { PropertiesPanel } from './properties.js';
 import { PlaybackController } from './playback.js';
+import { MediaBin } from './mediaBin.js';
 
 // ── Colour palette ─────────────────────────────────────────────────────────────
 export const TRACK_COLOURS = {
@@ -17,6 +18,7 @@ export const CLIP_TYPE_TRACK = {
   graph:     'visual',
   audio:     'audio',
   image:     'visual',
+  video:    'visual',
 };
 
 export const THEMES = {
@@ -67,6 +69,14 @@ export class Clip {
       const preview = this.content.slice(0, 24).replace(/\n/g, ' ');
       return `audio · ${preview}`;
     }
+    if (this.clip_type === 'video') {
+        const name = this.code_file ? this.code_file.split(/[\\/]/).pop() : 'video';
+        return `video · ${name}`;
+        }
+    if (this.clip_type === 'image') {
+        const name = this.code_file ? this.code_file.split(/[\\/]/).pop() : 'image';
+        return `image · ${name}`;
+    }
     return this.clip_type;
   }
   toDict() {
@@ -113,6 +123,7 @@ export function newClip(clip_type, start = 0.0, duration = 5.0) {
     graph:     { graph_type: 'bar', graph_data: 'A:10,B:20,C:15', theme: 'dark', y: 0.55 },
     audio:     { content: 'Narration goes here', y: 0.0 },
     image:     { theme: 'dark', y: 0.5 },
+    video:     { y: 0.5 },
   };
   return new Clip({
     id: genId(), track, clip_type, start, duration,
@@ -163,26 +174,99 @@ class App {
     this.timeline = null;
     this.props    = null;
     this.playback = null;
+    this.mediaBin = null;
     this._ws      = null;
-
+    
     this._init();
   }
 
   _init() {
-    this.canvas   = new CanvasWidget(document.getElementById('canvas-widget'), this.project);
-    this.timeline = new TimelineWidget(document.getElementById('timeline-canvas'), this.project);
-    this.props    = new PropertiesPanel(document.getElementById('props-inner'));
-    this.playback = new PlaybackController(this.project, (t) => this._onPlaybackTick(t));
-    this._ws      = new WSClient('ws://localhost:8765', (msg) => this._onWsMessage(msg));
+        this.canvas   = new CanvasWidget(document.getElementById('canvas-widget'), this.project);
+        this.timeline = new TimelineWidget(document.getElementById('timeline-canvas'), this.project);
+        this.props    = new PropertiesPanel(document.getElementById('props-inner'));
 
-    this._wireEvents();
-    this._wireMenu();
-    this._wireToolbar();
-    this._wireKeyboard();
-    this._seedDemoProject();
-    this._resizeAll();
-    window.addEventListener('resize', () => this._resizeAll());
-  }
+        this.playback = new PlaybackController(
+            this.project,
+            (t) => this._onPlaybackTick(t)
+        );
+
+        this.mediaBin = new MediaBin(document.getElementById('media-bin'));
+        this.mediaBin.onAddClip((item) => this._addMediaClip(item));
+        this._loadMediaBin();
+
+        const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        this._ws = new WSClient(
+            `${wsProtocol}//${location.host}/ws`,
+            (msg) => this._onWsMessage(msg)
+        );
+
+        this._wireEvents();
+        this._wireMenu();
+        this._wireToolbar();
+        this._wireKeyboard();
+
+        this._seedDemoProject();
+
+        this._resizeAll();
+        window.addEventListener('resize', () => this._resizeAll());
+    }
+  
+   // Add to App — upload a file and get back a media entry
+    async _uploadFile(file) {
+    const form = new FormData();
+    form.append('file', file);
+    const res  = await fetch('/upload', { method: 'POST', body: form });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json(); // { name, url, kind, mime, size }
+    }
+
+    // Load existing media on boot
+    async _loadMediaBin() {
+        try {
+            const items = await fetch('/media-list').then(r => r.json());
+            items.forEach(item => this.mediaBin.addItem(item));
+        } catch (err) {
+            console.error('Failed to load media bin', err);
+        }
+    }
+
+    _addMediaClip(item) {
+    const clip_type =
+        item.kind === 'video'
+        ? 'video'
+        : item.kind === 'audio'
+            ? 'audio'
+            : 'image';
+
+    const dur = clip_type === 'audio' ? 10.0 : 5.0;
+
+    const c = newClip(
+        clip_type,
+        this.playback.playhead,
+        dur
+    );
+
+    c.code_file = item.url;
+
+    this.project.clips.push(c);
+
+    this._dirty = true;
+
+    this._refreshAll();
+
+    this._selectedId = c.id;
+
+    this.timeline.setSelectedId(c.id);
+    this.canvas.setSelectedId(c.id);
+
+    this.props.showClip(c);
+
+    this.canvas.redraw();
+
+    this._updateStatus(
+        `Added: ${item.original ?? item.name}`
+    );
+    }
 
   // ── WebSocket ──
   _onWsMessage(msg) {
@@ -264,6 +348,22 @@ class App {
       if (e.target === document.getElementById('snap-modal-overlay'))
         document.getElementById('snap-modal-overlay').classList.remove('open');
     });
+    const mediaInput = document.getElementById('media-upload');
+
+    if (mediaInput) {
+    mediaInput.addEventListener('change', async (e) => {
+        const files = [...e.target.files];
+        for (const file of files) {
+        try {
+            const item = await this._uploadFile(file);
+            this.mediaBin.addItem(item);
+        } catch (err) {
+            console.error(err);
+        }
+        }
+        mediaInput.value = '';
+    });
+    }
   }
 
   _wireMenu() {

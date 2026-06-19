@@ -23,6 +23,7 @@ export class CanvasWidget {
     this._dragOffsetX = 0;
     this._dragOffsetY = 0;
     this._snapTarget  = null;
+    this._mediaCache  = new Map(); // url → { el, loaded }
 
     this._bindEvents();
     this.resize();
@@ -182,12 +183,87 @@ export class CanvasWidget {
       this._drawGraphPreview(ctx, clip, bx, by, blockW, blockH, theme, r);
     }
     else if (clip.clip_type === 'image') {
-      const fontSize = Math.max(6, (r.w / 28) | 0);
-      ctx.font         = `${fontSize}px Consolas, monospace`;
-      ctx.fillStyle    = theme.comment;
-      ctx.textAlign    = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(`[image: ${clip.code_file || 'no file'}]`, pt.x, pt.y);
+  const url = clip.code_file;
+
+  if (!url) {
+    ctx.fillStyle = theme.comment;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `${Math.max(6, r.w / 28 | 0)}px Consolas, monospace`;
+    ctx.fillText('[no media]', pt.x, pt.y);
+    return;
+  }
+
+  const entry = this._loadMedia(url);
+
+  if (entry.loaded) {
+    const el    = entry.el;
+    const natW  = el.naturalWidth || 1;
+    const natH  = el.naturalHeight || 1;
+
+    const maxW  = (r.w * 0.88) | 0;
+    const maxH  = (r.h * 0.80) | 0;
+
+    const scale = Math.min(maxW / natW, maxH / natH, 1);
+
+    const dw = (natW * scale) | 0;
+    const dh = (natH * scale) | 0;
+
+    ctx.drawImage(
+      el,
+      pt.x - (dw >> 1),
+      pt.y - (dh >> 1),
+      dw,
+      dh
+    );
+  } else {
+    ctx.fillStyle = theme.comment;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `${Math.max(6, r.w / 28 | 0)}px Consolas, monospace`;
+    ctx.fillText('[loading…]', pt.x, pt.y);
+  }
+}
+else if (clip.clip_type === 'video') {
+    const url = clip.code_file;
+    if (!url) return;
+
+    const entry = this._loadMedia(url);
+
+    if (entry.loaded) {
+        const vid = entry.el;
+
+        const target = Math.max(0, this.playhead - clip.start);
+
+        if (Math.abs(vid.currentTime - target) > 0.15) {
+        vid.currentTime = target;
+        }
+
+        const maxW = (r.w * 0.88) | 0;
+        const maxH = (r.h * 0.80) | 0;
+
+        const scale = Math.min(
+        maxW / (vid.videoWidth || 1),
+        maxH / (vid.videoHeight || 1)
+        );
+
+        const dw = ((vid.videoWidth || maxW) * scale) | 0;
+        const dh = ((vid.videoHeight || maxH) * scale) | 0;
+
+        ctx.drawImage(
+        vid,
+        pt.x - (dw >> 1),
+        pt.y - (dh >> 1),
+        dw,
+        dh
+        );
+    } else {
+        ctx.fillStyle = theme.comment;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = `${Math.max(6, r.w / 28 | 0)}px Consolas, monospace`;
+        ctx.fillText('[video loading…]', pt.x, pt.y);
+    }
     }
   }
 
@@ -329,4 +405,41 @@ export class CanvasWidget {
     this._el.style.cursor = 'default';
     this.redraw();
   }
+
+  _loadMedia(url) {
+    if (this._mediaCache.has(url)) return this._mediaCache.get(url);
+
+    const ext     = url.split('.').pop().toLowerCase();
+    const isVideo = ['mp4', 'webm', 'mov'].includes(ext);
+
+    if (isVideo) {
+        const vid   = document.createElement('video');
+        vid.muted   = true;
+        vid.preload = 'auto';
+
+        const entry = { el: vid, loaded: false };
+        this._mediaCache.set(url, entry);
+
+        vid.addEventListener('loadeddata', () => {
+        entry.loaded = true;
+        this.redraw();
+        });
+
+        vid.src = url;
+        return entry;
+    }
+
+    const img   = new Image();
+    const entry = { el: img, loaded: false };
+
+    this._mediaCache.set(url, entry);
+
+    img.onload = () => {
+        entry.loaded = true;
+        this.redraw();
+    };
+
+    img.src = url;
+    return entry;
+    }
 }

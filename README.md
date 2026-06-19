@@ -23,8 +23,8 @@ A three-panel video compositor with a 9:16 portrait canvas, multi-track timeline
 ## Install
 
 ```cmd
-python -m venv venv
-venv\Scripts\activate
+python -m venv videoeditor_venv
+videoeditor_venv\Scripts\activate
 pip install -r requirements.txt
 ```
 

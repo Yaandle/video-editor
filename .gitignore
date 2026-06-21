@@ -19,6 +19,7 @@ renders/
 *.mp4
 *.mov
 *.avi
+backend/uploads/
 
 # Project saves (keep if you want to track them)
 *.vkit

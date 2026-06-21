@@ -11,7 +11,7 @@ from websocket_server import VideoEditorServer
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))  # .../backend
 ROOT_DIR   = os.path.dirname(BASE_DIR)                    # .../video-editor
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")            # .../backend/uploads
-STATIC_DIR = os.path.join(ROOT_DIR, "frontend")           # serves index.html, app.js etc
+STATIC_DIR = os.path.join(ROOT_DIR, "frontend")           # serves editor.html, app.js etc
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 

@@ -270,13 +270,36 @@ class App {
 
   // ── WebSocket ──
   _onWsMessage(msg) {
-    // Handle backend messages (e.g. render progress, file open results)
     if (msg.type === 'project') {
       this.project = Project.fromDict(msg.data);
       this._syncProjectToWidgets();
       this._refreshAll();
+      return;
+    }
+    if (msg.type === 'render_status') {
+      this._showRenderToast(msg.status, msg.message ?? '');
     }
   }
+
+  _showRenderToast(status, message) {
+    const toast = document.getElementById('render-toast');
+    toast.className = 'visible';
+    if (status === 'started') {
+      toast.classList.remove('done', 'error');
+      toast.textContent = '⏳ Rendering…';
+    } else if (status === 'done') {
+      toast.classList.add('done');
+      toast.classList.remove('error');
+      toast.textContent = `✓ ${message}`;
+      setTimeout(() => { toast.classList.remove('visible', 'done'); }, 6000);
+    } else if (status === 'error') {
+      toast.classList.add('error');
+      toast.classList.remove('done');
+      toast.textContent = `✗ ${message}`;
+      setTimeout(() => { toast.classList.remove('visible', 'error'); }, 8000);
+    }
+  }
+  
   _wsSend(obj) { this._ws.send(obj); }
 
   // ── Event wiring ──
@@ -320,6 +343,20 @@ class App {
       this._dirty = true;
       this.canvas.redraw();
       this._updateStatus();
+    });
+    document.getElementById('timeline-canvas').addEventListener('timeline:slice', (e) => {
+      const { sourceId, rightStart, rightDur, track, clip_type } = e.detail;
+      const source = this._findClip(sourceId);
+      if (!source) return;
+      // Clone the source clip's properties into the right half
+      const right = deepCloneClip(source);
+      right.id       = genId();
+      right.start    = rightStart;
+      right.duration = rightDur;
+      this.project.clips.push(right);
+      this._dirty = true;
+      this._refreshAll();
+      this._updateStatus(`Sliced at ${rightStart.toFixed(2)}s`);
     });
 
     // Props events
@@ -394,6 +431,25 @@ class App {
     document.getElementById('add-graph-btn').addEventListener('click', () => this._addClip('graph'));
     document.getElementById('add-audio-btn').addEventListener('click', () => this._addClip('audio'));
     document.getElementById('render-btn').addEventListener('click', () => this._render());
+
+    // Razor tool toggle
+    const razorBtn = document.getElementById('razor-btn');
+    if (razorBtn) {
+      razorBtn.addEventListener('click', () => {
+        const next = this.timeline.tool === 'razor' ? 'select' : 'razor';
+        this.timeline.setTool(next);
+        razorBtn.classList.toggle('active', next === 'razor');
+        this._updateStatus(next === 'razor' ? 'Razor tool — click a clip to slice' : 'Select tool');
+      });
+    }
+
+    // Zoom controls
+    const zoomInBtn    = document.getElementById('zoom-in-btn');
+    const zoomOutBtn   = document.getElementById('zoom-out-btn');
+    const zoomResetBtn = document.getElementById('zoom-reset-btn');
+    if (zoomInBtn)    zoomInBtn.addEventListener('click',    () => this.timeline.zoomIn());
+    if (zoomOutBtn)   zoomOutBtn.addEventListener('click',   () => this.timeline.zoomOut());
+    if (zoomResetBtn) zoomResetBtn.addEventListener('click', () => this.timeline.zoomReset());
   }
 
   _wireKeyboard() {
@@ -412,6 +468,39 @@ class App {
         this._deleteSelected();
         return;
       }
+      if (e.key.toLowerCase() === 'r' && !inInput && !e.ctrlKey) {
+        e.preventDefault();
+        const next = this.timeline.tool === 'razor' ? 'select' : 'razor';
+        this.timeline.setTool(next);
+        const razorBtn = document.getElementById('razor-btn');
+        if (razorBtn) razorBtn.classList.toggle('active', next === 'razor');
+        this._updateStatus(next === 'razor' ? 'Razor tool — click a clip to slice' : 'Select tool');
+        return;
+      }
+      if ((e.key === '+' || e.key === '=') && !inInput) {
+        e.preventDefault(); this.timeline.zoomIn(); return;
+      }
+      if (e.key === '-' && !inInput) {
+        e.preventDefault(); this.timeline.zoomOut(); return;
+      }
+      if (e.key === '0' && !inInput) {
+        e.preventDefault(); this.timeline.zoomReset(); return;
+      }
+      // Frame step: Shift+Left / Shift+Right
+      if (e.key === 'ArrowLeft' && e.shiftKey && !inInput) {
+        e.preventDefault(); this.playback.stepFrame(-1); return;
+      }
+      if (e.key === 'ArrowRight' && e.shiftKey && !inInput) {
+        e.preventDefault(); this.playback.stepFrame(1); return;
+      }
+      // Seek to start/end: Home / End
+      if (e.key === 'Home' && !inInput) {
+        e.preventDefault(); this.playback.seek(0); return;
+      }
+      if (e.key === 'End' && !inInput) {
+        e.preventDefault(); this.playback.seek(this.project.duration); return;
+      }
+
       if (e.ctrlKey || e.metaKey) {
         switch (e.key.toLowerCase()) {
           case 'n': e.preventDefault(); this._dispatchAction('new'); break;

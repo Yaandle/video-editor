@@ -53,6 +53,7 @@ export class Clip {
     this.graph_type = data.graph_type ?? 'bar';
     this.graph_data = data.graph_data ?? '';
     this.voice_id   = data.voice_id   ?? '';
+    this.scale = data.scale ?? 1.0;
   }
   end()   { return this.start + this.duration; }
   label() {
@@ -83,7 +84,8 @@ export class Clip {
     return {
       id: this.id, track: this.track, clip_type: this.clip_type,
       start: this.start, duration: this.duration, content: this.content,
-      x: this.x, y: this.y, animation: this.animation, theme: this.theme,
+      x: this.x, y: this.y, scale: this.scale,   
+      animation: this.animation, theme: this.theme,
       code_file: this.code_file, graph_type: this.graph_type,
       graph_data: this.graph_data, voice_id: this.voice_id,
     };
@@ -305,10 +307,13 @@ class App {
   // ── Event wiring ──
   _wireEvents() {
     // Canvas events
-    document.getElementById('canvas-widget').addEventListener('canvas:clipmoved', (e) => {
-      const { id, nx, ny } = e.detail;
-      const clip = this._findClip(id);
-      if (clip && this._selectedId === id) this.props.showClip(clip);
+    document.getElementById('canvas-widget').addEventListener('canvas:clipresized', (e) => {
+      const clip = this._findClip(e.detail.id);
+      if (clip && this._selectedId === e.detail.id) {
+        this.props.showClip(clip);   
+      }
+      this._dirty = true;
+      this._updateStatus();
     });
     document.getElementById('canvas-widget').addEventListener('canvas:select', (e) => {
       this._selectedId = e.detail.id;

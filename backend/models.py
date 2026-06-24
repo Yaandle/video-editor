@@ -23,7 +23,8 @@ class Clip:
 
     x: float = 0.5
     y: float = 0.15
-
+    scale: float = 1.0  
+    
     animation: str = "typewriter"
     theme: str = "dark"
 

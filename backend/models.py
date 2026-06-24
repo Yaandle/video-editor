@@ -4,10 +4,11 @@ import uuid
 
 CLIP_TYPE_TRACK = {
     "narration": "text",
-    "code": "visual",
-    "graph": "visual",
-    "audio": "audio",
-    "image": "visual",
+    "code":      "visual",
+    "graph":     "visual",
+    "audio":     "audio",
+    "image":     "visual",  
+    "video":     "visual",  
 }
 
 

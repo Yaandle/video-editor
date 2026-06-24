@@ -18,7 +18,7 @@ export const CLIP_TYPE_TRACK = {
   graph:     'visual',
   audio:     'audio',
   image:     'visual',
-  video:    'visual',
+  video:     'visual',
 };
 
 export const THEMES = {
@@ -717,8 +717,6 @@ class App {
   }
 
   _render() {
-    const msg = `Project: ${this.project.name}\nClips: ${this.project.clips.length}\nDuration: ${this.project.duration}s\n\nBackend render not yet wired.\nSave the project as .vkit and call main.py separately for now.`;
-    alert(msg);
     this._wsSend({ type: 'render', data: this.project.toDict() });
   }
 

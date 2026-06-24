@@ -129,6 +129,10 @@ export class PropertiesPanel {
         this._container.appendChild(urlLbl);
         const urlInput = this._addTextInput(c.code_file, 'https:// or /static/…');
         urlInput.addEventListener('input', () => this._set('code_file', urlInput.value));
+
+        this._addSection('Size');
+        const scaleSpin = this._addSpin('Scale', c.scale ?? 1.0, 0.05, 4.0, 0.05, 2);
+        this._onInputAndChange(scaleSpin, v => this._set('scale', v));
         break;
       }
 

@@ -30,18 +30,15 @@ pip install -r requirements.txt
 
 ## Run
 
-**Backend**
 ```cmd
 python backend/main.py
 ```
 
-**Frontend** — open `frontend/editor.html` in a browser via any static file server, e.g.:
-```cmd
-python -m http.server 5173 --directory frontend
-```
-Then visit `http://localhost:5173`.
+Then visit `http://localhost:8765/editor.html`.
 
-The frontend connects to the backend WebSocket automatically and shows a green dot in the toolbar when live. It works offline too — all editing is local; the WS connection is only needed for render.
+The backend serves the frontend, WebSocket, media upload, and render pipeline in one process. No second terminal needed.
+
+The WS status dot in the toolbar turns green when the connection is live. Editing, timeline, and save/load work offline — the backend is only required for media upload and render.
 
 ## Project files
 
@@ -58,6 +55,19 @@ Save/load projects as `.vkit` (JSON). Example:
 }
 ```
 
+## Frontend
+
+```
+frontend/
+├── editor.html
+├── app.js
+├── canvas.js
+├── timeline.js
+├── properties.js
+├── playback.js
+├── mediaBin.js
+└── static/
+```
 ## Backend
 
 ```

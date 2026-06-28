@@ -16,7 +16,7 @@ export class TimelineWidget {
     this.project  = project;
     this.playhead = 0.0;
     this._zoom    = 1.0;   // 1 = fit-to-width, >1 = zoomed in
-
+    this._panOffsetPx  = 0; 
     this._selectedId      = null;
     this._dragClip        = null;
     this._dragMode        = '';       // 'move' | 'resize-right' | 'resize-left'
@@ -29,6 +29,10 @@ export class TimelineWidget {
 
     this.tool = 'select';             // 'select' | 'razor'
 
+    this._panning      = false;
+    this._panOriginX   = 0;
+    this._panOriginOff = 0;
+
     this._bindEvents();
     this.resize();
   }
@@ -40,9 +44,23 @@ export class TimelineWidget {
   setTool(name)     { this.tool = name; this._updateCursor(null); }
   redraw()          { this._paint(); }
 
-  zoomIn()  { this._zoom = Math.min(this._zoom * 1.25, 32); this.redraw(); }
-  zoomOut() { this._zoom = Math.max(this._zoom / 1.25, 1);  this.redraw(); }
+  zoomOut() {
+      this._zoom = Math.max(this._zoom / 1.25, 1);
+      this._clampPan();
+      this.redraw();
+    }
+
+  zoomReset() {
+    this._zoom = 1;
+    this._panOffsetPx = 0;
+    this.redraw();
+  }
   zoomReset(){ this._zoom = 1; this.redraw(); }
+
+  _clampPan() {
+    const maxPan = Math.max(0, this._pxPerSec() * this.project.duration - (this._el.width - LABEL_W));
+    this._panOffsetPx = Math.max(0, Math.min(maxPan, this._panOffsetPx));
+  }
 
   resize() {
     const container = this._el.parentElement;
@@ -61,11 +79,11 @@ export class TimelineWidget {
   }
 
   _secToPx(t) {
-    return LABEL_W + (t * this._pxPerSec()) | 0;
+    return LABEL_W + (t * this._pxPerSec()) - this._panOffsetPx | 0;
   }
 
   _pxToSec(px) {
-    return Math.max(0, (px - LABEL_W) / this._pxPerSec());
+    return Math.max(0, (px - LABEL_W + this._panOffsetPx) / this._pxPerSec());
   }
 
   _trackY(track) {
@@ -88,9 +106,23 @@ export class TimelineWidget {
     ctx.fillStyle = '#121212';
     ctx.fillRect(0, 0, W, H);
 
+    // ── Ruler (tick marks + labels clipped to track area width) ────────────
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(LABEL_W, 0, W - LABEL_W, H);
+    ctx.clip();
     this._drawRuler(ctx, W);
-    this._drawTrackLabels(ctx, W);
+    ctx.restore();
+
+    // ── Clips clipped to track area ─────────────────────────────────────────
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(LABEL_W, HEADER_H, W - LABEL_W, H - HEADER_H);
+    ctx.clip();
     this._drawClips(ctx);
+    ctx.restore();
+
+    this._drawTrackLabels(ctx, W);
     this._drawPlayhead(ctx, H);
   }
 
@@ -189,21 +221,30 @@ export class TimelineWidget {
 
   _drawPlayhead(ctx, H) {
     const x = this._secToPx(this.playhead);
+
+    // Line clipped to track area
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(LABEL_W, 0, this._el.width - LABEL_W, H);
+    ctx.clip();
     ctx.strokeStyle = '#ef4444';
     ctx.lineWidth   = 1.5;
     ctx.beginPath();
     ctx.moveTo(x + 0.5, 0);
     ctx.lineTo(x + 0.5, H);
     ctx.stroke();
+    ctx.restore();
 
-    // Draggable triangle
-    ctx.fillStyle = '#ef4444';
-    ctx.beginPath();
-    ctx.moveTo(x - 6, 0);
-    ctx.lineTo(x + 6, 0);
-    ctx.lineTo(x, 10);
-    ctx.closePath();
-    ctx.fill();
+    // Triangle — only draw if it's within the track area
+    if (x >= LABEL_W) {
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.moveTo(x - 6, 0);
+      ctx.lineTo(x + 6, 0);
+      ctx.lineTo(x, 10);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
 
   // ── Cursor ──────────────────────────────────────────────────────────────────
@@ -289,6 +330,14 @@ export class TimelineWidget {
     if (e.button !== 0) return;
     const pos = this._getPos(e);
 
+    // Middle-mouse pan OR Space+drag
+    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+      this._panning      = true;
+      this._panOriginX   = e.clientX;
+      this._panOriginOff = this._panOffsetPx;
+      this._el.style.cursor = 'grabbing';
+      return;
+    }
     // ── Razor tool ──────────────────────────────────────────────────────────
     if (this.tool === 'razor') {
       const clip = this._clipAt(pos.x, pos.y);
@@ -333,6 +382,13 @@ export class TimelineWidget {
   _onMouseMove(e) {
     const pos = this._getPos(e);
 
+    if (this._panning && (e.buttons & (1 | 4))) {
+      const dx = e.clientX - this._panOriginX;
+      const maxPan = Math.max(0, this._pxPerSec() * this.project.duration - (this._el.width - LABEL_W));
+      this._panOffsetPx = Math.max(0, Math.min(maxPan, this._panOriginOff - dx));
+      this.redraw();
+      return;
+    }
     // Playhead scrub
     if (this._scrubPlayhead && (e.buttons & 1)) {
       const t = Math.max(0, Math.min(this._pxToSec(pos.x), this.project.duration));
@@ -381,6 +437,11 @@ export class TimelineWidget {
   }
 
   _onMouseUp(_e) {
+    if (this._panning) {
+      this._panning = false;
+      this._el.style.cursor = 'default';
+      return;
+    }
     if (this._scrubPlayhead) { this._scrubPlayhead = false; return; }
     if (this._dragClip) {
       this._dragClip = null;
@@ -388,6 +449,7 @@ export class TimelineWidget {
       this._el.style.cursor = 'default';
       this._el.dispatchEvent(new CustomEvent('timeline:clipchanged', { bubbles: true }));
     }
+    
   }
 
   _onDblClick(e) {
@@ -402,8 +464,16 @@ export class TimelineWidget {
 
   _onWheel(e) {
     e.preventDefault();
-    if (e.deltaY < 0) this.zoomIn();
-    else              this.zoomOut();
+    const pos        = this._getPos(e);
+    const tAtCursor  = this._pxToSec(pos.x);   // time under cursor before zoom
+
+    if (e.deltaY < 0) this._zoom = Math.min(this._zoom * 1.25, 32);
+    else              this._zoom = Math.max(this._zoom / 1.25, 1);
+
+    // Repin: keep tAtCursor under the cursor after zoom
+    this._panOffsetPx = this._pxPerSec() * tAtCursor - (pos.x - LABEL_W);
+    this._clampPan();
+    this.redraw();
   }
 
   // ── Razor / slice ────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 // canvas.js — HTML5 Canvas port of CanvasWidget
 import { THEMES, TRACK_COLOURS } from './app.js';
 
-const CANVAS_ASPECT  = 9 / 16;
+// aspect derived from project at paint time — see _canvasRect()
 const HANDLE_SIZE    = 8;        // px, half-size of corner handle hit area
 const MIN_SCALE      = 0.05;
 const MAX_SCALE      = 4.0;
@@ -52,12 +52,13 @@ export class CanvasWidget {
 
   // ── Geometry ────────────────────────────────────────────────────────────────
   _canvasRect() {
-    const w  = this._el.width;
-    const h  = this._el.height;
-    const cw = Math.min(w, h * CANVAS_ASPECT) | 0;
-    const ch = (cw / CANVAS_ASPECT) | 0;
-    const x  = ((w - cw) / 2) | 0;
-    const y  = ((h - ch) / 2) | 0;
+    const w      = this._el.width;
+    const h      = this._el.height;
+    const aspect = (this.project.canvas_w ?? 1080) / (this.project.canvas_h ?? 1920);
+    const cw     = Math.min(w, h * aspect) | 0;
+    const ch     = (cw / aspect) | 0;
+    const x      = ((w - cw) / 2) | 0;
+    const y      = ((h - ch) / 2) | 0;
     return { x, y, w: cw, h: ch };
   }
 

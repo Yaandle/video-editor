@@ -4,6 +4,10 @@ import json
 import os
 import sys
 
+from PIL import Image as _PILImage
+if not hasattr(_PILImage, "ANTIALIAS"):
+    _PILImage.ANTIALIAS = _PILImage.LANCZOS
+
 from models import Project, new_clip
 
 _BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -86,7 +90,7 @@ class VideoEditorServer:
 
         CANVAS_W  = project_data.get("canvas_w",  1080)
         CANVAS_H  = project_data.get("canvas_h",  1920)
-        FPS       = project_data.get("fps",        30)
+        FPS       = project_data.get("fps",        60)
         DURATION  = project_data.get("duration",   5.0)
         proj_name = project_data.get("name", "output").replace(" ", "_")
         out_path  = os.path.join(UPLOAD_DIR, f"{proj_name}_output.mp4")
@@ -103,81 +107,229 @@ class VideoEditorServer:
             audio_tracks: list = []
 
             # ── Black background ──────────────────────────────────────────────────
-            bg = ColorClip(size=(CANVAS_W, CANVAS_H), color=(0, 0, 0), duration=DURATION)
+            bg = ColorClip(size=(CANVAS_W, CANVAS_H), color=(0, 0, 0)).set_duration(DURATION)
             video_layers.append(bg)
 
             # ── Process clips ─────────────────────────────────────────────────────
             for clip in project_data.get("clips", []):
                 ctype    = clip.get("clip_type", "")
                 src      = clip.get("code_file") or clip.get("src") or ""
-                start    = float(clip.get("start",    0))
+                start    = float(clip.get("start", 0))
                 duration = float(clip.get("duration", 5))
-                x        = int(clip.get("x",          0))
-                y        = int(clip.get("y",           0))
-                scale    = float(clip.get("scale",     1.0))
 
-                # ── Skip unsupported types ────────────────────────────────────────
-                if ctype in ("narration", "code", "graph") or not src:
+                # canvas.js stores normalized coordinates (0..1)
+                x        = float(clip.get("x", 0.5))
+                y        = float(clip.get("y", 0.5))
+                scale    = float(clip.get("scale", 1.0))
+
+                # Skip unsupported types
+                if ctype in ("code", "graph"):
+                    continue
+
+                if not src and ctype != "narration":
+                    continue
+
+                # ------------------------------------------------------------------
+                # NARRATION  (Pillow text overlay — no ImageMagick needed)
+                # ------------------------------------------------------------------
+                if ctype == "narration":
+                    text = clip.get("content", "").strip()
+                    if not text:
+                        print("[render] WARNING: narration clip has empty content", file=sys.stderr)
+                        continue
+                    try:
+                        from PIL import Image, ImageDraw, ImageFont
+                        import numpy as np
+                        from moviepy.editor import ImageClip
+
+                        # ── Canvas for text ───────────────────────────────────────
+                        text_canvas_w = int(CANVAS_W * 0.85)
+                        font_size     = int(60 * scale)
+                        line_spacing  = 1.3
+
+                        # Try to load a decent font, fall back to PIL default
+                        try:
+                            font = ImageFont.truetype("arial.ttf", font_size)
+                        except Exception:
+                            try:
+                                font = ImageFont.truetype(
+                                    "C:/Windows/Fonts/arial.ttf", font_size
+                                )
+                            except Exception:
+                                font = ImageFont.load_default()
+
+                        # ── Word-wrap ─────────────────────────────────────────────
+                        def wrap_text(draw, text, font, max_width):
+                            words   = text.split()
+                            lines   = []
+                            current = []
+                            for word in words:
+                                test = " ".join(current + [word])
+                                bbox = draw.textbbox((0, 0), test, font=font)
+                                if bbox[2] > max_width and current:
+                                    lines.append(" ".join(current))
+                                    current = [word]
+                                else:
+                                    current.append(word)
+                            if current:
+                                lines.append(" ".join(current))
+                            return lines
+
+                        # ── Measure total text block height ───────────────────────
+                        probe_img  = Image.new("RGBA", (text_canvas_w, 100), (0, 0, 0, 0))
+                        probe_draw = ImageDraw.Draw(probe_img)
+                        lines      = wrap_text(probe_draw, text, font, text_canvas_w)
+
+                        line_h     = int(font_size * line_spacing)
+                        block_h    = line_h * len(lines) + 20  # +20 for stroke bleed
+
+                        # ── Draw text onto transparent image ──────────────────────
+                        img  = Image.new("RGBA", (text_canvas_w, block_h), (0, 0, 0, 0))
+                        draw = ImageDraw.Draw(img)
+
+                        for i, line in enumerate(lines):
+                            bbox   = draw.textbbox((0, 0), line, font=font)
+                            line_w = bbox[2] - bbox[0]
+                            lx     = (text_canvas_w - line_w) // 2  # centre-align
+                            ly     = i * line_h
+
+                            # Stroke (draw offset copies in black)
+                            for ox, oy in [(-2,0),(2,0),(0,-2),(0,2),(-2,-2),(2,-2),(-2,2),(2,2)]:
+                                draw.text((lx + ox, ly + oy), line, font=font, fill=(0, 0, 0, 255))
+
+                            # Fill
+                            draw.text((lx, ly), line, font=font, fill=(255, 255, 255, 255))
+
+                        # ── Convert to numpy RGBA → moviepy ImageClip ─────────────
+                        arr = np.array(img)   # shape (H, W, 4)
+
+                        tc = (
+                            ImageClip(arr, ismask=False)
+                            .set_duration(duration)
+                            .set_start(start)
+                        )
+
+                        # Position: x/y are normalised 0..1, anchor to centre of block
+                        dx = x * CANVAS_W - text_canvas_w / 2
+                        dy = y * CANVAS_H - block_h / 2
+                        tc = tc.set_position((int(dx), int(dy)))
+
+                        video_layers.append(tc)
+                        print(f"[render] narration OK: {len(lines)} lines at ({dx:.0f},{dy:.0f})", file=sys.stderr)
+
+                    except Exception as exc:
+                        import traceback
+                        print(f"[render] ERROR: narration render failed: {exc}", file=sys.stderr)
+                        print(traceback.format_exc(), file=sys.stderr)
                     continue
 
                 fpath = _resolve(src)
 
                 if not os.path.isfile(fpath):
-                    # Non-fatal — log and skip missing files
-                    print(f"[render] WARNING: file not found, skipping — {fpath}",
-                        file=sys.stderr)
+                    print(
+                        f"[render] WARNING: file not found, skipping — {fpath}",
+                        file=sys.stderr,
+                    )
                     continue
 
-                # ── Audio clips ───────────────────────────────────────────────────
+                # ------------------------------------------------------------------
+                # AUDIO
+                # ------------------------------------------------------------------
                 if ctype == "audio":
                     try:
-                        aclip = (
-                            AudioFileClip(fpath)
-                            .subclip(0, min(duration, AudioFileClip(fpath).duration))
+                        audio = AudioFileClip(fpath)
+                        audio = (
+                            audio
+                            .subclip(0, min(duration, audio.duration))
                             .set_start(start)
                         )
-                        audio_tracks.append(aclip)
+                        audio_tracks.append(audio)
                     except Exception as exc:
-                        print(f"[render] WARNING: audio load failed ({src}): {exc}",
-                            file=sys.stderr)
+                        print(
+                            f"[render] WARNING: audio load failed ({src}): {exc}",
+                            file=sys.stderr,
+                        )
                     continue
 
-                # ── Video clips ───────────────────────────────────────────────────
+                # ------------------------------------------------------------------
+                # VIDEO
+                # ------------------------------------------------------------------
                 if ctype == "video":
                     try:
                         vc = VideoFileClip(fpath, audio=True)
-                        # Trim to requested duration (don't exceed source length)
                         vc = vc.subclip(0, min(duration, vc.duration))
 
-                        if scale != 1.0:
-                            vc = vc.resize(scale)
+                        natW, natH = vc.size
 
-                        vc = vc.set_position((x, y)).set_start(start)
+                        fit_scale = min(
+                            CANVAS_W * 0.88 / natW,
+                            CANVAS_H * 0.80 / natH,
+                            1.0,
+                        )
 
-                        # Carry embedded audio as a separate track
+                        dw = natW * fit_scale * scale
+                        dh = natH * fit_scale * scale
+
+                        dx = x * CANVAS_W - dw / 2
+                        dy = y * CANVAS_H - dh / 2
+
+                        vc = (
+                            vc
+                            .resize((int(round(dw)), int(round(dh))))
+                            .set_position((dx, dy))
+                            .set_start(start)
+                        )
+
                         if vc.audio is not None:
                             audio_tracks.append(vc.audio.set_start(start))
                             vc = vc.without_audio()
 
                         video_layers.append(vc)
+
                     except Exception as exc:
-                        print(f"[render] WARNING: video load failed ({src}): {exc}",
-                            file=sys.stderr)
+                        print(
+                            f"[render] WARNING: video load failed ({src}): {exc}",
+                            file=sys.stderr,
+                        )
+
                     continue
 
-                # ── Image clips ───────────────────────────────────────────────────
+                # ------------------------------------------------------------------
+                # IMAGE
+                # ------------------------------------------------------------------
                 if ctype == "image":
                     try:
                         ic = ImageClip(fpath, duration=duration)
 
-                        if scale != 1.0:
-                            ic = ic.resize(scale)
+                        natW, natH = ic.size
 
-                        ic = ic.set_position((x, y)).set_start(start)
+                        fit_scale = min(
+                            CANVAS_W * 0.88 / natW,
+                            CANVAS_H * 0.80 / natH,
+                            1.0,
+                        )
+
+                        dw = natW * fit_scale * scale
+                        dh = natH * fit_scale * scale
+
+                        dx = x * CANVAS_W - dw / 2
+                        dy = y * CANVAS_H - dh / 2
+
+                        ic = (
+                            ic
+                            .resize((int(round(dw)), int(round(dh))))
+                            .set_position((dx, dy))
+                            .set_start(start)
+                        )
+
                         video_layers.append(ic)
+
                     except Exception as exc:
-                        print(f"[render] WARNING: image load failed ({src}): {exc}",
-                            file=sys.stderr)
+                        print(
+                            f"[render] WARNING: image load failed ({src}): {exc}",
+                            file=sys.stderr,
+                        )
+
                     continue
 
             # ── Composite ─────────────────────────────────────────────────────────
@@ -201,8 +353,18 @@ class VideoEditorServer:
                     fps=FPS,
                     codec="libx264",
                     audio_codec="aac",
-                    preset="fast",
-                    ffmpeg_params=["-crf", "23"],
+                    preset="slow",
+                    ffmpeg_params=[
+                        "-crf", "18",
+                        "-profile:v", "high",
+                        "-level", "4.2",
+                        "-pix_fmt", "yuv420p",
+                        "-b:v", "10M",
+                        "-maxrate", "12M",
+                        "-bufsize", "24M",
+                        "-ar", "48000",
+                        "-b:a", "320k",
+                    ],
                     logger=None,       # suppress moviepy's tqdm spam
                 )
             )

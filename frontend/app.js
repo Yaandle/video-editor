@@ -426,6 +426,15 @@ class App {
         this._dispatchAction(item.dataset.action);
       });
     });
+
+
+    document.querySelectorAll('.menu-dropdown-item[data-action]').forEach(item => {
+      item.addEventListener('click', () => {
+        document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('open'));
+        console.log('[menu] action:', item.dataset.action);   // ← add this
+        this._dispatchAction(item.dataset.action);
+      });
+    });
   }
 
   _wireToolbar() {
@@ -455,6 +464,9 @@ class App {
     if (zoomInBtn)    zoomInBtn.addEventListener('click',    () => this.timeline.zoomIn());
     if (zoomOutBtn)   zoomOutBtn.addEventListener('click',   () => this.timeline.zoomOut());
     if (zoomResetBtn) zoomResetBtn.addEventListener('click', () => this.timeline.zoomReset());
+
+    const canvasResizeBtn = document.getElementById('canvas-resize-btn');
+    if (canvasResizeBtn) canvasResizeBtn.addEventListener('click', () => this._openCanvasResizeModal());
   }
 
   _wireKeyboard() {
@@ -537,6 +549,7 @@ class App {
       case 'open':          this._openProject(); break;
       case 'save':          this._saveProject(); break;
       case 'save-as':       this._saveAs(); break;
+      case 'canvas-resize': this._openCanvasResizeModal(); break;
       case 'render':        this._render(); break;
       case 'quit':          window.close(); break;
       case 'add-narration': this._addClip('narration'); break;
@@ -751,6 +764,85 @@ class App {
       container.appendChild(btn);
     });
     document.getElementById('snap-modal-overlay').classList.add('open');
+  }
+
+  _openCanvasResizeModal() {
+    const PRESETS = [
+      { label: '9:16  — Shorts / Reels  (1080×1920)', w: 1080, h: 1920 },
+      { label: '16:9  — YouTube / landscape (1920×1080)', w: 1920, h: 1080 },
+      { label: '1:1   — Square  (1080×1080)',             w: 1080, h: 1080 },
+      { label: '4:5   — Instagram portrait (1080×1350)',  w: 1080, h: 1350 },
+    ];
+
+    // Build modal on first use
+    let overlay = document.getElementById('canvas-resize-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id        = 'canvas-resize-overlay';
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal-box" style="min-width:260px">
+          <h3 style="color:#ccc;font-size:12px;margin-bottom:10px">Canvas size</h3>
+          <div id="canvas-resize-presets"></div>
+          <div style="margin-top:8px;display:flex;gap:6px;align-items:center">
+            <input id="canvas-w-input" type="number" min="1" max="7680" step="1"
+              style="width:72px;background:#1a1a1a;color:#d4d4d4;border:1px solid #333;
+                    font-size:11px;padding:3px 4px;border-radius:2px;font-family:Consolas,monospace">
+            <span style="color:#555;font-size:11px">×</span>
+            <input id="canvas-h-input" type="number" min="1" max="7680" step="1"
+              style="width:72px;background:#1a1a1a;color:#d4d4d4;border:1px solid #333;
+                    font-size:11px;padding:3px 4px;border-radius:2px;font-family:Consolas,monospace">
+            <button id="canvas-resize-apply" class="btn" style="margin-left:4px">Apply</button>
+          </div>
+          <span id="canvas-resize-cancel"
+            style="margin-top:8px;color:#555;font-size:10px;cursor:pointer;display:block;text-align:right">
+            Cancel
+          </span>
+        </div>`;
+      document.body.appendChild(overlay);
+
+      // Preset buttons
+      const presetContainer = overlay.querySelector('#canvas-resize-presets');
+      for (const p of PRESETS) {
+        const btn = document.createElement('button');
+        btn.className   = 'snap-option';
+        btn.textContent = p.label;
+        btn.addEventListener('click', () => {
+          overlay.querySelector('#canvas-w-input').value = p.w;
+          overlay.querySelector('#canvas-h-input').value = p.h;
+        });
+        presetContainer.appendChild(btn);
+      }
+
+      // Apply
+      overlay.querySelector('#canvas-resize-apply').addEventListener('click', () => {
+        const w = parseInt(overlay.querySelector('#canvas-w-input').value, 10);
+        const h = parseInt(overlay.querySelector('#canvas-h-input').value, 10);
+        console.log('[canvas-resize] applying', w, h);
+        if (!w || !h || w < 1 || h < 1) return;
+        this.project.canvas_w = w;
+        this.project.canvas_h = h;
+        console.log('[canvas-resize] project now', this.project.canvas_w, this.project.canvas_h);
+        this._dirty = true;
+        this._syncProjectToWidgets();
+        this._refreshAll();
+        this._updateStatus(`Canvas: ${w}×${h}`);
+        overlay.classList.remove('open');
+      });
+
+      // Cancel
+      overlay.querySelector('#canvas-resize-cancel').addEventListener('click', () => {
+        overlay.classList.remove('open');
+      });
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.classList.remove('open');
+      });
+    }
+
+    // Populate current values
+    overlay.querySelector('#canvas-w-input').value = this.project.canvas_w;
+    overlay.querySelector('#canvas-h-input').value = this.project.canvas_h;
+    overlay.classList.add('open');
   }
 
   // ── Confirm dialog ──

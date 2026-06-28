@@ -1,13 +1,13 @@
 # vidkit
 
-A three-panel video compositor with a 9:16 portrait canvas, multi-track timeline, and properties editor. Runs as a Python WebSocket backend with a vanilla JS browser frontend.
+A three-panel video compositor with a configurable canvas (9:16, 16:9, 1:1, or custom), multi-track timeline, and properties editor.
 
 ```
 ┌─────────────────────────────────────────┐
 │  toolbar                                │
 ├───────────────────────┬─────────────────┤
 │                       │                 │
-│   canvas (9:16)       │   properties    │
+│  canvas (9:16/16:9…)  │   properties    │
 │                       │                 │
 ├───────────────────────┴─────────────────┤
 │  timeline  [audio] [text] [visual]      │
@@ -16,7 +16,7 @@ A three-panel video compositor with a 9:16 portrait canvas, multi-track timeline
 
 ## Stack
 
-- **Backend** — Python 3.11+, `websockets`, PyQt5 (desktop mode) or headless WS server
+- **Backend** — Python 3.11+, `websockets`, `moviepy`, `Pillow`, FastAPI, uvicorn
 - **Frontend** — Vanilla JS ES modules, HTML5 Canvas, no build step
 - **Protocol** — JSON over WebSocket at `ws://localhost:8765`
 

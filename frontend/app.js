@@ -1,11 +1,9 @@
-// app.js — Main application controller
 import { CanvasWidget } from './canvas.js';
 import { TimelineWidget } from './timeline.js';
 import { PropertiesPanel } from './properties.js';
 import { PlaybackController } from './playback.js';
 import { MediaBin } from './mediaBin.js';
 
-// ── Colour palette ─────────────────────────────────────────────────────────────
 export const TRACK_COLOURS = {
   audio:  { bg: '#1e3a5f', border: '#2563eb', text: '#93c5fd' },
   text:   { bg: '#14311a', border: '#16a34a', text: '#86efac' },
@@ -13,30 +11,16 @@ export const TRACK_COLOURS = {
 };
 
 export const CLIP_TYPE_TRACK = {
-  narration: 'text',
-  code:      'visual',
-  graph:     'visual',
-  audio:     'audio',
-  image:     'visual',
-  video:     'visual',
+  narration: 'text', code: 'visual', graph: 'visual',
+  audio: 'audio', image: 'visual', video: 'visual',
 };
 
 export const THEMES = {
-  dark: {
-    bg: '#0d1117', text: '#e6edf3', border: '#30363d',
-    comment: '#8b949e', function: '#d2a8ff', keyword: '#ff7b72',
-  },
-  light: {
-    bg: '#ffffff', text: '#24292f', border: '#d0d7de',
-    comment: '#6e7781', function: '#8250df', keyword: '#cf222e',
-  },
-  monokai: {
-    bg: '#272822', text: '#f8f8f2', border: '#75715e',
-    comment: '#75715e', function: '#a6e22e', keyword: '#f92672',
-  },
+  dark:    { bg: '#0d1117', text: '#e6edf3', border: '#30363d', comment: '#8b949e', function: '#d2a8ff', keyword: '#ff7b72' },
+  light:   { bg: '#ffffff', text: '#24292f', border: '#d0d7de', comment: '#6e7781', function: '#8250df', keyword: '#cf222e' },
+  monokai: { bg: '#272822', text: '#f8f8f2', border: '#75715e', comment: '#75715e', function: '#a6e22e', keyword: '#f92672' },
 };
 
-// ── Clip model ─────────────────────────────────────────────────────────────────
 export class Clip {
   constructor(data) {
     this.id         = data.id         ?? '';
@@ -53,38 +37,27 @@ export class Clip {
     this.graph_type = data.graph_type ?? 'bar';
     this.graph_data = data.graph_data ?? '';
     this.voice_id   = data.voice_id   ?? '';
-    this.scale = data.scale ?? 1.0;
+    this.scale      = data.scale      ?? 1.0;
+    this.layer      = data.layer      ?? 0;
   }
-  end()   { return this.start + this.duration; }
+  end() { return this.start + this.duration; }
   label() {
     if (this.clip_type === 'narration') {
       const preview = this.content.slice(0, 28).replace(/\n/g, ' ');
       return this.content.length > 28 ? `"${preview}…"` : `"${this.content}"`;
     }
-    if (this.clip_type === 'code') {
-      const name = this.code_file ? this.code_file.split(/[\\/]/).pop() : 'code block';
-      return `code · ${name}`;
-    }
+    if (this.clip_type === 'code')  return `code · ${this.code_file ? this.code_file.split(/[\\/]/).pop() : 'code block'}`;
     if (this.clip_type === 'graph') return `graph · ${this.graph_type}`;
-    if (this.clip_type === 'audio') {
-      const preview = this.content.slice(0, 24).replace(/\n/g, ' ');
-      return `audio · ${preview}`;
-    }
-    if (this.clip_type === 'video') {
-        const name = this.code_file ? this.code_file.split(/[\\/]/).pop() : 'video';
-        return `video · ${name}`;
-        }
-    if (this.clip_type === 'image') {
-        const name = this.code_file ? this.code_file.split(/[\\/]/).pop() : 'image';
-        return `image · ${name}`;
-    }
+    if (this.clip_type === 'audio') return `audio · ${this.content.slice(0, 24).replace(/\n/g, ' ')}`;
+    if (this.clip_type === 'video') return `video · ${this.code_file ? this.code_file.split(/[\\/]/).pop() : 'video'}`;
+    if (this.clip_type === 'image') return `image · ${this.code_file ? this.code_file.split(/[\\/]/).pop() : 'image'}`;
     return this.clip_type;
   }
   toDict() {
     return {
       id: this.id, track: this.track, clip_type: this.clip_type,
       start: this.start, duration: this.duration, content: this.content,
-      x: this.x, y: this.y, scale: this.scale,   
+      x: this.x, y: this.y, scale: this.scale,
       animation: this.animation, theme: this.theme,
       code_file: this.code_file, graph_type: this.graph_type,
       graph_data: this.graph_data, voice_id: this.voice_id,
@@ -92,7 +65,6 @@ export class Clip {
   }
 }
 
-// ── Project model ──────────────────────────────────────────────────────────────
 export class Project {
   constructor(data = {}) {
     this.name     = data.name     ?? 'untitled';
@@ -104,18 +76,19 @@ export class Project {
   }
   toDict() {
     return {
-      name: this.name, canvas_w: this.canvas_w, canvas_h: this.canvas_h,
-      fps: this.fps, duration: this.duration,
-      clips: this.clips.map(c => c.toDict()),
+      id: this.id, track: this.track, clip_type: this.clip_type,
+      start: this.start, duration: this.duration, content: this.content,
+      x: this.x, y: this.y, scale: this.scale,
+      animation: this.animation, theme: this.theme,
+      code_file: this.code_file, graph_type: this.graph_type,
+      graph_data: this.graph_data, voice_id: this.voice_id,
+      layer: this.layer,
     };
   }
   static fromDict(d) { return new Project(d); }
 }
 
-// ── Factory ────────────────────────────────────────────────────────────────────
-function genId() {
-  return Math.random().toString(36).slice(2, 10);
-}
+function genId() { return Math.random().toString(36).slice(2, 10); }
 
 export function newClip(clip_type, start = 0.0, duration = 5.0) {
   const track = CLIP_TYPE_TRACK[clip_type] ?? 'visual';
@@ -127,18 +100,13 @@ export function newClip(clip_type, start = 0.0, duration = 5.0) {
     image:     { theme: 'dark', y: 0.5 },
     video:     { y: 0.5 },
   };
-  return new Clip({
-    id: genId(), track, clip_type, start, duration,
-    ...(defaults[clip_type] ?? {}),
-  });
+  return new Clip({ id: genId(), track, clip_type, start, duration, ...(defaults[clip_type] ?? {}) });
 }
 
-// ── Deep clone ────────────────────────────────────────────────────────────────
 export function deepCloneClip(clip) {
   return new Clip(JSON.parse(JSON.stringify(clip.toDict())));
 }
 
-// ── WebSocket ─────────────────────────────────────────────────────────────────
 class WSClient {
   constructor(url, onMessage) {
     this.url = url;
@@ -156,22 +124,18 @@ class WSClient {
     } catch {}
   }
   send(obj) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(obj));
-    }
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(obj));
   }
 }
 
-// ── App ────────────────────────────────────────────────────────────────────────
 class App {
   constructor() {
-    this.project       = new Project();
-    this._projectPath  = null;
-    this._dirty        = false;
-    this._clipboard    = null;
-    this._selectedId   = null;
+    this.project      = new Project();
+    this._projectPath = null;
+    this._dirty       = false;
+    this._clipboard   = null;
+    this._selectedId  = null;
 
-    // Sub-controllers (instantiated after DOM refs)
     this.canvas   = null;
     this.timeline = null;
     this.props    = null;
@@ -179,98 +143,71 @@ class App {
     this.mediaBin = null;
     this._ws      = null;
     
+
     this._init();
   }
 
   _init() {
-        this.canvas   = new CanvasWidget(document.getElementById('canvas-widget'), this.project);
-        this.timeline = new TimelineWidget(document.getElementById('timeline-canvas'), this.project);
-        this.props    = new PropertiesPanel(document.getElementById('props-inner'));
+    this.canvas   = new CanvasWidget(document.getElementById('canvas-widget'), this.project);
+    this.timeline = new TimelineWidget(document.getElementById('timeline-canvas'), this.project);
+    this.props    = new PropertiesPanel(document.getElementById('props-inner'));
 
-        this.playback = new PlaybackController(
-            this.project,
-            (t) => this._onPlaybackTick(t)
-        );
+    this._wireTimelineResize();
+    this._wireTimelinePan();
 
-        this.mediaBin = new MediaBin(document.getElementById('media-bin'));
-        this.mediaBin.onAddClip((item) => this._addMediaClip(item));
-        this._loadMediaBin();
+    this.playback = new PlaybackController(this.project, (t) => this._onPlaybackTick(t));
 
-        const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        this._ws = new WSClient(
-            `${wsProtocol}//${location.host}/ws`,
-            (msg) => this._onWsMessage(msg)
-        );
+    this.mediaBin = new MediaBin(document.getElementById('media-bin'));
+    this.mediaBin.onAddClip((item) => this._addMediaClip(item));
+    this._loadMediaBin();
 
-        this._wireEvents();
-        this._wireMenu();
-        this._wireToolbar();
-        this._wireKeyboard();
+    const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    this._ws = new WSClient(`${wsProtocol}//${location.host}/ws`, (msg) => this._onWsMessage(msg));
 
-        this._seedDemoProject();
+    this._wireEvents();
+    this._wireMenu();
+    this._wireToolbar();
+    this._wireKeyboard();
 
-        this._resizeAll();
-        window.addEventListener('resize', () => this._resizeAll());
-    }
-  
-   // Add to App — upload a file and get back a media entry
-    async _uploadFile(file) {
+    this._resizeAll();
+    window.addEventListener('resize', () => this._resizeAll());
+  }
+
+  async _uploadFile(file) {
     const form = new FormData();
     form.append('file', file);
-    const res  = await fetch('/upload', { method: 'POST', body: form });
+    const res = await fetch('/upload', { method: 'POST', body: form });
     if (!res.ok) throw new Error(await res.text());
-    return res.json(); // { name, url, kind, mime, size }
+    return res.json();
+  }
+
+  async _loadMediaBin() {
+    try {
+      const items = await fetch('/media-list').then(r => r.json());
+      items.forEach(item => this.mediaBin.addItem(item));
+    } catch (err) {
+      console.error('Failed to load media bin', err);
     }
+  }
 
-    // Load existing media on boot
-    async _loadMediaBin() {
-        try {
-            const items = await fetch('/media-list').then(r => r.json());
-            items.forEach(item => this.mediaBin.addItem(item));
-        } catch (err) {
-            console.error('Failed to load media bin', err);
-        }
-    }
-
-    _addMediaClip(item) {
-    const clip_type =
-        item.kind === 'video'
-        ? 'video'
-        : item.kind === 'audio'
-            ? 'audio'
-            : 'image';
-
+  _addMediaClip(item) {
+    const clip_type = item.kind === 'video' ? 'video' : item.kind === 'audio' ? 'audio' : 'image';
     const dur = clip_type === 'audio' ? 10.0 : 5.0;
-
-    const c = newClip(
-        clip_type,
-        this.playback.playhead,
-        dur
-    );
-
+    const c = newClip(clip_type, this.playback.playhead, dur);
     c.code_file = item.url;
 
     this.project.clips.push(c);
-
     this._dirty = true;
-
     this._refreshAll();
 
     this._selectedId = c.id;
-
     this.timeline.setSelectedId(c.id);
     this.canvas.setSelectedId(c.id);
-
     this.props.showClip(c);
-
     this.canvas.redraw();
+    this._updateStatus(`Added: ${item.original ?? item.name}`);
+  }
 
-    this._updateStatus(
-        `Added: ${item.original ?? item.name}`
-    );
-    }
-
-  // ── WebSocket ──
   _onWsMessage(msg) {
     if (msg.type === 'project') {
       this.project = Project.fromDict(msg.data);
@@ -278,9 +215,7 @@ class App {
       this._refreshAll();
       return;
     }
-    if (msg.type === 'render_status') {
-      this._showRenderToast(msg.status, msg.message ?? '');
-    }
+    if (msg.type === 'render_status') this._showRenderToast(msg.status, msg.message ?? '');
   }
 
   _showRenderToast(status, message) {
@@ -293,25 +228,21 @@ class App {
       toast.classList.add('done');
       toast.classList.remove('error');
       toast.textContent = `✓ ${message}`;
-      setTimeout(() => { toast.classList.remove('visible', 'done'); }, 6000);
+      setTimeout(() => toast.classList.remove('visible', 'done'), 6000);
     } else if (status === 'error') {
       toast.classList.add('error');
       toast.classList.remove('done');
       toast.textContent = `✗ ${message}`;
-      setTimeout(() => { toast.classList.remove('visible', 'error'); }, 8000);
+      setTimeout(() => toast.classList.remove('visible', 'error'), 8000);
     }
   }
-  
+
   _wsSend(obj) { this._ws.send(obj); }
 
-  // ── Event wiring ──
   _wireEvents() {
-    // Canvas events
     document.getElementById('canvas-widget').addEventListener('canvas:clipresized', (e) => {
       const clip = this._findClip(e.detail.id);
-      if (clip && this._selectedId === e.detail.id) {
-        this.props.showClip(clip);   
-      }
+      if (clip && this._selectedId === e.detail.id) this.props.showClip(clip);
       this._dirty = true;
       this._updateStatus();
     });
@@ -328,7 +259,6 @@ class App {
       this.props.clear();
     });
 
-    // Timeline events
     document.getElementById('timeline-canvas').addEventListener('timeline:select', (e) => {
       this._selectedId = e.detail.id;
       this.canvas.setSelectedId(e.detail.id);
@@ -350,10 +280,9 @@ class App {
       this._updateStatus();
     });
     document.getElementById('timeline-canvas').addEventListener('timeline:slice', (e) => {
-      const { sourceId, rightStart, rightDur, track, clip_type } = e.detail;
+      const { sourceId, rightStart, rightDur } = e.detail;
       const source = this._findClip(sourceId);
       if (!source) return;
-      // Clone the source clip's properties into the right half
       const right = deepCloneClip(source);
       right.id       = genId();
       right.start    = rightStart;
@@ -364,25 +293,20 @@ class App {
       this._updateStatus(`Sliced at ${rightStart.toFixed(2)}s`);
     });
 
-    // Props events
     document.getElementById('props-inner').addEventListener('props:changed', () => {
       this._dirty = true;
       this.canvas.redraw();
       this.timeline.redraw();
       this._updateStatus();
     });
-    document.getElementById('props-inner').addEventListener('props:snap', () => {
-      this._openSnapModal();
-    });
+    document.getElementById('props-inner').addEventListener('props:snap', () => this._openSnapModal());
 
-    // Menu close on outside click
     document.addEventListener('click', (e) => {
       if (!e.target.closest('.menu-item')) {
         document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('open'));
       }
     });
 
-    // Snap modal cancel
     document.getElementById('snap-modal-cancel').addEventListener('click', () => {
       document.getElementById('snap-modal-overlay').classList.remove('open');
     });
@@ -390,26 +314,62 @@ class App {
       if (e.target === document.getElementById('snap-modal-overlay'))
         document.getElementById('snap-modal-overlay').classList.remove('open');
     });
-    const mediaInput = document.getElementById('media-upload');
 
+    const mediaInput = document.getElementById('media-upload');
     if (mediaInput) {
-    mediaInput.addEventListener('change', async (e) => {
-        const files = [...e.target.files];
-        for (const file of files) {
-        try {
+      mediaInput.addEventListener('change', async (e) => {
+        for (const file of [...e.target.files]) {
+          try {
             const item = await this._uploadFile(file);
             this.mediaBin.addItem(item);
-        } catch (err) {
+          } catch (err) {
             console.error(err);
-        }
+          }
         }
         mediaInput.value = '';
-    });
+      });
     }
   }
 
+  _wireTimelineResize() {
+    const handle = document.getElementById('timeline-resize-handle');
+    if (!handle) return;
+    let dragging = false, startY = 0, startH = 0;
+
+    handle.addEventListener('mousedown', (e) => {
+      dragging = true;
+      startY = e.clientY;
+      startH = document.getElementById('timeline-container').clientHeight;
+      handle.classList.add('active');
+      document.body.style.cursor = 'ns-resize';
+      e.preventDefault();
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      this.timeline.resize(startH + (startY - e.clientY));
+      this.canvas.resize();
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      handle.classList.remove('active');
+      document.body.style.cursor = 'default';
+    });
+  }
+
+  _wireTimelinePan() {
+    const slider = document.getElementById('timeline-pan-slider');
+    if (!slider) return;
+    slider.addEventListener('input', () => this.timeline.setPanOffset(parseInt(slider.value, 10)));
+    document.getElementById('timeline-canvas').addEventListener('timeline:panchanged', (e) => {
+      slider.max   = Math.ceil(e.detail.max);
+      slider.value = Math.round(e.detail.offset);
+    });
+  }
+
   _wireMenu() {
-    // Toggle dropdowns
     document.querySelectorAll('.menu-item[data-menu]').forEach(item => {
       item.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -419,19 +379,9 @@ class App {
       });
     });
 
-    // Actions
     document.querySelectorAll('.menu-dropdown-item[data-action]').forEach(item => {
       item.addEventListener('click', () => {
         document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('open'));
-        this._dispatchAction(item.dataset.action);
-      });
-    });
-
-
-    document.querySelectorAll('.menu-dropdown-item[data-action]').forEach(item => {
-      item.addEventListener('click', () => {
-        document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('open'));
-        console.log('[menu] action:', item.dataset.action);   // ← add this
         this._dispatchAction(item.dataset.action);
       });
     });
@@ -446,7 +396,6 @@ class App {
     document.getElementById('add-audio-btn').addEventListener('click', () => this._addClip('audio'));
     document.getElementById('render-btn').addEventListener('click', () => this._render());
 
-    // Razor tool toggle
     const razorBtn = document.getElementById('razor-btn');
     if (razorBtn) {
       razorBtn.addEventListener('click', () => {
@@ -457,7 +406,6 @@ class App {
       });
     }
 
-    // Zoom controls
     const zoomInBtn    = document.getElementById('zoom-in-btn');
     const zoomOutBtn   = document.getElementById('zoom-out-btn');
     const zoomResetBtn = document.getElementById('zoom-reset-btn');
@@ -471,20 +419,11 @@ class App {
 
   _wireKeyboard() {
     document.addEventListener('keydown', (e) => {
-      // Don't steal shortcuts from inputs/textareas
       const tag = document.activeElement.tagName;
       const inInput = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT');
 
-      if (e.code === 'Space' && !inInput) {
-        e.preventDefault();
-        this._togglePlay();
-        return;
-      }
-      if (e.key === 'Delete' && !inInput) {
-        e.preventDefault();
-        this._deleteSelected();
-        return;
-      }
+      if (e.code === 'Space' && !inInput) { e.preventDefault(); this._togglePlay(); return; }
+      if (e.key === 'Delete' && !inInput) { e.preventDefault(); this._deleteSelected(); return; }
       if (e.key.toLowerCase() === 'r' && !inInput && !e.ctrlKey) {
         e.preventDefault();
         const next = this.timeline.tool === 'razor' ? 'select' : 'razor';
@@ -494,29 +433,13 @@ class App {
         this._updateStatus(next === 'razor' ? 'Razor tool — click a clip to slice' : 'Select tool');
         return;
       }
-      if ((e.key === '+' || e.key === '=') && !inInput) {
-        e.preventDefault(); this.timeline.zoomIn(); return;
-      }
-      if (e.key === '-' && !inInput) {
-        e.preventDefault(); this.timeline.zoomOut(); return;
-      }
-      if (e.key === '0' && !inInput) {
-        e.preventDefault(); this.timeline.zoomReset(); return;
-      }
-      // Frame step: Shift+Left / Shift+Right
-      if (e.key === 'ArrowLeft' && e.shiftKey && !inInput) {
-        e.preventDefault(); this.playback.stepFrame(-1); return;
-      }
-      if (e.key === 'ArrowRight' && e.shiftKey && !inInput) {
-        e.preventDefault(); this.playback.stepFrame(1); return;
-      }
-      // Seek to start/end: Home / End
-      if (e.key === 'Home' && !inInput) {
-        e.preventDefault(); this.playback.seek(0); return;
-      }
-      if (e.key === 'End' && !inInput) {
-        e.preventDefault(); this.playback.seek(this.project.duration); return;
-      }
+      if ((e.key === '+' || e.key === '=') && !inInput) { e.preventDefault(); this.timeline.zoomIn(); return; }
+      if (e.key === '-' && !inInput) { e.preventDefault(); this.timeline.zoomOut(); return; }
+      if (e.key === '0' && !inInput) { e.preventDefault(); this.timeline.zoomReset(); return; }
+      if (e.key === 'ArrowLeft' && e.shiftKey && !inInput) { e.preventDefault(); this.playback.stepFrame(-1); return; }
+      if (e.key === 'ArrowRight' && e.shiftKey && !inInput) { e.preventDefault(); this.playback.stepFrame(1); return; }
+      if (e.key === 'Home' && !inInput) { e.preventDefault(); this.playback.seek(0); return; }
+      if (e.key === 'End' && !inInput) { e.preventDefault(); this.playback.seek(this.project.duration); return; }
 
       if (e.ctrlKey || e.metaKey) {
         switch (e.key.toLowerCase()) {
@@ -524,8 +447,7 @@ class App {
           case 'o': e.preventDefault(); this._dispatchAction('open'); break;
           case 's':
             e.preventDefault();
-            if (e.shiftKey) this._dispatchAction('save-as');
-            else this._dispatchAction('save');
+            this._dispatchAction(e.shiftKey ? 'save-as' : 'save');
             break;
           case 'r': e.preventDefault(); this._render(); break;
           case 'q': e.preventDefault(); window.close(); break;
@@ -535,8 +457,7 @@ class App {
           case 'v': if (!inInput) { e.preventDefault(); this._pasteClip(); } break;
           case 'z':
             e.preventDefault();
-            if (e.shiftKey) this._updateStatus('Redo not yet implemented');
-            else this._updateStatus('Undo not yet implemented');
+            this._updateStatus(e.shiftKey ? 'Redo not yet implemented' : 'Undo not yet implemented');
             break;
         }
       }
@@ -565,11 +486,9 @@ class App {
     }
   }
 
-  // ── Transport ──
   _togglePlay() {
     this.playback.toggle();
-    document.getElementById('play-btn').textContent =
-      this.playback.playing ? '⏸  Pause' : '▶  Play';
+    document.getElementById('play-btn').textContent = this.playback.playing ? '⏸  Pause' : '▶  Play';
   }
 
   _stop() {
@@ -585,13 +504,11 @@ class App {
     const secs = Math.floor(t % 60);
     const ms   = Math.floor((t % 1) * 1000);
     document.getElementById('timecode-lbl').textContent =
-      `${mins}:${String(secs).padStart(2,'0')}.${String(ms).padStart(3,'0')}`;
+      `${mins}:${String(secs).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
   }
 
-  // ── Clip management ──
   _addClip(clip_type) {
-    const start = this.playback.playhead;
-    const c = newClip(clip_type, start);
+    const c = newClip(clip_type, this.playback.playhead);
     this.project.clips.push(c);
     this._dirty = true;
     this._refreshAll();
@@ -657,7 +574,6 @@ class App {
     this._updateStatus(`Pasted: ${pasted.label()}`);
   }
 
-  // ── Project I/O ──
   _newProject() {
     this._confirmDiscard(() => {
       this.project = new Project();
@@ -699,13 +615,8 @@ class App {
     });
   }
 
-  _saveProject() {
-    this._writeProject(this._projectPath ?? (this.project.name + '.vkit'));
-  }
-
-  _saveAs() {
-    this._writeProject(this.project.name + '.vkit');
-  }
+  _saveProject() { this._writeProject(this._projectPath ?? (this.project.name + '.vkit')); }
+  _saveAs()      { this._writeProject(this.project.name + '.vkit'); }
 
   _writeProject(filename) {
     try {
@@ -714,26 +625,21 @@ class App {
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
       a.href     = url;
-      a.download = filename.endsWith('.vkit') || filename.endsWith('.json')
-        ? filename : filename + '.vkit';
+      a.download = filename.endsWith('.vkit') || filename.endsWith('.json') ? filename : filename + '.vkit';
       a.click();
       URL.revokeObjectURL(url);
       this._dirty = false;
       this._projectPath = a.download;
       this._updateTitle();
       this._updateStatus(`Saved: ${a.download}`);
-      // Also send to backend if connected
       this._wsSend({ type: 'save_project', data: this.project.toDict() });
     } catch (err) {
       alert('Save failed: ' + err.message);
     }
   }
 
-  _render() {
-    this._wsSend({ type: 'render', data: this.project.toDict() });
-  }
+  _render() { this._wsSend({ type: 'render', data: this.project.toDict() }); }
 
-  // ── Snap modal ──
   _openSnapModal() {
     const SNAP_POSITIONS = [
       [0.5,  0.12, 'top centre'],
@@ -774,7 +680,6 @@ class App {
       { label: '4:5   — Instagram portrait (1080×1350)',  w: 1080, h: 1350 },
     ];
 
-    // Build modal on first use
     let overlay = document.getElementById('canvas-resize-overlay');
     if (!overlay) {
       overlay = document.createElement('div');
@@ -801,7 +706,6 @@ class App {
         </div>`;
       document.body.appendChild(overlay);
 
-      // Preset buttons
       const presetContainer = overlay.querySelector('#canvas-resize-presets');
       for (const p of PRESETS) {
         const btn = document.createElement('button');
@@ -814,15 +718,12 @@ class App {
         presetContainer.appendChild(btn);
       }
 
-      // Apply
       overlay.querySelector('#canvas-resize-apply').addEventListener('click', () => {
         const w = parseInt(overlay.querySelector('#canvas-w-input').value, 10);
         const h = parseInt(overlay.querySelector('#canvas-h-input').value, 10);
-        console.log('[canvas-resize] applying', w, h);
         if (!w || !h || w < 1 || h < 1) return;
         this.project.canvas_w = w;
         this.project.canvas_h = h;
-        console.log('[canvas-resize] project now', this.project.canvas_w, this.project.canvas_h);
         this._dirty = true;
         this._syncProjectToWidgets();
         this._refreshAll();
@@ -830,7 +731,6 @@ class App {
         overlay.classList.remove('open');
       });
 
-      // Cancel
       overlay.querySelector('#canvas-resize-cancel').addEventListener('click', () => {
         overlay.classList.remove('open');
       });
@@ -839,13 +739,11 @@ class App {
       });
     }
 
-    // Populate current values
     overlay.querySelector('#canvas-w-input').value = this.project.canvas_w;
     overlay.querySelector('#canvas-h-input').value = this.project.canvas_h;
     overlay.classList.add('open');
   }
 
-  // ── Confirm dialog ──
   _confirmDiscard(onYes) {
     if (!this._dirty) { onYes(); return; }
     document.getElementById('confirm-overlay').classList.add('open');
@@ -860,7 +758,6 @@ class App {
     document.getElementById('confirm-no').addEventListener('click', () => { cleanup(); }, { once: true });
   }
 
-  // ── Helpers ──
   _findClip(id) { return this.project.clips.find(c => c.id === id) ?? null; }
 
   _syncProjectToWidgets() {
@@ -870,7 +767,6 @@ class App {
   }
 
   _refreshAll() {
-    // Auto-extend duration
     if (this.project.clips.length > 0) {
       const maxEnd = Math.max(...this.project.clips.map(c => c.end()));
       if (maxEnd > this.project.duration) this.project.duration = maxEnd + 2.0;
@@ -898,37 +794,6 @@ class App {
     this.canvas.resize();
     this.timeline.resize();
   }
-
-  // ── Demo project ──
-  _seedDemoProject() {
-    this.project.name     = 'demo — stepper motor';
-    this.project.duration = 30.0;
-
-    const clips = [
-      newClip('audio',     0.0,  18.0),
-      newClip('narration', 0.0,   7.0),
-      newClip('code',      0.0,   7.5),
-      newClip('narration', 8.0,   5.5),
-      newClip('graph',     9.0,   5.0),
-      newClip('narration', 15.0,  6.0),
-      newClip('code',      15.5,  7.0),
-    ];
-    clips[0].content   = 'The stepper motor...';
-    clips[1].content   = 'The 28BYJ-48 is a small, unipolar stepper motor.';
-    clips[1].y         = 0.12;
-    clips[2].content   = 'import RPi.GPIO as GPIO\n\nstep_pins = [11,12,13,15]\n\nfor step in full_step_seq:\n    for i, pin in enumerate(step_pins):\n        GPIO.output(pin, step[i])';
-    clips[3].content   = 'Full step = 2048 steps per revolution.';
-    clips[3].y         = 0.12;
-    clips[4].graph_data = 'Phase1:1,Phase2:0,Phase3:0,Phase4:0';
-    clips[5].content   = 'Half stepping doubles the resolution to 4096.';
-    clips[5].y         = 0.12;
-    clips[6].content   = 'half_step_seq = [\n    [1,0,0,0],[1,1,0,0],\n    [0,1,0,0],[0,1,1,0],\n]';
-
-    clips.forEach(c => this.project.clips.push(c));
-    this._syncProjectToWidgets();
-    this._refreshAll();
-  }
 }
 
-// Boot
 window.addEventListener('DOMContentLoaded', () => { new App(); });

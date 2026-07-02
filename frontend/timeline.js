@@ -1,162 +1,139 @@
-// timeline.js — HTML5 Canvas timeline with resize, scrub, razor, zoom
 import { TRACK_COLOURS } from './app.js';
 
-const TRACKS      = ['audio', 'text', 'visual'];
-const TRACK_H     = 38;
-const HEADER_H    = 24;
-const LABEL_W     = 60;
+const TRACKS = ['audio', 'text', 'visual'];
+const HEADER_H = 24;
+const LABEL_W = 60;
 const MIN_CLIP_PX = 8;
-const RESIZE_ZONE = 10;   // px from right edge that counts as resize handle
-const MIN_DUR_SEC = 0.1;  // minimum clip duration after resize
+const RESIZE_ZONE = 10;
+const MIN_DUR_SEC = 0.1;
+const MIN_TRACK_H = 38;
 
 export class TimelineWidget {
   constructor(canvasEl, project) {
-    this._el      = canvasEl;
-    this._ctx     = canvasEl.getContext('2d');
-    this.project  = project;
+    this._el = canvasEl;
+    this._ctx = canvasEl.getContext('2d');
+    this.project = project;
     this.playhead = 0.0;
-    this._zoom    = 1.0;   // 1 = fit-to-width, >1 = zoomed in
-    this._panOffsetPx  = 0; 
-    this._selectedId      = null;
-    this._dragClip        = null;
-    this._dragMode        = '';       // 'move' | 'resize-right' | 'resize-left'
-    this._dragOriginX     = 0;
+    this._zoom = 1.0;
+    this._panOffsetPx = 0; 
+    this._selectedId = null;
+    this._dragClip = null;
+    this._dragMode = '';
+    this._dragOriginX = 0;
     this._dragOriginStart = 0.0;
-    this._dragOriginDur   = 0.0;
-
-    this._scrubbing       = false;    // dragging playhead
-    this._scrubPlayhead   = false;    // mousedown on the playhead triangle
-
-    this.tool = 'select';             // 'select' | 'razor'
-
-    this._panning      = false;
-    this._panOriginX   = 0;
+    this._dragOriginDur = 0.0;
+    this._scrubbing = false;
+    this._scrubPlayhead = false;
+    this.tool = 'select';
+    this._panning = false;
+    this._panOriginX = 0;
     this._panOriginOff = 0;
-
     this._bindEvents();
     this.resize();
   }
 
-  // ── Public API ──────────────────────────────────────────────────────────────
-  setProject(p)     { this.project = p; this.redraw(); }
-  setPlayhead(t)    { this.playhead = t; this.redraw(); }
+  setProject(p) { this.project = p; this.redraw(); }
+  setPlayhead(t) { this.playhead = t; this.redraw(); }
   setSelectedId(id) { this._selectedId = id; this.redraw(); }
-  setTool(name)     { this.tool = name; this._updateCursor(null); }
-  redraw()          { this._paint(); }
+  setTool(name) { this.tool = name; this._updateCursor(null); }
+  redraw() { this._paint(); }
 
-  zoomOut() {
-      this._zoom = Math.max(this._zoom / 1.25, 1);
-      this._clampPan();
-      this.redraw();
-    }
-
-  zoomReset() {
-    this._zoom = 1;
-    this._panOffsetPx = 0;
-    this.redraw();
-  }
-  zoomReset(){ this._zoom = 1; this.redraw(); }
+  zoomOut() { this._zoom = Math.max(this._zoom / 1.25, 1); this._clampPan(); this.redraw(); }
+  zoomIn() { this._zoom = Math.min(this._zoom * 1.25, 32); this._clampPan(); this.redraw(); }
+  zoomReset() { this._zoom = 1; this._clampPan(); this.redraw(); }
 
   _clampPan() {
     const maxPan = Math.max(0, this._pxPerSec() * this.project.duration - (this._el.width - LABEL_W));
     this._panOffsetPx = Math.max(0, Math.min(maxPan, this._panOffsetPx));
   }
 
-  resize() {
+  resize(manualH = null) {
     const container = this._el.parentElement;
-    const totalH = HEADER_H + TRACKS.length * TRACK_H + 4;
+    const minH = HEADER_H + TRACKS.length * MIN_TRACK_H + 4;
+    const totalH = manualH != null ? Math.max(minH, manualH) : (this._manualH ?? minH);
+    if (manualH != null) this._manualH = totalH;
     container.style.height = totalH + 'px';
-    this._el.width  = container.clientWidth;
+    this._el.width = container.clientWidth;
     this._el.height = totalH;
     this._el.style.height = totalH + 'px';
     this.redraw();
   }
 
-  // ── Geometry ────────────────────────────────────────────────────────────────
-  _pxPerSec() {
-    const usable = (this._el.width - LABEL_W) * this._zoom;
-    return usable / Math.max(this.project.duration, 1.0);
+  _pxPerSec() { return ((this._el.width - LABEL_W) * this._zoom) / Math.max(this.project.duration, 1.0); }
+  _secToPx(t) { return LABEL_W + (t * this._pxPerSec()) - this._panOffsetPx | 0; }
+  _pxToSec(px) { return Math.max(0, (px - LABEL_W + this._panOffsetPx) / this._pxPerSec()); }
+  _trackLayerCount(track) {
+    let max = 0;
+    for (const c of this.project.clips) if (c.track === track) max = Math.max(max, (c.layer ?? 0) + 1);
+    return Math.max(1, max);
   }
 
-  _secToPx(t) {
-    return LABEL_W + (t * this._pxPerSec()) - this._panOffsetPx | 0;
+  _subLayerH() {
+    const totalLayers = TRACKS.reduce((s, t) => s + this._trackLayerCount(t), 0);
+    return Math.max(MIN_TRACK_H, (this._el.height - HEADER_H - 4) / totalLayers);
   }
 
-  _pxToSec(px) {
-    return Math.max(0, (px - LABEL_W + this._panOffsetPx) / this._pxPerSec());
-  }
+  _trackHeightPx(track) { return this._trackLayerCount(track) * this._subLayerH(); }
 
   _trackY(track) {
-    return HEADER_H + TRACKS.indexOf(track) * TRACK_H;
+    let y = HEADER_H;
+    for (const t of TRACKS) { if (t === track) return y; y += this._trackHeightPx(t); }
+    return y;
+  }
+
+  _reflowLayers() {
+    for (const track of TRACKS) {
+      const clips = this.project.clips.filter(c => c.track === track).sort((a, b) => a.start - b.start);
+      const laneEnds = [];
+      for (const c of clips) {
+        let layer = 0;
+        while (layer < laneEnds.length && laneEnds[layer] > c.start + 1e-6) layer++;
+        c.layer = layer;
+        laneEnds[layer] = c.end();
+      }
+    }
   }
 
   _clipRect(clip) {
-    const x = this._secToPx(clip.start);
-    const w = Math.max(MIN_CLIP_PX, (clip.duration * this._pxPerSec()) | 0);
-    const y = this._trackY(clip.track);
-    return { x, y, w, h: TRACK_H - 2 };
+    const subH = this._subLayerH();
+    return {
+      x: this._secToPx(clip.start),
+      w: Math.max(MIN_CLIP_PX, (clip.duration * this._pxPerSec()) | 0),
+      y: this._trackY(clip.track) + (clip.layer ?? 0) * subH,
+      h: subH - 2
+    };
   }
 
-  // ── Painting ────────────────────────────────────────────────────────────────
   _paint() {
-    const ctx = this._ctx;
-    const W   = this._el.width;
-    const H   = this._el.height;
+    this._reflowLayers();
+    const ctx = this._ctx, W = this._el.width, H = this._el.height;
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = '#121212';
     ctx.fillRect(0, 0, W, H);
-
-    // ── Ruler (tick marks + labels clipped to track area width) ────────────
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(LABEL_W, 0, W - LABEL_W, H);
-    ctx.clip();
-    this._drawRuler(ctx, W);
-    ctx.restore();
-
-    // ── Clips clipped to track area ─────────────────────────────────────────
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(LABEL_W, HEADER_H, W - LABEL_W, H - HEADER_H);
-    ctx.clip();
-    this._drawClips(ctx);
-    ctx.restore();
-
+    ctx.save(); ctx.beginPath(); ctx.rect(LABEL_W, 0, W - LABEL_W, H); ctx.clip(); this._drawRuler(ctx, W); ctx.restore();
+    ctx.save(); ctx.beginPath(); ctx.rect(LABEL_W, HEADER_H, W - LABEL_W, H - HEADER_H); ctx.clip(); this._drawClips(ctx); ctx.restore();
     this._drawTrackLabels(ctx, W);
     this._drawPlayhead(ctx, H);
   }
 
   _drawRuler(ctx, W) {
-    ctx.fillStyle = '#1c1c1c';
-    ctx.fillRect(LABEL_W, 0, W - LABEL_W, HEADER_H);
-    ctx.strokeStyle = '#505050';
-    ctx.lineWidth   = 1;
-    ctx.beginPath();
-    ctx.moveTo(LABEL_W, HEADER_H - 0.5);
-    ctx.lineTo(W, HEADER_H - 0.5);
-    ctx.stroke();
-
+    ctx.fillStyle = '#1c1c1c'; ctx.fillRect(LABEL_W, 0, W - LABEL_W, HEADER_H);
+    ctx.strokeStyle = '#505050'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(LABEL_W, HEADER_H - 0.5); ctx.lineTo(W, HEADER_H - 0.5); ctx.stroke();
     ctx.font = '8px Consolas, monospace';
     const pps = this._pxPerSec();
     let interval = 1;
-    for (const iv of [0.5, 1, 2, 5, 10, 15, 30, 60]) {
-      interval = iv;
-      if (pps * iv >= 40) break;
-    }
-
+    for (const iv of [0.5, 1, 2, 5, 10, 15, 30, 60]) { interval = iv; if (pps * iv >= 40) break; }
     let t = 0;
     while (t <= this.project.duration + interval) {
       const x = this._secToPx(t);
       if (x > W) break;
-      ctx.strokeStyle = '#464646';
-      ctx.lineWidth   = 1;
+      ctx.strokeStyle = '#464646'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(x + 0.5, HEADER_H - 8); ctx.lineTo(x + 0.5, HEADER_H); ctx.stroke();
-      ctx.fillStyle    = '#787878';
-      const mins  = Math.floor(t / 60);
-      const secs  = Math.floor(t % 60);
+      ctx.fillStyle = '#787878';
+      const mins = Math.floor(t / 60), secs = Math.floor(t % 60);
       const label = mins ? `${mins}:${String(secs).padStart(2, '0')}` : `${secs}s`;
-      ctx.textAlign    = 'left';
-      ctx.textBaseline = 'bottom';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
       ctx.fillText(label, x + 2, HEADER_H - 2);
       t = Math.round((t + interval) * 1000) / 1000;
     }
@@ -166,345 +143,187 @@ export class TimelineWidget {
     ctx.font = '8px "Segoe UI", system-ui, sans-serif';
     for (const track of TRACKS) {
       const y = this._trackY(track);
-      ctx.fillStyle = '#161616';
-      ctx.fillRect(0, y, LABEL_W, TRACK_H);
-
-      ctx.strokeStyle = '#373737';
-      ctx.lineWidth   = 1;
-      ctx.beginPath(); ctx.moveTo(0, y + TRACK_H - 0.5); ctx.lineTo(W, y + TRACK_H - 0.5); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(LABEL_W + 0.5, y); ctx.lineTo(LABEL_W + 0.5, y + TRACK_H); ctx.stroke();
-
+      const trackH = this._trackHeightPx(track);
+      ctx.fillStyle = '#161616'; ctx.fillRect(0, y, LABEL_W, trackH);
+      ctx.strokeStyle = '#373737'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, y + trackH - 0.5); ctx.lineTo(W, y + trackH - 0.5); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(LABEL_W + 0.5, y); ctx.lineTo(LABEL_W + 0.5, y + trackH); ctx.stroke();
       const col = TRACK_COLOURS[track] ?? {};
-      ctx.fillStyle    = col.text ?? '#b4b4b4';
-      ctx.textAlign    = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(track.toUpperCase(), LABEL_W / 2, y + TRACK_H / 2);
+      ctx.fillStyle = col.text ?? '#b4b4b4'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(track.toUpperCase(), LABEL_W / 2, y + trackH / 2);
     }
   }
-
+  
   _drawClips(ctx) {
     ctx.font = '8px Consolas, monospace';
     for (const clip of this.project.clips) {
-      const cr  = this._clipRect(clip);
-      const col = TRACK_COLOURS[clip.track] ?? {};
-      const isSelected = clip.id === this._selectedId;
-
-      // Body
-      ctx.fillStyle = col.bg ?? '#282828';
-      ctx.fillRect(cr.x, cr.y, cr.w, cr.h);
-
-      // Border — brighter when selected
+      const cr = this._clipRect(clip), col = TRACK_COLOURS[clip.track] ?? {}, isSelected = clip.id === this._selectedId;
+      ctx.fillStyle = col.bg ?? '#282828'; ctx.fillRect(cr.x, cr.y, cr.w, cr.h);
       ctx.strokeStyle = isSelected ? (col.border ?? '#888') : (col.border ? col.border + '99' : '#505050');
-      ctx.lineWidth   = isSelected ? 1.5 : 0.5;
+      ctx.lineWidth = isSelected ? 1.5 : 0.5;
       ctx.strokeRect(cr.x + 0.5, cr.y + 0.5, cr.w - 1, cr.h - 1);
-
-      // Left resize handle
-      ctx.fillStyle = 'rgba(255,255,255,0.06)';
-      ctx.fillRect(cr.x, cr.y, RESIZE_ZONE, cr.h);
-
-      // Right resize handle
-      ctx.fillStyle = 'rgba(255,255,255,0.09)';
-      ctx.fillRect(cr.x + cr.w - RESIZE_ZONE, cr.y, RESIZE_ZONE, cr.h);
-
-      // Label (clipped)
-      ctx.fillStyle    = col.text ?? '#c8c8c8';
-      ctx.textAlign    = 'left';
-      ctx.textBaseline = 'middle';
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(cr.x + RESIZE_ZONE, cr.y + 1, Math.max(0, cr.w - RESIZE_ZONE * 2), cr.h - 2);
-      ctx.clip();
-      ctx.fillText(clip.label(), cr.x + RESIZE_ZONE + 2, cr.y + cr.h / 2);
-      ctx.restore();
+      ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(cr.x, cr.y, RESIZE_ZONE, cr.h);
+      ctx.fillStyle = 'rgba(255,255,255,0.09)'; ctx.fillRect(cr.x + cr.w - RESIZE_ZONE, cr.y, RESIZE_ZONE, cr.h);
+      ctx.fillStyle = col.text ?? '#c8c8c8'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.save(); ctx.beginPath(); ctx.rect(cr.x + RESIZE_ZONE, cr.y + 1, Math.max(0, cr.w - RESIZE_ZONE * 2), cr.h - 2); ctx.clip();
+      ctx.fillText(clip.label(), cr.x + RESIZE_ZONE + 2, cr.y + cr.h / 2); ctx.restore();
     }
   }
 
   _drawPlayhead(ctx, H) {
     const x = this._secToPx(this.playhead);
-
-    // Line clipped to track area
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(LABEL_W, 0, this._el.width - LABEL_W, H);
-    ctx.clip();
-    ctx.strokeStyle = '#ef4444';
-    ctx.lineWidth   = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(x + 0.5, 0);
-    ctx.lineTo(x + 0.5, H);
-    ctx.stroke();
-    ctx.restore();
-
-    // Triangle — only draw if it's within the track area
+    ctx.save(); ctx.beginPath(); ctx.rect(LABEL_W, 0, this._el.width - LABEL_W, H); ctx.clip();
+    ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, H); ctx.stroke(); ctx.restore();
     if (x >= LABEL_W) {
       ctx.fillStyle = '#ef4444';
-      ctx.beginPath();
-      ctx.moveTo(x - 6, 0);
-      ctx.lineTo(x + 6, 0);
-      ctx.lineTo(x, 10);
-      ctx.closePath();
-      ctx.fill();
+      ctx.beginPath(); ctx.moveTo(x - 6, 0); ctx.lineTo(x + 6, 0); ctx.lineTo(x, 10); ctx.closePath(); ctx.fill();
     }
   }
 
-  // ── Cursor ──────────────────────────────────────────────────────────────────
   _updateCursor(pos) {
-    if (this.tool === 'razor') {
-      this._el.style.cursor = 'crosshair';
-      return;
-    }
+    if (this.tool === 'razor') { this._el.style.cursor = 'crosshair'; return; }
     if (!pos) { this._el.style.cursor = 'default'; return; }
-
-    // On playhead triangle?
-    const phX = this._secToPx(this.playhead);
-    if (pos.y <= HEADER_H && Math.abs(pos.x - phX) <= 8) {
-      this._el.style.cursor = 'ew-resize';
-      return;
-    }
-
+    if (pos.y <= HEADER_H && Math.abs(pos.x - this._secToPx(this.playhead)) <= 8) { this._el.style.cursor = 'ew-resize'; return; }
     const clip = this._clipAt(pos.x, pos.y);
     if (!clip) { this._el.style.cursor = 'default'; return; }
-
     const cr = this._clipRect(clip);
-    if (pos.x >= cr.x + cr.w - RESIZE_ZONE) {
-      this._el.style.cursor = 'ew-resize';
-    } else if (pos.x <= cr.x + RESIZE_ZONE) {
-      this._el.style.cursor = 'ew-resize';
-    } else {
-      this._el.style.cursor = 'grab';
-    }
+    if (pos.x >= cr.x + cr.w - RESIZE_ZONE || pos.x <= cr.x + RESIZE_ZONE) this._el.style.cursor = 'ew-resize';
+    else this._el.style.cursor = 'grab';
   }
 
-  // ── Hit testing ─────────────────────────────────────────────────────────────
   _clipAt(px, py) {
-    // Top-most (last in array) clip wins
     for (let i = this.project.clips.length - 1; i >= 0; i--) {
-      const clip = this.project.clips[i];
-      const cr = this._clipRect(clip);
-      if (px >= cr.x && px <= cr.x + cr.w && py >= cr.y && py <= cr.y + cr.h) {
-        return clip;
-      }
+      const clip = this.project.clips[i], cr = this._clipRect(clip);
+      if (px >= cr.x && px <= cr.x + cr.w && py >= cr.y && py <= cr.y + cr.h) return clip;
     }
     return null;
   }
 
-  _hitResizeRight(clip, px) {
-    const cr = this._clipRect(clip);
-    return px >= cr.x + cr.w - RESIZE_ZONE && px <= cr.x + cr.w;
-  }
+  _hitResizeRight(clip, px) { return px >= this._clipRect(clip).x + this._clipRect(clip).w - RESIZE_ZONE && px <= this._clipRect(clip).x + this._clipRect(clip).w; }
+  _hitResizeLeft(clip, px) { return px >= this._clipRect(clip).x && px <= this._clipRect(clip).x + RESIZE_ZONE; }
+  _hitPlayheadTriangle(px, py) { return py <= HEADER_H + 10 && Math.abs(px - this._secToPx(this.playhead)) <= 8; }
 
-  _hitResizeLeft(clip, px) {
-    const cr = this._clipRect(clip);
-    return px >= cr.x && px <= cr.x + RESIZE_ZONE;
-  }
-
-  _hitPlayheadTriangle(px, py) {
-    const phX = this._secToPx(this.playhead);
-    return py <= HEADER_H + 10 && Math.abs(px - phX) <= 8;
-  }
-
-  // ── Mouse events ────────────────────────────────────────────────────────────
   _bindEvents() {
     const el = this._el;
-    el.addEventListener('mousedown',  e => this._onMouseDown(e));
-    el.addEventListener('mousemove',  e => this._onMouseMove(e));
-    el.addEventListener('mouseup',    e => this._onMouseUp(e));
+    el.addEventListener('mousedown', e => this._onMouseDown(e));
+    el.addEventListener('mousemove', e => this._onMouseMove(e));
+    el.addEventListener('mouseup', e => this._onMouseUp(e));
     el.addEventListener('mouseleave', e => this._onMouseUp(e));
-    el.addEventListener('dblclick',   e => this._onDblClick(e));
-    // Zoom via scroll wheel
+    el.addEventListener('dblclick', e => this._onDblClick(e));
     el.addEventListener('wheel', e => this._onWheel(e), { passive: false });
   }
 
-  _getPos(e) {
-    const rect = this._el.getBoundingClientRect();
-    return { x: (e.clientX - rect.left) | 0, y: (e.clientY - rect.top) | 0 };
-  }
-
-  _emitSeek(t) {
-    this.playhead = t;
-    this.redraw();
-    this._el.dispatchEvent(new CustomEvent('timeline:playheadmoved', { bubbles: true, detail: { t } }));
-  }
+  _getPos(e) { const rect = this._el.getBoundingClientRect(); return { x: (e.clientX - rect.left) | 0, y: (e.clientY - rect.top) | 0 }; }
+  _emitSeek(t) { this.playhead = t; this.redraw(); this._el.dispatchEvent(new CustomEvent('timeline:playheadmoved', { bubbles: true, detail: { t } })); }
 
   _onMouseDown(e) {
     if (e.button !== 0) return;
     const pos = this._getPos(e);
-
-    // Middle-mouse pan OR Space+drag
     if (e.button === 1 || (e.button === 0 && e.altKey)) {
-      this._panning      = true;
-      this._panOriginX   = e.clientX;
-      this._panOriginOff = this._panOffsetPx;
-      this._el.style.cursor = 'grabbing';
-      return;
+      this._panning = true; this._panOriginX = e.clientX; this._panOriginOff = this._panOffsetPx; this._el.style.cursor = 'grabbing'; return;
     }
-    // ── Razor tool ──────────────────────────────────────────────────────────
     if (this.tool === 'razor') {
-      const clip = this._clipAt(pos.x, pos.y);
-      if (clip) this._sliceClip(clip, pos.x);
-      return;
+      const clip = this._clipAt(pos.x, pos.y); if (clip) this._sliceClip(clip, pos.x); return;
     }
-
-    // ── Playhead drag (triangle or ruler) ───────────────────────────────────
     if (pos.y < HEADER_H || this._hitPlayheadTriangle(pos.x, pos.y)) {
-      this._scrubPlayhead = true;
-      const t = Math.max(0, Math.min(this._pxToSec(pos.x), this.project.duration));
-      this._emitSeek(t);
-      return;
+      this._scrubPlayhead = true; this._emitSeek(Math.max(0, Math.min(this._pxToSec(pos.x), this.project.duration))); return;
     }
-
-    // ── Clip interaction ────────────────────────────────────────────────────
     const clip = this._clipAt(pos.x, pos.y);
     if (clip) {
-      this._selectedId      = clip.id;
-      this._dragClip        = clip;
-      this._dragOriginX     = pos.x;
-      this._dragOriginStart = clip.start;
-      this._dragOriginDur   = clip.duration;
-
-      if (this._hitResizeRight(clip, pos.x)) {
-        this._dragMode = 'resize-right';
-      } else if (this._hitResizeLeft(clip, pos.x)) {
-        this._dragMode = 'resize-left';
-      } else {
-        this._dragMode = 'move';
-      }
-
+      this._selectedId = clip.id; this._dragClip = clip; this._dragOriginX = pos.x; this._dragOriginStart = clip.start; this._dragOriginDur = clip.duration;
+      this._dragMode = this._hitResizeRight(clip, pos.x) ? 'resize-right' : this._hitResizeLeft(clip, pos.x) ? 'resize-left' : 'move';
       this._el.dispatchEvent(new CustomEvent('timeline:select', { bubbles: true, detail: { id: clip.id } }));
     } else {
-      this._selectedId = null;
-      this._dragClip   = null;
-      this._el.dispatchEvent(new CustomEvent('timeline:deselect', { bubbles: true }));
+      this._selectedId = null; this._dragClip = null; this._panning = true; this._panOriginX = e.clientX; this._panOriginOff = this._panOffsetPx;
+      this._el.style.cursor = 'grabbing'; this._el.dispatchEvent(new CustomEvent('timeline:deselect', { bubbles: true }));
     }
     this.redraw();
   }
 
   _onMouseMove(e) {
     const pos = this._getPos(e);
-
     if (this._panning && (e.buttons & (1 | 4))) {
-      const dx = e.clientX - this._panOriginX;
-      const maxPan = Math.max(0, this._pxPerSec() * this.project.duration - (this._el.width - LABEL_W));
-      this._panOffsetPx = Math.max(0, Math.min(maxPan, this._panOriginOff - dx));
-      this.redraw();
-      return;
+      const dx = e.clientX - this._panOriginX, maxPan = Math.max(0, this._pxPerSec() * this.project.duration - (this._el.width - LABEL_W));
+      this._panOffsetPx = Math.max(0, Math.min(maxPan, this._panOriginOff - dx)); this.redraw();
+      this._el.dispatchEvent(new CustomEvent('timeline:panchanged', { bubbles: true, detail: this.getPanRange() })); return;
     }
-    // Playhead scrub
-    if (this._scrubPlayhead && (e.buttons & 1)) {
-      const t = Math.max(0, Math.min(this._pxToSec(pos.x), this.project.duration));
-      this._emitSeek(t);
-      return;
-    }
-
-    // Cursor hint when idle
-    if (!(e.buttons & 1)) {
-      this._updateCursor(pos);
-      return;
-    }
-
-    // Clip drag / resize
+    if (this._scrubPlayhead && (e.buttons & 1)) { this._emitSeek(Math.max(0, Math.min(this._pxToSec(pos.x), this.project.duration))); return; }
+    if (!(e.buttons & 1)) { this._updateCursor(pos); return; }
     if (!this._dragClip) return;
 
     const dxSec = (pos.x - this._dragOriginX) / this._pxPerSec();
-
     if (this._dragMode === 'move') {
-      this._dragClip.start = Math.round(
-        Math.max(0, this._dragOriginStart + dxSec) * 1000
-      ) / 1000;
+      let newStart = Math.max(0, this._dragOriginStart + dxSec);
+      newStart = this._snapPoint(newStart);
+      this._dragClip.start = Math.round(newStart * 1000) / 1000;
       this._el.style.cursor = 'grabbing';
-
     } else if (this._dragMode === 'resize-right') {
-      // Drag right edge → changes duration
-      this._dragClip.duration = Math.round(
-        Math.max(MIN_DUR_SEC, this._dragOriginDur + dxSec) * 1000
-      ) / 1000;
+      let newEnd = this._dragOriginStart + this._dragOriginDur + dxSec;
+      newEnd = this._snapPoint(newEnd);
+      this._dragClip.duration = Math.round(Math.max(MIN_DUR_SEC, newEnd - this._dragOriginStart) * 1000) / 1000;
       this._el.style.cursor = 'ew-resize';
-
     } else if (this._dragMode === 'resize-left') {
-      // Drag left edge → moves start, adjusts duration to keep end fixed
-      const newStart = Math.max(0, this._dragOriginStart + dxSec);
-      const origEnd  = this._dragOriginStart + this._dragOriginDur;
-      const newDur   = origEnd - newStart;
-      if (newDur >= MIN_DUR_SEC) {
-        this._dragClip.start    = Math.round(newStart * 1000) / 1000;
-        this._dragClip.duration = Math.round(newDur  * 1000) / 1000;
-      }
+      let newStart = Math.max(0, this._dragOriginStart + dxSec);
+      newStart = this._snapPoint(newStart);
+      const newDur = (this._dragOriginStart + this._dragOriginDur) - newStart;
+      if (newDur >= MIN_DUR_SEC) { this._dragClip.start = Math.round(newStart * 1000) / 1000; this._dragClip.duration = Math.round(newDur * 1000) / 1000; }
       this._el.style.cursor = 'ew-resize';
     }
-
-    this.redraw();
-    this._el.dispatchEvent(new CustomEvent('timeline:clipchanged', { bubbles: true }));
+    this.redraw(); this._el.dispatchEvent(new CustomEvent('timeline:clipchanged', { bubbles: true }));
   }
 
+  _snapPoint(t) {
+    const THRESH_PX = 8;
+    const threshSec = THRESH_PX / this._pxPerSec();
+    let best = t, bestDist = threshSec;
+    const candidates = [0, this.playhead];
+    for (const c of this.project.clips) {
+      if (c === this._dragClip) continue;
+      candidates.push(c.start, c.end());
+    }
+    for (const cand of candidates) {
+      const d = Math.abs(t - cand);
+      if (d < bestDist) { bestDist = d; best = cand; }
+    }
+    return best;
+  }
   _onMouseUp(_e) {
-    if (this._panning) {
-      this._panning = false;
-      this._el.style.cursor = 'default';
-      return;
-    }
+    if (this._panning) { this._panning = false; this._el.style.cursor = 'default'; return; }
     if (this._scrubPlayhead) { this._scrubPlayhead = false; return; }
-    if (this._dragClip) {
-      this._dragClip = null;
-      this._dragMode = '';
-      this._el.style.cursor = 'default';
-      this._el.dispatchEvent(new CustomEvent('timeline:clipchanged', { bubbles: true }));
-    }
-    
+    if (this._dragClip) { this._dragClip = null; this._dragMode = ''; this._el.style.cursor = 'default'; this._el.dispatchEvent(new CustomEvent('timeline:clipchanged', { bubbles: true })); }
   }
 
   _onDblClick(e) {
-    const pos  = this._getPos(e);
-    const clip = this._clipAt(pos.x, pos.y);
-    if (clip) {
-      this._selectedId = clip.id;
-      this.redraw();
-      this._el.dispatchEvent(new CustomEvent('timeline:select', { bubbles: true, detail: { id: clip.id } }));
-    }
+    const pos = this._getPos(e), clip = this._clipAt(pos.x, pos.y);
+    if (clip) { this._selectedId = clip.id; this.redraw(); this._el.dispatchEvent(new CustomEvent('timeline:select', { bubbles: true, detail: { id: clip.id } })); }
   }
 
   _onWheel(e) {
     e.preventDefault();
-    const pos        = this._getPos(e);
-    const tAtCursor  = this._pxToSec(pos.x);   // time under cursor before zoom
-
-    if (e.deltaY < 0) this._zoom = Math.min(this._zoom * 1.25, 32);
-    else              this._zoom = Math.max(this._zoom / 1.25, 1);
-
-    // Repin: keep tAtCursor under the cursor after zoom
-    this._panOffsetPx = this._pxPerSec() * tAtCursor - (pos.x - LABEL_W);
-    this._clampPan();
-    this.redraw();
+    const pos = this._getPos(e), tAtCursor = this._pxToSec(pos.x);
+    this._zoom = e.deltaY < 0 ? Math.min(this._zoom * 1.25, 32) : Math.max(this._zoom / 1.25, 1);
+    this._panOffsetPx = this._pxPerSec() * tAtCursor - (pos.x - LABEL_W); this._clampPan(); this.redraw();
   }
 
-  // ── Razor / slice ────────────────────────────────────────────────────────────
+  setPanOffset(px) {
+    const maxPan = Math.max(0, this._pxPerSec() * this.project.duration - (this._el.width - LABEL_W));
+    this._panOffsetPx = Math.max(0, Math.min(maxPan, px)); this.redraw();
+  }
+
+  getPanRange() {
+    return { offset: this._panOffsetPx, max: Math.max(0, this._pxPerSec() * this.project.duration - (this._el.width - LABEL_W)) };
+  }
+
   _sliceClip(clip, px) {
     const sliceT = this._pxToSec(px);
-
-    // Must be inside the clip with room on both sides
-    if (sliceT <= clip.start + MIN_DUR_SEC) return;
-    if (sliceT >= clip.start + clip.duration - MIN_DUR_SEC) return;
-
-    // Build the right half first (reuses same clip object as left half)
-    const rightDur   = clip.start + clip.duration - sliceT;
-    const origDur    = clip.duration;
-
-    // Mutate the existing clip to become the left half
+    if (sliceT <= clip.start + MIN_DUR_SEC || sliceT >= clip.start + clip.duration - MIN_DUR_SEC) return;
+    const rightDur = clip.start + clip.duration - sliceT;
     clip.duration = Math.round((sliceT - clip.start) * 1000) / 1000;
-
-    // Import genId from the event dispatch side — we raise an event instead
-    // and let App create the new clip to keep models in one place
     this._el.dispatchEvent(new CustomEvent('timeline:slice', {
       bubbles: true,
-      detail: {
-        sourceId:  clip.id,
-        sliceAt:   sliceT,
-        rightStart: sliceT,
-        rightDur:   Math.round(rightDur * 1000) / 1000,
-        track:     clip.track,
-        clip_type: clip.clip_type,
-      }
+      detail: { sourceId: clip.id, sliceAt: sliceT, rightStart: sliceT, rightDur: Math.round(rightDur * 1000) / 1000, track: clip.track, clip_type: clip.clip_type }
     }));
-
     this.redraw();
   }
 }

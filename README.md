@@ -11,6 +11,7 @@ A three-panel video compositor with a configurable canvas (9:16, 16:9, 1:1, or c
 │                       │                 │
 ├───────────────────────┴─────────────────┤
 │  timeline  [audio] [text] [visual]      │
+│            (stackable sub-layers)       │
 └─────────────────────────────────────────┘
 ```
 
@@ -115,6 +116,11 @@ Backend mutates the project and broadcasts the full updated state to all connect
 | `load_project` | `path` |
 | `save_project` | `path` (optional) |
 | `render` | — |
+
+
+### Clip types
+
+`narration`, `code`, `graph`, `image`, `video` — set via `clip_type` on `add_clip`.
 
 ## Keyboard shortcuts
 

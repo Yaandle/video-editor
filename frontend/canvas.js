@@ -1,6 +1,74 @@
 // canvas.js — HTML5 Canvas port of CanvasWidget
 import { THEMES, TRACK_COLOURS } from './app.js';
 
+
+
+// ── Syntax tokenizer (ported from CodePreviewWidget._colorize_code) ────────────
+const PY_KEYWORDS = new Set([
+  'False','None','True','and','as','assert','async','await','break','class',
+  'continue','def','del','elif','else','except','finally','for','from','global',
+  'if','import','in','is','lambda','nonlocal','not','or','pass','raise','return',
+  'try','while','with','yield'
+]);
+
+function tokenizeCode(code, theme) {
+  // Same precedence as _colorize_code: comments, strings, numbers, keywords, functions, operators, then plain identifiers.
+  const rules = [
+    { re: /#[^\n]*/g,                                    color: theme.comment  ?? '#6B7280' },
+    { re: /"""(?:[^"\\]|\\.|\n)*?"""/g,                  color: theme.string   ?? '#16A34A' },
+    { re: /'''(?:[^'\\]|\\.|\n)*?'''/g,                  color: theme.string   ?? '#16A34A' },
+    { re: /"(?:[^"\\]|\\.)*?"/g,                         color: theme.string   ?? '#16A34A' },
+    { re: /'(?:[^'\\]|\\.)*?'/g,                         color: theme.string   ?? '#16A34A' },
+    { re: /\b(0x[0-9a-fA-F]+|0b[01]+|0o[0-7]+|\d+\.\d+|\d+)\b/g, color: theme.number ?? '#DB2777' },
+    { re: /\b[a-zA-Z_][a-zA-Z0-9_]*\b(?=\s*\()/g,        color: theme.function ?? '#2563EB', bold: true, guard: 'keyword' },
+    { re: /\b[a-zA-Z_][a-zA-Z0-9_]*\b/g,                 color: theme.variable ?? '#7C3AED', guard: 'keyword' },
+    { re: /[=+\-*/%<>!&|^~@]+/g,                         color: theme.operator ?? '#374151' },
+  ];
+
+  // Find every match across all rules, keep first-match-wins by scanning position order and rule priority.
+  const spans = []; // {start, end, color, bold}
+  for (const rule of rules) {
+    rule.re.lastIndex = 0;
+    let m;
+    while ((m = rule.re.exec(code))) {
+      const text = m[0];
+      if (rule.guard === 'keyword' && PY_KEYWORDS.has(text)) {
+        spans.push({ start: m.index, end: m.index + text.length, color: theme.keyword ?? '#D97706', bold: true });
+      } else {
+        spans.push({ start: m.index, end: m.index + text.length, color: rule.color, bold: !!rule.bold });
+      }
+      if (m[0].length === 0) rule.re.lastIndex++;
+    }
+  }
+  // Sort by start, then by span length descending so longer/more-specific matches win ties (e.g. triple-quote strings vs single-quote).
+  spans.sort((a, b) => a.start - b.start || (b.end - b.start) - (a.end - a.start));
+
+  const tokens = [];
+  let cursor = 0;
+  for (const s of spans) {
+    if (s.start < cursor) continue; // already covered by a higher-priority span
+    if (s.start > cursor) tokens.push({ text: code.slice(cursor, s.start), color: theme.text ?? '#1F2937', bold: false });
+    tokens.push({ text: code.slice(s.start, s.end), color: s.color, bold: s.bold });
+    cursor = s.end;
+  }
+  if (cursor < code.length) tokens.push({ text: code.slice(cursor), color: theme.text ?? '#1F2937', bold: false });
+  return tokens;
+}
+
+function tokensToLines(tokens) {
+  // Split the flat token stream into per-line token arrays, splitting any token that contains '\n'.
+  const lines = [[]];
+  for (const tok of tokens) {
+    const parts = tok.text.split('\n');
+    for (let i = 0; i < parts.length; i++) {
+      if (i > 0) lines.push([]);
+      if (parts[i].length) lines[lines.length - 1].push({ text: parts[i], color: tok.color, bold: tok.bold });
+    }
+  }
+  return lines;
+}
+
+
 // aspect derived from project at paint time — see _canvasRect()
 const HANDLE_SIZE    = 8;        // px, half-size of corner handle hit area
 const MIN_SCALE      = 0.05;
@@ -75,9 +143,10 @@ export class CanvasWidget {
   }
 
   _activeClips() {
-    return this.project.clips.filter(c => c.start <= this.playhead && this.playhead < c.end());
+    return this.project.clips
+      .filter(c => c.start <= this.playhead && this.playhead < c.end())
+      .sort((a, b) => (b.layer ?? 0) - (a.layer ?? 0));
   }
-
   _clipRect(clip, r) {
     const pt   = this._normToPx(clip.x, clip.y);
     const maxW = (r.w * 0.88) | 0;
@@ -152,7 +221,7 @@ export class CanvasWidget {
     if (this._selectedId) {
       const clip = this.project.clips.find(c => c.id === this._selectedId);
       if (clip) {
-        if (clip.clip_type === 'image' || clip.clip_type === 'video') {
+        if (clip.clip_type === 'image' || clip.clip_type === 'video' || clip.clip_type === 'code') {
           const drawn = this._drawnRects.get(clip.id);
           if (drawn) this._drawResizeOverlay(ctx, drawn);
         } else if (clip.track === 'text' || clip.track === 'visual') {
@@ -204,26 +273,9 @@ export class CanvasWidget {
       this._drawWrappedText(ctx, clip.content, pt.x, pt.y, maxW, fontSize * 1.4);
     }
     else if (clip.clip_type === 'code') {
-      const blockH = Math.min((r.h * 0.40) | 0, 160);
-      const blockW = (r.w * 0.92) | 0;
-      const bx     = r.x + ((r.w - blockW) >> 1);
-      const by     = pt.y - (blockH >> 1);
-      ctx.fillStyle   = theme.bg;
-      ctx.fillRect(bx, by, blockW, blockH);
-      ctx.strokeStyle = theme.border;
-      ctx.lineWidth   = 1;
-      ctx.strokeRect(bx + 0.5, by + 0.5, blockW, blockH);
-      const fontSize  = Math.max(6, (r.w / 24) | 0);
-      ctx.font        = `${fontSize}px Consolas, monospace`;
-      ctx.fillStyle   = theme.text;
-      ctx.textAlign   = 'left';
-      ctx.textBaseline = 'top';
-      const lh    = Math.max(10, (r.w / 20) | 0);
-      const lines = clip.content.split('\n').slice(0, 10);
-      for (let i = 0; i < lines.length; i++) {
-        ctx.fillText(lines[i].slice(0, 60), bx + 8, by + 12 + i * lh);
+        this._drawCodeTerminal(ctx, clip, r, pt, theme);
       }
-    }
+    
     else if (clip.clip_type === 'graph') {
       const blockH = (r.h * 0.35) | 0;
       const blockW = (r.w * 0.88) | 0;
@@ -242,6 +294,194 @@ export class CanvasWidget {
     else if (clip.clip_type === 'video') {
       this._drawMedia(ctx, clip, r, pt);
     }
+  }
+
+  _drawCodeTerminal(ctx, clip, r, pt, theme) {
+    const blockW    = (r.w * 0.92) | 0;
+    const maxBlockH = Math.min((r.h * 0.55) | 0, 340);
+    const bx        = r.x + ((r.w - blockW) >> 1);
+    const titleH    = 28;
+    const promptH   = clip.terminal_prompt ? 26 : 0;
+    const padTop    = 10;
+    const padBottom = 10;
+    const padX      = 12;
+
+    const lines = tokensToLines(tokenizeCode(clip.content ?? '', theme));
+
+    // Auto-fit: shrink font until content height fits within maxBlockH, down to a minimum size.
+    let fontSize = Math.max(9, (r.w / 46) | 0);
+    const minFontSize = 7;
+    let lineH, gutterW, contentH;
+
+    do {
+      lineH    = fontSize * 1.55;
+      gutterW  = Math.max(28, fontSize * 2.4) | 0;
+      contentH = lines.length * lineH + padTop + padBottom;
+      if (titleH + promptH + contentH <= maxBlockH || fontSize <= minFontSize) break;
+      fontSize -= 1;
+    } while (true);
+
+    const blockH = Math.min(maxBlockH, titleH + promptH + contentH);
+    const by     = pt.y - (blockH >> 1);
+
+    // Register actual drawn bounds so selection/resize overlay hugs the window border,
+    // not a fallback text-label box.
+    this._drawnRects.set(clip.id, { x: bx, y: by, w: blockW, h: blockH });
+
+    // Outer window
+    ctx.fillStyle   = theme.bg ?? '#1e1e1e';
+    ctx.fillRect(bx, by, blockW, blockH);
+    ctx.strokeStyle = theme.border ?? '#404040';
+    ctx.lineWidth   = 1;
+    ctx.strokeRect(bx + 0.5, by + 0.5, blockW, blockH);
+
+    // Title bar
+    ctx.fillStyle = theme.titlebar ?? this._shade(theme.bg, 1.15);
+    ctx.fillRect(bx, by, blockW, titleH);
+    ctx.strokeStyle = theme.border ?? '#404040';
+    ctx.beginPath(); ctx.moveTo(bx, by + titleH + 0.5); ctx.lineTo(bx + blockW, by + titleH + 0.5); ctx.stroke();
+
+    // Window controls: minimize (line), maximize (square), close (x) — right-aligned
+    const iconColor = theme.comment ?? '#9ca3af';
+    const iconSize  = 9;
+    const iconGap   = 18;
+    const iconCY    = by + titleH / 2;
+    const rightPad  = 16;
+    const closeCX = bx + blockW - rightPad - iconSize / 2;
+    const maxCX   = closeCX - iconGap;
+    const minCX   = maxCX - iconGap;
+
+    ctx.strokeStyle = iconColor;
+    ctx.lineWidth   = 1.3;
+    ctx.lineCap     = 'round';
+
+    // minimize — horizontal line
+    ctx.beginPath();
+    ctx.moveTo(minCX - iconSize / 2, iconCY);
+    ctx.lineTo(minCX + iconSize / 2, iconCY);
+    ctx.stroke();
+
+    // maximize — square outline
+    ctx.strokeRect(maxCX - iconSize / 2, iconCY - iconSize / 2, iconSize, iconSize);
+
+    // close — x
+    ctx.beginPath();
+    ctx.moveTo(closeCX - iconSize / 2, iconCY - iconSize / 2);
+    ctx.lineTo(closeCX + iconSize / 2, iconCY + iconSize / 2);
+    ctx.moveTo(closeCX + iconSize / 2, iconCY - iconSize / 2);
+    ctx.lineTo(closeCX - iconSize / 2, iconCY + iconSize / 2);
+    ctx.stroke();
+
+    if (clip.terminal_title) {
+      ctx.fillStyle = theme.comment ?? '#9ca3af';
+      ctx.font = `${fontSize}px Consolas, monospace`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(clip.terminal_title, bx + blockW / 2, by + titleH / 2);
+    }
+
+    // Prompt breadcrumb line
+    let contentTop = by + titleH;
+    if (clip.terminal_prompt) {
+      ctx.fillStyle = theme.bg ?? '#1e1e1e';
+      ctx.fillRect(bx, contentTop, blockW, promptH);
+      ctx.font = `${fontSize}px Consolas, monospace`;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = theme.function ?? '#4ec9b0';
+      ctx.fillText(clip.terminal_prompt, bx + padX, contentTop + promptH / 2);
+      contentTop += promptH;
+    }
+
+    // Gutter divider — faded vertical line separating line numbers from code
+    ctx.strokeStyle = theme.border ? this._withAlpha(theme.border, 0.35) : 'rgba(255,255,255,0.08)';
+    ctx.lineWidth   = 1;
+    ctx.beginPath();
+    ctx.moveTo(bx + gutterW + 4.5, contentTop);
+    ctx.lineTo(bx + gutterW + 4.5, by + blockH);
+    ctx.stroke();
+
+    // Code area, clipped so long lines/many lines don't spill the window
+    ctx.save();
+    ctx.beginPath(); ctx.rect(bx, contentTop, blockW, by + blockH - contentTop); ctx.clip();
+
+    ctx.font = `${fontSize}px Consolas, monospace`;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+
+    const codeStartY = contentTop + padTop;
+    let visibleLines = lines.length;
+    if (clip.anim_mode === 'typewriter') {
+      const elapsed     = Math.max(0, this.playhead - clip.start);
+      const charsPerSec = clip.type_speed ?? 40;
+      const totalChars  = elapsed * charsPerSec;
+      visibleLines = this._typewriterClip(lines, totalChars, ctx, bx, gutterW, padX, codeStartY, lineH, theme);
+    } else {
+      for (let i = 0; i < lines.length; i++) {
+        this._drawCodeLine(ctx, lines[i], i, bx, gutterW, padX, codeStartY, lineH, theme);
+      }
+    }
+    ctx.restore();
+
+    // Blinking cursor after the last visible line (typewriter mode, or static with cursor flag)
+    if (clip.show_cursor !== false) {
+      const blinkOn = Math.floor(this.playhead * 2) % 2 === 0;
+      if (blinkOn) {
+        const cursorLine = Math.min(visibleLines, lines.length - 1);
+        const cy = codeStartY + Math.max(0, cursorLine) * lineH;
+        ctx.fillStyle = theme.text ?? '#d4d4d4';
+        ctx.fillRect(bx + gutterW + padX, cy, fontSize * 0.55, fontSize * 1.15);
+      }
+    }
+  }
+
+  _withAlpha(hex, alpha) {
+    if (!hex || hex[0] !== '#') return hex;
+    const n = parseInt(hex.slice(1), 16);
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+  
+  _drawCodeLine(ctx, tokens, lineIdx, bx, gutterW, padX, startY, lineH, theme) {
+    const y = startY + lineIdx * lineH;
+    // Gutter
+    ctx.fillStyle = theme.comment ?? '#6b7280';
+    ctx.textAlign = 'right';
+    ctx.fillText(String(lineIdx + 1), bx + gutterW - 10, y);
+    ctx.textAlign = 'left';
+    // Tokens
+    let x = bx + gutterW + padX;
+    for (const tok of tokens) {
+      ctx.font = `${tok.bold ? 'bold ' : ''}${ctx.font.match(/[\d.]+px [^,]+/)?.[0] ?? '12px Consolas'}`;
+      ctx.fillStyle = tok.color;
+      ctx.fillText(tok.text, x, y);
+      x += ctx.measureText(tok.text).width;
+    }
+  }
+
+  _typewriterClip(lines, totalChars, ctx, bx, gutterW, padX, startY, lineH, theme) {
+    let remaining = Math.floor(totalChars);
+    for (let i = 0; i < lines.length; i++) {
+      if (remaining <= 0) return i;
+      const lineTokens = [];
+      let used = 0;
+      for (const tok of lines[i]) {
+        if (used >= remaining) break;
+        const take = Math.min(tok.text.length, remaining - used);
+        lineTokens.push({ text: tok.text.slice(0, take), color: tok.color, bold: tok.bold });
+        used += take;
+        if (used >= remaining) break;
+      }
+      this._drawCodeLine(ctx, lineTokens, i, bx, gutterW, padX, startY, lineH, theme);
+      remaining -= (lines[i].reduce((s, t) => s + t.text.length, 0) + 1); // +1 for the newline
+    }
+    return lines.length - 1;
+  }
+
+  _shade(hex, factor) {
+    if (!hex || hex[0] !== '#') return hex;
+    const n = parseInt(hex.slice(1), 16);
+    const r = Math.min(255, ((n >> 16) & 255) * factor) | 0;
+    const g = Math.min(255, ((n >> 8) & 255) * factor) | 0;
+    const b = Math.min(255, (n & 255) * factor) | 0;
+    return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
   }
 
   _drawMedia(ctx, clip, r, pt) {

@@ -32,7 +32,7 @@ export class TimelineWidget {
     this.resize();
   }
 
-  setProject(p) { this.project = p; this.redraw(); }
+  setProject(p) { this.project = p; this._reflowLayers(); this.redraw(); }
   setPlayhead(t) { this.playhead = t; this.redraw(); }
   setSelectedId(id) { this._selectedId = id; this.redraw(); }
   setTool(name) { this.tool = name; this._updateCursor(null); }
@@ -49,7 +49,8 @@ export class TimelineWidget {
 
   resize(manualH = null) {
     const container = this._el.parentElement;
-    const minH = HEADER_H + TRACKS.length * MIN_TRACK_H + 4;
+    const layerTotal = TRACKS.reduce((s, t) => s + this._trackLayerCount(t), 0);
+    const minH = HEADER_H + layerTotal * MIN_TRACK_H + 4;
     const totalH = manualH != null ? Math.max(minH, manualH) : (this._manualH ?? minH);
     if (manualH != null) this._manualH = totalH;
     container.style.height = totalH + 'px';
@@ -86,6 +87,10 @@ export class TimelineWidget {
       const clips = this.project.clips.filter(c => c.track === track).sort((a, b) => a.start - b.start);
       const laneEnds = [];
       for (const c of clips) {
+        if (Number.isInteger(c.layer) && laneEnds[c.layer] === undefined) {
+          laneEnds[c.layer] = c.end();
+          continue;
+        }
         let layer = 0;
         while (layer < laneEnds.length && laneEnds[layer] > c.start + 1e-6) layer++;
         c.layer = layer;
@@ -105,13 +110,15 @@ export class TimelineWidget {
   }
 
   _paint() {
-    this._reflowLayers();
     const ctx = this._ctx, W = this._el.width, H = this._el.height;
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = '#121212';
     ctx.fillRect(0, 0, W, H);
     ctx.save(); ctx.beginPath(); ctx.rect(LABEL_W, 0, W - LABEL_W, H); ctx.clip(); this._drawRuler(ctx, W); ctx.restore();
-    ctx.save(); ctx.beginPath(); ctx.rect(LABEL_W, HEADER_H, W - LABEL_W, H - HEADER_H); ctx.clip(); this._drawClips(ctx); ctx.restore();
+    ctx.save(); ctx.beginPath(); ctx.rect(LABEL_W, HEADER_H, W - LABEL_W, H - HEADER_H); ctx.clip();
+    this._drawClips(ctx);
+    this._drawLayerDividers(ctx);
+    ctx.restore();
     this._drawTrackLabels(ctx, W);
     this._drawPlayhead(ctx, H);
   }
@@ -167,6 +174,19 @@ export class TimelineWidget {
       ctx.fillStyle = col.text ?? '#c8c8c8'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       ctx.save(); ctx.beginPath(); ctx.rect(cr.x + RESIZE_ZONE, cr.y + 1, Math.max(0, cr.w - RESIZE_ZONE * 2), cr.h - 2); ctx.clip();
       ctx.fillText(clip.label(), cr.x + RESIZE_ZONE + 2, cr.y + cr.h / 2); ctx.restore();
+    }
+  }
+
+  _drawLayerDividers(ctx) {
+    ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 0.5;
+    for (const track of TRACKS) {
+      const count = this._trackLayerCount(track);
+      if (count <= 1) continue;
+      const top = this._trackY(track), subH = this._subLayerH();
+      for (let i = 1; i < count; i++) {
+        const y = top + i * subH;
+        ctx.beginPath(); ctx.moveTo(LABEL_W, y - 0.5); ctx.lineTo(this._el.width, y - 0.5); ctx.stroke();
+      }
     }
   }
 
@@ -257,6 +277,13 @@ export class TimelineWidget {
       let newStart = Math.max(0, this._dragOriginStart + dxSec);
       newStart = this._snapPoint(newStart);
       this._dragClip.start = Math.round(newStart * 1000) / 1000;
+
+      const subH = this._subLayerH();
+      const trackTop = this._trackY(this._dragClip.track);
+      const rawLayer = Math.floor((pos.y - trackTop) / subH);
+      const maxLayer = this._trackLayerCount(this._dragClip.track);
+      this._dragClip.layer = Math.max(0, Math.min(rawLayer, maxLayer));
+
       this._el.style.cursor = 'grabbing';
     } else if (this._dragMode === 'resize-right') {
       let newEnd = this._dragOriginStart + this._dragOriginDur + dxSec;
@@ -291,7 +318,12 @@ export class TimelineWidget {
   _onMouseUp(_e) {
     if (this._panning) { this._panning = false; this._el.style.cursor = 'default'; return; }
     if (this._scrubPlayhead) { this._scrubPlayhead = false; return; }
-    if (this._dragClip) { this._dragClip = null; this._dragMode = ''; this._el.style.cursor = 'default'; this._el.dispatchEvent(new CustomEvent('timeline:clipchanged', { bubbles: true })); }
+    if (this._dragClip) {
+      this._reflowLayers();
+      this._dragClip = null; this._dragMode = ''; this._el.style.cursor = 'default';
+      this.resize();
+      this._el.dispatchEvent(new CustomEvent('timeline:clipchanged', { bubbles: true }));
+    }
   }
 
   _onDblClick(e) {

@@ -16,9 +16,30 @@ export const CLIP_TYPE_TRACK = {
 };
 
 export const THEMES = {
-  dark:    { bg: '#0d1117', text: '#e6edf3', border: '#30363d', comment: '#8b949e', function: '#d2a8ff', keyword: '#ff7b72' },
-  light:   { bg: '#ffffff', text: '#24292f', border: '#d0d7de', comment: '#6e7781', function: '#8250df', keyword: '#cf222e' },
-  monokai: { bg: '#272822', text: '#f8f8f2', border: '#75715e', comment: '#75715e', function: '#a6e22e', keyword: '#f92672' },
+  dark: {
+    bg: '#0d1117', text: '#e6edf3', border: '#30363d', titlebar: '#161b22',
+    comment: '#8b949e', function: '#d2a8ff', keyword: '#ff7b72',
+    string: '#a5d6ff', number: '#79c0ff', variable: '#e6edf3', operator: '#e6edf3',
+    cursor: '#e6edf3',
+  },
+  light: {
+    bg: '#ffffff', text: '#24292f', border: '#d0d7de', titlebar: '#f6f8fa',
+    comment: '#6e7781', function: '#8250df', keyword: '#cf222e',
+    string: '#0a3069', number: '#0550ae', variable: '#24292f', operator: '#24292f',
+    cursor: '#24292f',
+  },
+  monokai: {
+    bg: '#272822', text: '#f8f8f2', border: '#75715e', titlebar: '#1e1f1c',
+    comment: '#75715e', function: '#a6e22e', keyword: '#f92672',
+    string: '#e6db74', number: '#ae81ff', variable: '#f8f8f2', operator: '#f8f8f2',
+    cursor: '#f8f8f2',
+  },
+  simple: {
+    bg: '#f9f3ef', text: '#1f2937', border: '#e5d9cf', titlebar: '#f3ede9',
+    keyword: '#d97706', string: '#16a34a', comment: '#6b7280', number: '#db2777',
+    variable: '#7c3aed', operator: '#374151', function: '#2563eb',
+    cursor: '#1f2937',
+  },
 };
 
 export class Clip {

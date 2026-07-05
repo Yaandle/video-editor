@@ -31,6 +31,9 @@ class Clip:
 
     code_file: str = ""
 
+    terminal_prompt: str = "user@vidkit:~$"
+    terminal_title: str = ""
+
     graph_type: str = "bar"
     graph_data: str = ""
 

@@ -102,6 +102,13 @@ export class PropertiesPanel {
         });
         this._container.appendChild(browseBtn);
 
+        this._addSection('Terminal');
+        const promptInput = this._addTextInput(c.terminal_prompt, 'user@vidkit:~$');
+        promptInput.addEventListener('input', () => this._set('terminal_prompt', promptInput.value));
+
+        const titleInput = this._addTextInput(c.terminal_title, 'window title (optional)');
+        titleInput.addEventListener('input', () => this._set('terminal_title', titleInput.value));
+
         const inlineLbl = document.createElement('span');
         inlineLbl.className   = 'props-inline-label';
         inlineLbl.textContent = 'Inline code (overrides file):';

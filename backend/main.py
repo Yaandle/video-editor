@@ -7,6 +7,16 @@ from fastapi import FastAPI, WebSocket, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from websocket_server import VideoEditorServer
 
+# Try to import moviepy for media inspection. If unavailable, we'll still
+# accept uploads but won't return rich metadata.
+try:
+    from moviepy.editor import VideoFileClip, AudioFileClip
+    _HAS_MOVIEPY = True
+except Exception:
+    VideoFileClip = None
+    AudioFileClip = None
+    _HAS_MOVIEPY = False
+
 # ── Paths (always correct regardless of launch directory) ─────────────────────
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))  # .../backend
 ROOT_DIR   = os.path.dirname(BASE_DIR)                    # .../video-editor
@@ -40,6 +50,41 @@ async def upload(file: UploadFile = File(...)):
         "audio" if ext_lower in ("mp3", "wav", "ogg")  else
         "image"
     )
+    # Try to probe media metadata (duration, and for video width/height/fps)
+    metadata = {}
+    if _HAS_MOVIEPY and kind in ("audio", "video"):
+        try:
+            if kind == "video":
+                clip = VideoFileClip(dest)
+                metadata["duration"] = float(clip.duration) if clip.duration is not None else None
+                # clip.size is (w, h)
+                try:
+                    metadata["width"], metadata["height"] = clip.size
+                except Exception:
+                    pass
+                try:
+                    metadata["fps"] = float(clip.fps) if hasattr(clip, "fps") else None
+                except Exception:
+                    pass
+                try:
+                    clip.reader.close()
+                except Exception:
+                    pass
+                try:
+                    clip.close()
+                except Exception:
+                    pass
+            else:
+                aclip = AudioFileClip(dest)
+                metadata["duration"] = float(aclip.duration) if aclip.duration is not None else None
+                try:
+                    aclip.close()
+                except Exception:
+                    pass
+        except Exception:
+            # If probing fails, we leave metadata empty
+            metadata = {}
+
     return {
         "name":     name,
         "original": file.filename,
@@ -47,6 +92,7 @@ async def upload(file: UploadFile = File(...)):
         "kind":     kind,
         "mime":     file.content_type,
         "size":     len(content),
+        **({} if not metadata else {"metadata": metadata}),
     }
 
 # ── Media list ────────────────────────────────────────────────────────────────
@@ -63,11 +109,41 @@ async def list_media():
             "audio" if ext in ("mp3", "wav", "ogg")  else
             "image"
         )
-        items.append({
-            "name": fname,
-            "url":  f"/media/{fname}",
-            "kind": kind,
-        })
+        item = {"name": fname, "url": f"/media/{fname}", "kind": kind}
+        # Probe and attach metadata when possible
+        if _HAS_MOVIEPY and kind in ("audio", "video"):
+            try:
+                if kind == "video":
+                    clip = VideoFileClip(fpath)
+                    item.setdefault("metadata", {})["duration"] = float(clip.duration) if clip.duration is not None else None
+                    try:
+                        item["metadata"]["width"], item["metadata"]["height"] = clip.size
+                    except Exception:
+                        pass
+                    try:
+                        item["metadata"]["fps"] = float(clip.fps) if hasattr(clip, "fps") else None
+                    except Exception:
+                        pass
+                    try:
+                        clip.reader.close()
+                    except Exception:
+                        pass
+                    try:
+                        clip.close()
+                    except Exception:
+                        pass
+                else:
+                    aclip = AudioFileClip(fpath)
+                    item.setdefault("metadata", {})["duration"] = float(aclip.duration) if aclip.duration is not None else None
+                    try:
+                        aclip.close()
+                    except Exception:
+                        pass
+            except Exception:
+                # ignore probe failures
+                pass
+
+        items.append(item)
     return items
 
 # ── Static mounts (specific before catch-all) ─────────────────────────────────

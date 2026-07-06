@@ -182,6 +182,10 @@ class App {
     this.playback = null;
     this.mediaBin = null;
     this._ws      = null;
+    // Audio preview management
+    this._audioEls   = {}; // clipId -> HTMLAudioElement
+    this._audioTimers = {}; // clipId -> timeout id for scheduled start
+    this._audioLoaded = {}; // clipId -> boolean
     
 
     this._init();
@@ -230,15 +234,34 @@ class App {
     }
   }
 
-  _addMediaClip(item) {
+  async _addMediaClip(item) {
     const clip_type = item.kind === 'video' ? 'video' : item.kind === 'audio' ? 'audio' : 'image';
-    const dur = clip_type === 'audio' ? 10.0 : 5.0;
+    // Prefer metadata from the backend if provided
+    const meta = item.metadata ?? item.metadata ?? null;
+    let dur = meta && meta.duration ? meta.duration : null;
+
+    // If audio and no duration provided, probe via HTMLAudioElement
+    if (clip_type === 'audio' && !dur) {
+      try {
+        dur = await this._probeAudioDuration(item.url);
+      } catch (err) {
+        console.warn('Failed to probe audio duration, falling back to 5s', err);
+        dur = 5.0;
+      }
+    }
+
+    // For other media types, fall back to 5s if unknown
+    if (dur == null) dur = 5.0;
+
     const c = newClip(clip_type, this.playback.playhead, dur);
     c.code_file = item.url;
 
     this.project.clips.push(c);
     this._dirty = true;
     this._refreshAll();
+
+    // Ensure audio element for audio clips
+    if (c.clip_type === 'audio') this._ensureAudioForClip(c);
 
     this._selectedId = c.id;
     this.timeline.setSelectedId(c.id);
@@ -248,10 +271,157 @@ class App {
     this._updateStatus(`Added: ${item.original ?? item.name}`);
   }
 
+  _probeAudioDuration(url) {
+    return new Promise((resolve, reject) => {
+      const a = new Audio();
+      let timeout = setTimeout(() => {
+        a.src = '';
+        reject(new Error('Timed out loading audio metadata'));
+      }, 8000);
+      a.preload = 'metadata';
+      a.addEventListener('loadedmetadata', () => {
+        clearTimeout(timeout);
+        const d = isFinite(a.duration) ? a.duration : null;
+        a.src = '';
+        resolve(d);
+      }, { once: true });
+      a.addEventListener('error', (e) => {
+        clearTimeout(timeout);
+        a.src = '';
+        reject(e);
+      }, { once: true });
+      a.src = url;
+    });
+  }
+
+  _ensureAudioForClip(clip) {
+    if (!clip || clip.clip_type !== 'audio' || !clip.code_file) return;
+    if (this._audioEls[clip.id]) return;
+    try {
+      const a = new Audio();
+      a.src = clip.code_file;
+      a.preload = 'metadata';
+      a.crossOrigin = 'anonymous';
+      a.addEventListener('loadedmetadata', () => {
+        this._audioLoaded[clip.id] = true;
+        if ((!clip.duration || clip.duration === 0) && isFinite(a.duration)) {
+          clip.duration = a.duration;
+          this._dirty = true;
+          this._refreshAll();
+        }
+      }, { once: true });
+      a.addEventListener('error', () => { this._audioLoaded[clip.id] = false; }, { once: true });
+      this._audioEls[clip.id] = a;
+    } catch (err) {
+      console.warn('Failed to create audio element for clip', err);
+    }
+  }
+
+  _removeAudioForClip(clipId) {
+    const a = this._audioEls[clipId];
+    if (a) {
+      try { a.pause(); } catch {}
+      try { a.src = ''; } catch {}
+    }
+    delete this._audioEls[clipId];
+    if (this._audioTimers[clipId]) { clearTimeout(this._audioTimers[clipId]); delete this._audioTimers[clipId]; }
+    delete this._audioLoaded[clipId];
+  }
+
+  _clearAudioTimers() {
+    Object.values(this._audioTimers).forEach(t => clearTimeout(t));
+    this._audioTimers = {};
+  }
+
+  _startAudioScheduling() {
+    this._clearAudioTimers();
+    const playhead = this.playback.playhead;
+    for (const clip of this.project.clips) {
+      if (clip.clip_type !== 'audio' || !clip.code_file || !clip.duration) continue;
+      this._ensureAudioForClip(clip);
+      const el = this._audioEls[clip.id];
+      const start = clip.start;
+      const end = clip.end();
+      if (start <= playhead && playhead < end) {
+        const offset = Math.max(0, playhead - start);
+        try {
+          if (this._audioLoaded[clip.id]) {
+            el.currentTime = Math.min(offset, clip.duration - 0.001);
+            el.play().catch(() => {});
+          } else {
+            // wait for metadata then set time and play
+            el.addEventListener('loadedmetadata', () => {
+              try { el.currentTime = Math.min(offset, clip.duration - 0.001); el.play().catch(() => {}); } catch {}
+            }, { once: true });
+          }
+        } catch (err) { /* ignore */ }
+      } else if (start > playhead) {
+        const delay = Math.max(0, (start - playhead) * 1000);
+        this._audioTimers[clip.id] = setTimeout(() => {
+          try { const el2 = this._audioEls[clip.id]; if (el2) { el2.currentTime = 0; el2.play().catch(() => {}); } } catch (e) {}
+        }, delay);
+      }
+    }
+  }
+
+  _pauseAllAudio(stop = false) {
+    this._clearAudioTimers();
+    for (const id in this._audioEls) {
+      const el = this._audioEls[id];
+      try { el.pause(); } catch {}
+      if (stop) {
+        try { el.currentTime = 0; } catch {}
+      }
+    }
+  }
+
+  _resyncAudioOnSeek(t) {
+    // Recompute audio positions for new playhead t
+    this._clearAudioTimers();
+    const playing = this.playback.playing;
+    for (const clip of this.project.clips) {
+      if (clip.clip_type !== 'audio' || !clip.code_file || !clip.duration) continue;
+      this._ensureAudioForClip(clip);
+      const el = this._audioEls[clip.id];
+      const start = clip.start;
+      const end = clip.end();
+      if (start <= t && t < end) {
+        const offset = Math.max(0, t - start);
+        try {
+          if (this._audioLoaded[clip.id]) {
+            el.currentTime = Math.min(offset, clip.duration - 0.001);
+            if (playing) el.play().catch(() => {});
+            else el.pause();
+          } else {
+            el.addEventListener('loadedmetadata', () => {
+              try { el.currentTime = Math.min(offset, clip.duration - 0.001); if (playing) el.play().catch(() => {}); } catch {}
+            }, { once: true });
+          }
+        } catch (err) {}
+      } else {
+        try { el.pause(); el.currentTime = 0; } catch (err) {}
+        if (playing && start > t) {
+          const delay = Math.max(0, (start - t) * 1000);
+          this._audioTimers[clip.id] = setTimeout(() => {
+            try { const el2 = this._audioEls[clip.id]; if (el2) { el2.currentTime = 0; el2.play().catch(() => {}); } } catch (e) {}
+          }, delay);
+        }
+      }
+    }
+  }
+
+  _initAudioForProject() {
+    for (const clip of this.project.clips) {
+      if (clip.clip_type === 'audio') this._ensureAudioForClip(clip);
+    }
+  }
+
   _onWsMessage(msg) {
     if (msg.type === 'project') {
       this.project = Project.fromDict(msg.data);
       this._syncProjectToWidgets();
+      // initialize audio elements for any audio clips in the incoming project
+      this._initAudioForProject();
       this._refreshAll();
       return;
     }
@@ -529,12 +699,18 @@ class App {
   _togglePlay() {
     this.playback.toggle();
     document.getElementById('play-btn').textContent = this.playback.playing ? '⏸  Pause' : '▶  Play';
+    if (this.playback.playing) {
+      this._startAudioScheduling();
+    } else {
+      this._pauseAllAudio(false);
+    }
   }
 
   _stop() {
     this.playback.pause();
     this.playback.seek(0.0);
     document.getElementById('play-btn').textContent = '▶  Play';
+    this._pauseAllAudio(true);
   }
 
   _onPlaybackTick(t) {
@@ -545,6 +721,8 @@ class App {
     const ms   = Math.floor((t % 1) * 1000);
     document.getElementById('timecode-lbl').textContent =
       `${mins}:${String(secs).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
+    // Resync audio elements when playhead is moved by seeking (not during play)
+    if (!this.playback.playing) this._resyncAudioOnSeek(t);
   }
 
   _addClip(clip_type) {
@@ -561,6 +739,8 @@ class App {
 
   _deleteSelected() {
     if (!this._selectedId) return;
+    const clipToDelete = this._findClip(this._selectedId);
+    if (clipToDelete && clipToDelete.clip_type === 'audio') this._removeAudioForClip(clipToDelete.id);
     this.project.clips = this.project.clips.filter(c => c.id !== this._selectedId);
     this._selectedId = null;
     this.timeline.setSelectedId(null);
@@ -578,6 +758,7 @@ class App {
     dup.id    = genId();
     dup.start = clip.end();
     this.project.clips.push(dup);
+    if (dup.clip_type === 'audio') this._ensureAudioForClip(dup);
     this._dirty = true;
     this._refreshAll();
   }
@@ -605,6 +786,7 @@ class App {
     pasted.id    = genId();
     pasted.start = this.playback.playhead;
     this.project.clips.push(pasted);
+    if (pasted.clip_type === 'audio') this._ensureAudioForClip(pasted);
     this._dirty = true;
     this._selectedId = pasted.id;
     this.timeline.setSelectedId(pasted.id);

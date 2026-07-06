@@ -103,6 +103,10 @@ export class CanvasWidget {
     this._zoom = 1.0;   
     this._panX = 0;     
 
+    // Canvas pan-drag state (click+hold on empty space)
+    this._isPanning     = false;
+    this._panDragOrigin = null; // { mouseX, mouseY, panX, panY }
+
 
     // Resize state
     this._resizeHandle  = null;   // 'tl'|'tr'|'bl'|'br' | null
@@ -731,6 +735,11 @@ export class CanvasWidget {
       this._selectedId = null;
       this._dragClip   = null;
       this._el.dispatchEvent(new CustomEvent('canvas:deselect', { bubbles: true }));
+
+      // Nothing hit — start panning the canvas
+      this._isPanning     = true;
+      this._panDragOrigin = { mouseX: raw.x, mouseY: raw.y, panX: this._panX, panY: this._panY };
+      this._el.style.cursor = 'grabbing';
     }
     this.redraw();
   }
@@ -763,6 +772,16 @@ export class CanvasWidget {
         }));
         this.redraw();
       }
+      return;
+    }
+
+    // ── Pan drag ───────────────────────────────────────────────────────────────
+    if (this._isPanning && (e.buttons & 1)) {
+      const raw = this._getPos(e);
+      const o   = this._panDragOrigin;
+      this._panX = o.panX + (raw.x - o.mouseX);
+      this._panY = o.panY + (raw.y - o.mouseY);
+      this.redraw();
       return;
     }
 
@@ -804,7 +823,7 @@ export class CanvasWidget {
       }
     }
     const clip = this._clipAt(pos.x, pos.y);
-    this._el.style.cursor = clip ? 'move' : 'default';
+    this._el.style.cursor = clip ? 'move' : 'grab';
   }
 
   _onMouseUp(_e) {
@@ -821,6 +840,8 @@ export class CanvasWidget {
     this._resizeOrigin  = null;
     this._dragClip      = null;
     this._snapTarget    = null;
+    this._isPanning     = false;
+    this._panDragOrigin = null;
     this._el.style.cursor = 'default';
     this.redraw();
   }

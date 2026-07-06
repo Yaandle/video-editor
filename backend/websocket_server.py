@@ -9,9 +9,12 @@ if not hasattr(_PILImage, "ANTIALIAS"):
     _PILImage.ANTIALIAS = _PILImage.LANCZOS
 
 from models import Project, new_clip
+from project_store import ProjectStore
 
 _BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR   = os.path.join(_BACKEND_DIR, "uploads")
+PROJECTS_DIR = os.path.join(_BACKEND_DIR, "projects")
+os.makedirs(PROJECTS_DIR, exist_ok=True)
 
 class VideoEditorServer:
 
@@ -58,6 +61,23 @@ class VideoEditorServer:
 
         elif action == "save_project":
             self.project = Project.from_dict(msg.get("data", {}))
+            filename = msg.get("filename") or f"{self.project.name}.vkit"
+            path = os.path.join(PROJECTS_DIR, filename)
+            ProjectStore.save(self.project, path)
+            await websocket.send_text(json.dumps({
+                "type": "save_status",
+                "status": "done",
+                "path": path,
+            })) 
+
+        elif action == "load_project":
+            filename = msg.get("filename") or f"{self.project.name}.vkit"
+            path = os.path.join(PROJECTS_DIR, filename)
+            self.project = ProjectStore.load(path)
+            await self.broadcast({
+                "type": "project",
+                "data": self.project.to_dict()
+            })
 
         elif action == "render":
             project_data = msg.get("data", {})

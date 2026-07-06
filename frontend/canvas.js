@@ -70,9 +70,10 @@ function tokensToLines(tokens) {
 
 
 // aspect derived from project at paint time — see _canvasRect()
-const HANDLE_SIZE    = 8;        // px, half-size of corner handle hit area
 const MIN_SCALE      = 0.05;
 const MAX_SCALE      = 4.0;
+const MIN_ZOOM        = 0.1;   // NEW
+const MAX_ZOOM        = 4.0;   // NEW
 
 const SNAP_POSITIONS = [
   [0.5,  0.12, 'top centre'],
@@ -95,6 +96,13 @@ export class CanvasWidget {
     this._dragOffsetY = 0;
     this._snapTarget  = null;
     this._mediaCache  = new Map();
+
+    this._snapTarget  = null;
+    this._mediaCache  = new Map();
+    this._panY = 0;     
+    this._zoom = 1.0;   
+    this._panX = 0;     
+
 
     // Resize state
     this._resizeHandle  = null;   // 'tl'|'tr'|'bl'|'br' | null
@@ -142,6 +150,13 @@ export class CanvasWidget {
     return { nx: Math.max(0, Math.min(1, nx)), ny: Math.max(0, Math.min(1, ny)) };
   }
 
+  _toLogical(screenX, screenY) {
+    return {
+      x: (screenX - this._panX) / this._zoom,
+      y: (screenY - this._panY) / this._zoom,
+    };
+  }
+
   _activeClips() {
     return this.project.clips
       .filter(c => c.start <= this.playhead && this.playhead < c.end())
@@ -183,6 +198,12 @@ export class CanvasWidget {
 
     ctx.clearRect(0, 0, el.width, el.height);
 
+    ctx.save();
+    ctx.translate(this._panX, this._panY);
+    ctx.scale(this._zoom, this._zoom);           
+    
+
+
     // Canvas background
     ctx.fillStyle = theme.bg;
     ctx.fillRect(r.x, r.y, r.w, r.h);
@@ -212,28 +233,28 @@ export class CanvasWidget {
       ctx.beginPath(); ctx.moveTo(pt.x, r.y); ctx.lineTo(pt.x, r.y + r.h); ctx.stroke();
     }
 
-    // Draw clips
     for (const clip of this._activeClips()) {
-      this._drawClip(ctx, clip, r);
-    }
+        this._drawClip(ctx, clip, r);
+      }
 
-    // Selection overlay
-    if (this._selectedId) {
-      const clip = this.project.clips.find(c => c.id === this._selectedId);
-      if (clip) {
-        if (clip.clip_type === 'image' || clip.clip_type === 'video' || clip.clip_type === 'code') {
-          const drawn = this._drawnRects.get(clip.id);
-          if (drawn) this._drawResizeOverlay(ctx, drawn);
-        } else if (clip.track === 'text' || clip.track === 'visual') {
-          const cr = this._clipRect(clip, r);
-          ctx.strokeStyle = 'rgba(59,130,246,0.9)';
-          ctx.lineWidth   = 1;
-          ctx.setLineDash([4, 3]);
-          ctx.strokeRect(cr.x - 3, cr.y - 3, cr.w + 6, cr.h + 6);
-          ctx.setLineDash([]);
+      if (this._selectedId) {
+        const clip = this.project.clips.find(c => c.id === this._selectedId);
+        if (clip) {
+          if (clip.clip_type === 'image' || clip.clip_type === 'video' || clip.clip_type === 'code' || clip.clip_type === 'narration') {
+            const drawn = this._drawnRects.get(clip.id);
+            if (drawn) this._drawResizeOverlay(ctx, drawn);
+          } else if (clip.track === 'text' || clip.track === 'visual') {
+            const cr = this._clipRect(clip, r);
+            ctx.strokeStyle = 'rgba(59,130,246,0.9)';
+            ctx.lineWidth   = 1;
+            ctx.setLineDash([4, 3]);
+            ctx.strokeRect(cr.x - 3, cr.y - 3, cr.w + 6, cr.h + 6);
+            ctx.setLineDash([]);
+          }
         }
       }
-    }
+
+      ctx.restore();   // now runs every time, selection or not
   }
 
   _drawResizeOverlay(ctx, rect) {
@@ -270,7 +291,12 @@ export class CanvasWidget {
       ctx.fillStyle    = theme.text;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'top';
-      this._drawWrappedText(ctx, clip.content, pt.x, pt.y, maxW, fontSize * 1.4);
+      const textBounds = this._drawWrappedText(ctx, clip.content, pt.x, pt.y, maxW, fontSize * 1.4);
+      
+      // Register actual drawn bounds so selection/resize overlay hugs the text
+      const bx = pt.x - (maxW >> 1);
+      const by = textBounds.startY;
+      this._drawnRects.set(clip.id, { x: bx, y: by, w: maxW, h: textBounds.height });
     }
     else if (clip.clip_type === 'code') {
         this._drawCodeTerminal(ctx, clip, r, pt, theme);
@@ -544,6 +570,7 @@ export class CanvasWidget {
     const words = text.split(' ');
     let line = '';
     let curY = y;
+    const startY = y;
     for (const word of words) {
       const test = line ? line + ' ' + word : word;
       if (ctx.measureText(test).width > maxW && line) {
@@ -555,6 +582,10 @@ export class CanvasWidget {
       }
     }
     if (line) ctx.fillText(line, cx, curY);
+    
+    // Return bounds of rendered text for bounding box calculations
+    const endY = curY + lineH; // full line height for last line
+    return { startY, endY, height: endY - startY };
   }
 
   _drawGraphPreview(ctx, clip, bx, by, bw, bh, theme, r) {
@@ -602,6 +633,7 @@ export class CanvasWidget {
     el.addEventListener('mousemove',  e => this._onMouseMove(e));
     el.addEventListener('mouseup',    e => this._onMouseUp(e));
     el.addEventListener('mouseleave', e => this._onMouseUp(e));
+    el.addEventListener('wheel', e => this._onWheel(e), { passive: false }); 
   }
 
   _getPos(e) {
@@ -637,14 +669,34 @@ export class CanvasWidget {
     return null;
   }
 
+  _onWheel(e) {
+    e.preventDefault();
+    const raw = this._getPos(e);
+    const oldZoom = this._zoom;
+    const factor  = e.deltaY < 0 ? 1.1 : 0.9;
+    const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, oldZoom * factor));
+    if (newZoom === oldZoom) return;
+
+    // Keep the logical point under the cursor fixed on screen.
+    const logicalX = (raw.x - this._panX) / oldZoom;
+    const logicalY = (raw.y - this._panY) / oldZoom;
+    this._panX = raw.x - logicalX * newZoom;
+    this._panY = raw.y - logicalY * newZoom;
+    this._zoom = newZoom;
+
+    this.redraw();
+  }
+
+
   _onMouseDown(e) {
     if (e.button !== 0) return;
-    const pos = this._getPos(e);
+    const raw = this._getPos(e);
+    const pos = this._toLogical(raw.x, raw.y);
 
-    // Check for resize handle on selected image/video first
+    // Check for resize handle on selected image/video/code/narration first
     if (this._selectedId) {
       const clip = this.project.clips.find(c => c.id === this._selectedId);
-      if (clip && (clip.clip_type === 'image' || clip.clip_type === 'video')) {
+      if (clip && (clip.clip_type === 'image' || clip.clip_type === 'video' || clip.clip_type === 'code' || clip.clip_type === 'narration')) {
         const drawn = this._drawnRects.get(clip.id);
         if (drawn) {
           const handle = this._hitHandle(pos.x, pos.y, drawn);
@@ -684,8 +736,9 @@ export class CanvasWidget {
   }
 
   _onMouseMove(e) {
-    const pos = this._getPos(e);
-
+    const raw = this._getPos(e); 
+    const pos = this._toLogical(raw.x, raw.y);
+    
     // ── Resize drag ────────────────────────────────────────────────────────────
     if (this._resizeHandle && (e.buttons & 1)) {
       const clip = this.project.clips.find(c => c.id === this._selectedId);

@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
+from typing import Optional
 import uuid
 
 CLIP_TYPE_TRACK = {
@@ -38,6 +39,18 @@ class Clip:
     graph_data: str = ""
 
     voice_id: str = ""
+
+    # Animation style for narration clips. None/omitted = static wrapped text.
+    text_anim_style: Optional[str] = None
+    text_chars_per_second: int = 26
+    text_pop_duration_ms: int = 90
+    text_stagger_ms: int = 60
+    text_duration_ms: int = 550
+    text_max_blur: int = 14
+    text_rise_distance: int = 22
+    text_line_stagger_ms: int = 140
+    text_slide_distance: int = 90
+    text_sweep_width: int = 140
 
     def end(self):
         return self.start + self.duration

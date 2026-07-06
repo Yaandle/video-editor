@@ -165,7 +165,7 @@ export class PropertiesPanel {
     if (c.clip_type === 'code') {
       const animCombo = this._addCombo(
         'Animation',
-        ['typewriter', 'wordblurin', 'linescan', 'static'],
+        ['typewriter', 'static'],
         c.animation
       );
       animCombo.addEventListener('change', () => this._set('animation', animCombo.value));

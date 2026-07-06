@@ -347,140 +347,360 @@ export class CanvasWidget {
     }
   }
 
-  _drawCodeTerminal(ctx, clip, r, pt, theme) {
-    const blockW    = (r.w * 0.92) | 0;
-    const maxBlockH = Math.min((r.h * 0.55) | 0, 340);
-    const bx        = r.x + ((r.w - blockW) >> 1);
-    const titleH    = 28;
-    const promptH   = clip.terminal_prompt ? 26 : 0;
-    const padTop    = 10;
-    const padBottom = 10;
-    const padX      = 12;
+    _drawCodeTerminal(ctx, clip, r, pt, theme) {
+      const blockW = Math.floor(r.w * 0.92);
+      const maxBlockH = Math.min(Math.floor(r.h * 0.60), 360);
 
-    const lines = tokensToLines(tokenizeCode(clip.content ?? '', theme));
+      const titleH = 30;
+      const promptH = clip.terminal_prompt ? 26 : 0;
 
-    // Auto-fit: shrink font until content height fits within maxBlockH, down to a minimum size.
-    let fontSize = Math.max(9, (r.w / 46) | 0);
-    const minFontSize = 7;
-    let lineH, gutterW, contentH;
+      const padX = 14;
+      const padY = 12;
 
-    do {
-      lineH    = fontSize * 1.55;
-      gutterW  = Math.max(28, fontSize * 2.4) | 0;
-      contentH = lines.length * lineH + padTop + padBottom;
-      if (titleH + promptH + contentH <= maxBlockH || fontSize <= minFontSize) break;
-      fontSize -= 1;
-    } while (true);
+      const bx = r.x + ((r.w - blockW) >> 1);
 
-    const blockH = Math.min(maxBlockH, titleH + promptH + contentH);
-    const by     = pt.y - (blockH >> 1);
+      const fontSize = Math.max(10, Math.floor(r.w / 46));
+      const lineH = Math.round(fontSize * 1.55);
+      const gutterW = Math.max(34, fontSize * 2.5);
 
-    // Register actual drawn bounds so selection/resize overlay hugs the window border,
-    // not a fallback text-label box.
-    this._drawnRects.set(clip.id, { x: bx, y: by, w: blockW, h: blockH });
+      const lines = tokensToLines(
+          tokenizeCode(clip.content ?? "", theme)
+      );
 
-    // Outer window
-    ctx.fillStyle   = theme.bg ?? '#1e1e1e';
-    ctx.fillRect(bx, by, blockW, blockH);
-    ctx.strokeStyle = theme.border ?? '#404040';
-    ctx.lineWidth   = 1;
-    ctx.strokeRect(bx + 0.5, by + 0.5, blockW, blockH);
+      const contentHeight =
+          lines.length * lineH +
+          padY * 2;
 
-    // Title bar
-    ctx.fillStyle = theme.titlebar ?? this._shade(theme.bg, 1.15);
-    ctx.fillRect(bx, by, blockW, titleH);
-    ctx.strokeStyle = theme.border ?? '#404040';
-    ctx.beginPath(); ctx.moveTo(bx, by + titleH + 0.5); ctx.lineTo(bx + blockW, by + titleH + 0.5); ctx.stroke();
+      const blockH = Math.min(
+          maxBlockH,
+          titleH +
+          promptH +
+          contentHeight
+      );
 
-    // Window controls: minimize (line), maximize (square), close (x) — right-aligned
-    const iconColor = theme.comment ?? '#9ca3af';
-    const iconSize  = 9;
-    const iconGap   = 18;
-    const iconCY    = by + titleH / 2;
-    const rightPad  = 16;
-    const closeCX = bx + blockW - rightPad - iconSize / 2;
-    const maxCX   = closeCX - iconGap;
-    const minCX   = maxCX - iconGap;
+      const by = pt.y - (blockH >> 1);
 
-    ctx.strokeStyle = iconColor;
-    ctx.lineWidth   = 1.3;
-    ctx.lineCap     = 'round';
+      this._drawnRects.set(clip.id, {
+          x: bx,
+          y: by,
+          w: blockW,
+          h: blockH
+      });
 
-    // minimize — horizontal line
-    ctx.beginPath();
-    ctx.moveTo(minCX - iconSize / 2, iconCY);
-    ctx.lineTo(minCX + iconSize / 2, iconCY);
-    ctx.stroke();
+      //----------------------------------------------------
+      // Window
+      //----------------------------------------------------
 
-    // maximize — square outline
-    ctx.strokeRect(maxCX - iconSize / 2, iconCY - iconSize / 2, iconSize, iconSize);
+      ctx.fillStyle = theme.bg || "#1e1e1e";
+      ctx.fillRect(bx, by, blockW, blockH);
 
-    // close — x
-    ctx.beginPath();
-    ctx.moveTo(closeCX - iconSize / 2, iconCY - iconSize / 2);
-    ctx.lineTo(closeCX + iconSize / 2, iconCY + iconSize / 2);
-    ctx.moveTo(closeCX + iconSize / 2, iconCY - iconSize / 2);
-    ctx.lineTo(closeCX - iconSize / 2, iconCY + iconSize / 2);
-    ctx.stroke();
+      ctx.strokeStyle = theme.border || "#3c3c3c";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(
+          bx + .5,
+          by + .5,
+          blockW,
+          blockH
+      );
 
-    if (clip.terminal_title) {
-      ctx.fillStyle = theme.comment ?? '#9ca3af';
-      ctx.font = `${fontSize}px Consolas, monospace`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(clip.terminal_title, bx + blockW / 2, by + titleH / 2);
-    }
+      //----------------------------------------------------
+      // Titlebar
+      //----------------------------------------------------
 
-    // Prompt breadcrumb line
-    let contentTop = by + titleH;
-    if (clip.terminal_prompt) {
-      ctx.fillStyle = theme.bg ?? '#1e1e1e';
-      ctx.fillRect(bx, contentTop, blockW, promptH);
-      ctx.font = `${fontSize}px Consolas, monospace`;
-      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-      ctx.fillStyle = theme.function ?? '#4ec9b0';
-      ctx.fillText(clip.terminal_prompt, bx + padX, contentTop + promptH / 2);
-      contentTop += promptH;
-    }
+      ctx.fillStyle =
+          theme.titlebar ||
+          this._shade(theme.bg, 1.12);
 
-    // Gutter divider — faded vertical line separating line numbers from code
-    ctx.strokeStyle = theme.border ? this._withAlpha(theme.border, 0.35) : 'rgba(255,255,255,0.08)';
-    ctx.lineWidth   = 1;
-    ctx.beginPath();
-    ctx.moveTo(bx + gutterW + 4.5, contentTop);
-    ctx.lineTo(bx + gutterW + 4.5, by + blockH);
-    ctx.stroke();
+      ctx.fillRect(
+          bx,
+          by,
+          blockW,
+          titleH
+      );
 
-    // Code area, clipped so long lines/many lines don't spill the window
-    ctx.save();
-    ctx.beginPath(); ctx.rect(bx, contentTop, blockW, by + blockH - contentTop); ctx.clip();
+      const iconColor = theme.comment ?? "#9ca3af";
+      const iconSize  = 9;
+      const iconGap   = 18;
+      const iconCY    = by + titleH / 2;
+      const rightPad  = 16;
 
-    ctx.font = `${fontSize}px Consolas, monospace`;
-    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      const closeCX = bx + blockW - rightPad - iconSize / 2;
+      const maxCX   = closeCX - iconGap;
+      const minCX   = maxCX - iconGap;
 
-    const codeStartY = contentTop + padTop;
-    let visibleLines = lines.length;
-    if (clip.anim_mode === 'typewriter') {
-      const elapsed     = Math.max(0, this.playhead - clip.start);
-      const charsPerSec = clip.type_speed ?? 40;
-      const totalChars  = elapsed * charsPerSec;
-      visibleLines = this._typewriterClip(lines, totalChars, ctx, bx, gutterW, padX, codeStartY, lineH, theme);
-    } else {
+      ctx.strokeStyle = iconColor;
+      ctx.lineWidth = 1.3;
+      ctx.lineCap = "round";
+
+      // minimize
+      ctx.beginPath();
+      ctx.moveTo(minCX - iconSize / 2, iconCY);
+      ctx.lineTo(minCX + iconSize / 2, iconCY);
+      ctx.stroke();
+
+      // maximize
+      ctx.strokeRect(
+          maxCX - iconSize / 2,
+          iconCY - iconSize / 2,
+          iconSize,
+          iconSize
+      );
+
+      // close
+      ctx.beginPath();
+      ctx.moveTo(
+          closeCX - iconSize / 2,
+          iconCY - iconSize / 2
+      );
+      ctx.lineTo(
+          closeCX + iconSize / 2,
+          iconCY + iconSize / 2
+      );
+      ctx.moveTo(
+          closeCX + iconSize / 2,
+          iconCY - iconSize / 2
+      );
+      ctx.lineTo(
+          closeCX - iconSize / 2,
+          iconCY + iconSize / 2
+      );
+      ctx.stroke();
+
+      if (clip.terminal_title) {
+          ctx.fillStyle =
+              theme.comment || "#9ca3af";
+
+          ctx.font =
+              `600 ${fontSize}px Consolas`;
+
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+
+          ctx.fillText(
+              clip.terminal_title,
+              bx + blockW / 2,
+              iconCY
+          );
+      }
+
+      //----------------------------------------------------
+      // Prompt
+      //----------------------------------------------------
+
+      let contentTop = by + titleH;
+
+      if (clip.terminal_prompt) {
+
+          ctx.fillStyle = theme.bg;
+          ctx.fillRect(
+              bx,
+              contentTop,
+              blockW,
+              promptH
+          );
+
+          ctx.font =
+              `${fontSize}px Consolas`;
+
+          ctx.fillStyle =
+              theme.function ||
+              "#4ec9b0";
+
+          ctx.textAlign = "left";
+          ctx.textBaseline = "middle";
+
+          ctx.fillText(
+              clip.terminal_prompt,
+              bx + padX,
+              contentTop + promptH / 2
+          );
+
+          contentTop += promptH;
+      }
+
+      //----------------------------------------------------
+      // Gutter background
+      //----------------------------------------------------
+
+      ctx.fillStyle =
+          this._withAlpha(
+              theme.titlebar ??
+              "#252526",
+              0.65
+          );
+
+      ctx.fillRect(
+          bx,
+          contentTop,
+          gutterW + 4,
+          blockH - titleH - promptH
+      );
+
+      //----------------------------------------------------
+      // Divider
+      //----------------------------------------------------
+
+      ctx.strokeStyle =
+          theme.gutterBorder ??
+          this._withAlpha(
+              theme.comment ?? "#8b949e",
+              0.45
+          );
+
+      ctx.lineWidth = 1;
+
+      ctx.beginPath();
+      ctx.moveTo(
+          bx + gutterW + 4.5,
+          contentTop
+      );
+
+      ctx.lineTo(
+          bx + gutterW + 4.5,
+          by + blockH
+      );
+
+      ctx.stroke();
+
+      //----------------------------------------------------
+      // Clip
+      //----------------------------------------------------
+
+      ctx.save();
+
+      ctx.beginPath();
+      ctx.rect(
+          bx,
+          contentTop,
+          blockW,
+          blockH - titleH - promptH
+      );
+      ctx.clip();
+
+      ctx.font =
+          `${fontSize}px Consolas`;
+
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+
+      const codeY =
+          contentTop + padY;
+
+      //----------------------------------------------------
+      // Animation
+      //----------------------------------------------------
+
+      const anim =
+          clip.anim_mode ??
+          clip.animation;
+
+      let typedChars = Infinity;
+
+      if (anim === "typewriter") {
+
+          const elapsed =
+              Math.max(
+                  0,
+                  this.playhead - clip.start
+              );
+
+          typedChars =
+              elapsed *
+              (clip.type_speed ?? 40);
+      }
+
+      let charsUsed = 0;
+
+      let cursorX = bx + gutterW + padX;
+      let cursorY = codeY;
+
       for (let i = 0; i < lines.length; i++) {
-        this._drawCodeLine(ctx, lines[i], i, bx, gutterW, padX, codeStartY, lineH, theme);
-      }
-    }
-    ctx.restore();
 
-    // Blinking cursor after the last visible line (typewriter mode, or static with cursor flag)
-    if (clip.show_cursor !== false) {
-      const blinkOn = Math.floor(this.playhead * 2) % 2 === 0;
-      if (blinkOn) {
-        const cursorLine = Math.min(visibleLines, lines.length - 1);
-        const cy = codeStartY + Math.max(0, cursorLine) * lineH;
-        ctx.fillStyle = theme.text ?? '#d4d4d4';
-        ctx.fillRect(bx + gutterW + padX, cy, fontSize * 0.55, fontSize * 1.15);
+          const y = codeY + i * lineH;
+
+          ctx.fillStyle =
+              theme.comment ||
+              "#6b7280";
+
+          ctx.textAlign = "right";
+
+          ctx.fillText(
+              i + 1,
+              bx + gutterW - 10,
+              y
+          );
+
+          ctx.textAlign = "left";
+
+          let x = bx + gutterW + padX;
+
+          for (const tok of lines[i]) {
+
+              let text = tok.text;
+
+              if (charsUsed >= typedChars)
+                  break;
+
+              const remain =
+                  typedChars - charsUsed;
+
+              if (text.length > remain)
+                  text = text.slice(0, remain);
+
+              ctx.font =
+                  `${tok.bold ? "bold " : ""}${fontSize}px Consolas`;
+
+              ctx.fillStyle = tok.color;
+
+              ctx.fillText(
+                  text,
+                  x,
+                  y
+              );
+
+              const textWidth = ctx.measureText(text).width;
+
+              x += textWidth;
+
+              charsUsed += text.length;
+
+              // Cursor always follows the most recently drawn character.
+              cursorX = x;
+              cursorY = y;
+
+              if (text.length < tok.text.length)
+                  break;
+          }
+
+          if (charsUsed >= typedChars)
+              break;
       }
-    }
+
+      //----------------------------------------------------
+      // Cursor
+      //----------------------------------------------------
+
+      if (clip.show_cursor !== false) {
+
+          const blink =
+              Math.floor(this.playhead * 2) % 2 === 0;
+
+          if (blink) {
+
+              ctx.fillStyle =
+                  theme.cursor ??
+                  "#ffffff";
+
+              ctx.fillRect(
+                  cursorX,
+                  cursorY + 1,
+                  Math.max(2, fontSize * 0.15),
+                  lineH - 2
+              );
+          }
+      }
+
+      ctx.restore();
   }
 
   _withAlpha(hex, alpha) {

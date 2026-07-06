@@ -67,8 +67,10 @@ frontend/
 ├── properties.js
 ├── playback.js
 ├── mediaBin.js
+├── styles.css
 └── static/
 ```
+
 ## Backend
 
 ```
@@ -77,16 +79,29 @@ backend/
 ├── models.py
 ├── project_store.py
 ├── playback.py
-└── websocket_server.py
+├── websocket_server.py
+├── uploads/
+└── projects/
 ```
 
 | File | Responsibility |
 |------|---------------|
-| `main.py` | Entry point — starts the WS server |
-| `models.py` | `Clip`, `Project`, `new_clip()`, `CLIP_TYPE_TRACK` |
-| `project_store.py` | `save_project()`, `load_project()` — reads/writes `.vkit` JSON |
-| `playback.py` | `PlaybackController` — tick loop, seek, play/pause state |
-| `websocket_server.py` | `VideoEditorServer` — handles all client messages, broadcasts project state |
+| `frontend/editor.html` | App shell, toolbar, layout, and entrypoint for the editor UI |
+| `frontend/app.js` | Main application controller, state management, WebSocket client, and UI wiring |
+| `frontend/canvas.js` | HTML5 canvas renderer, clip preview, selection, drag, and canvas positioning |
+| `frontend/timeline.js` | Timeline widget, clip layout, zoom/pan, scrub bar, and clip editing interactions |
+| `frontend/properties.js` | Properties panel UI, clip property controls, and change dispatching |
+| `frontend/playback.js` | Local playback state, play/pause/seek/tick loop, and frame stepping |
+| `frontend/mediaBin.js` | Media upload browser, media list, and adding uploaded files to project clips |
+| `frontend/styles.css` | Editor styling, panel layout, and theme visuals |
+| `frontend/static/` | Static assets served by the backend alongside the editor UI |
+| `backend/main.py` | FastAPI entrypoint, static file serving, `/upload`, `/media-list`, and WebSocket route registration |
+| `backend/models.py` | Project and clip data models, serialization, and clip defaults |
+| `backend/project_store.py` | `.vkit` save/load functionality for project persistence |
+| `backend/playback.py` | Shared playback-related state and controls used by the backend server |
+| `backend/websocket_server.py` | Server state, client registration, message handling, project broadcasts, and render task orchestration |
+| `backend/uploads/` | Uploaded media assets and generated render output files |
+| `backend/projects/` | Saved `.vkit` project files |
 
 ### Message flow
 

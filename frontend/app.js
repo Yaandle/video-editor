@@ -97,13 +97,12 @@ export class Project {
   }
   toDict() {
     return {
-      id: this.id, track: this.track, clip_type: this.clip_type,
-      start: this.start, duration: this.duration, content: this.content,
-      x: this.x, y: this.y, scale: this.scale,
-      animation: this.animation, theme: this.theme,
-      code_file: this.code_file, graph_type: this.graph_type,
-      graph_data: this.graph_data, voice_id: this.voice_id,
-      layer: this.layer,
+      name: this.name,
+      canvas_w: this.canvas_w,
+      canvas_h: this.canvas_h,
+      fps: this.fps,
+      duration: this.duration,
+      clips: this.clips.map(c => c.toDict()),
     };
   }
   static fromDict(d) { return new Project(d); }

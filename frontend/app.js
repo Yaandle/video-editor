@@ -58,6 +58,16 @@ export class Clip {
     this.graph_type = data.graph_type ?? 'bar';
     this.graph_data = data.graph_data ?? '';
     this.voice_id   = data.voice_id   ?? '';
+    this.text_anim_style      = data.text_anim_style ?? null;
+    this.text_chars_per_second = data.text_chars_per_second ?? 26;
+    this.text_pop_duration_ms  = data.text_pop_duration_ms ?? 90;
+    this.text_stagger_ms       = data.text_stagger_ms ?? 60;
+    this.text_duration_ms      = data.text_duration_ms ?? 550;
+    this.text_max_blur         = data.text_max_blur ?? 14;
+    this.text_rise_distance    = data.text_rise_distance ?? 22;
+    this.text_line_stagger_ms  = data.text_line_stagger_ms ?? 140;
+    this.text_slide_distance   = data.text_slide_distance ?? 90;
+    this.text_sweep_width      = data.text_sweep_width ?? 140;
     this.scale      = data.scale      ?? 1.0;
     this.layer      = data.layer      ?? 0;
   }
@@ -82,6 +92,16 @@ export class Clip {
       animation: this.animation, theme: this.theme,
       code_file: this.code_file, graph_type: this.graph_type,
       graph_data: this.graph_data, voice_id: this.voice_id,
+      text_anim_style: this.text_anim_style,
+      text_chars_per_second: this.text_chars_per_second,
+      text_pop_duration_ms: this.text_pop_duration_ms,
+      text_stagger_ms: this.text_stagger_ms,
+      text_duration_ms: this.text_duration_ms,
+      text_max_blur: this.text_max_blur,
+      text_rise_distance: this.text_rise_distance,
+      text_line_stagger_ms: this.text_line_stagger_ms,
+      text_slide_distance: this.text_slide_distance,
+      text_sweep_width: this.text_sweep_width,
     };
   }
 }

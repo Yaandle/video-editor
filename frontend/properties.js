@@ -162,13 +162,24 @@ export class PropertiesPanel {
       themeCombo.addEventListener('change', () => this._set('theme', themeCombo.value));
     }
 
-    if (c.clip_type === 'narration' || c.clip_type === 'code') {
+    if (c.clip_type === 'code') {
       const animCombo = this._addCombo(
         'Animation',
         ['typewriter', 'wordblurin', 'linescan', 'static'],
         c.animation
       );
       animCombo.addEventListener('change', () => this._set('animation', animCombo.value));
+    }
+
+    if (c.clip_type === 'narration') {
+      const animCombo = this._addCombo(
+        'Animation',
+        ['static', 'typewriter', 'wordblurin', 'linescan'],
+        c.text_anim_style ?? 'static'
+      );
+      animCombo.addEventListener('change', () => this._set(
+        'text_anim_style', animCombo.value === 'static' ? null : animCombo.value
+      ));
     }
 
     // Spacer

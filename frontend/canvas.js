@@ -68,10 +68,22 @@ function tokensToLines(tokens) {
   return lines;
 }
 
+const Easing = {
+  linear: t => t,
+  easeOutCubic: t => 1 - Math.pow(1 - t, 3),
+  easeOutExpo: t => t === 1 ? 1 : 1 - Math.pow(2, -10 * t),
+  easeOutBack: (t, overshoot = 1.7) => {
+    const c1 = overshoot;
+    const c3 = c1 + 1;
+    const x = t - 1;
+    return 1 + c3 * x * x * x + c1 * x * x;
+  }
+};
 
 // aspect derived from project at paint time — see _canvasRect()
 const MIN_SCALE      = 0.05;
 const MAX_SCALE      = 4.0;
+const HANDLE_SIZE    = 10;
 const MIN_ZOOM        = 0.1;   // NEW
 const MAX_ZOOM        = 4.0;   // NEW
 
@@ -293,14 +305,23 @@ export class CanvasWidget {
       const fontSize = Math.max(7, (r.w / 18) | 0);
       ctx.font         = `${fontSize}px Consolas, monospace`;
       ctx.fillStyle    = theme.text;
-      ctx.textAlign    = 'center';
       ctx.textBaseline = 'top';
-      const textBounds = this._drawWrappedText(ctx, clip.content, pt.x, pt.y, maxW, fontSize * 1.4);
-      
-      // Register actual drawn bounds so selection/resize overlay hugs the text
+
+      const lineHeight = fontSize * 1.4;
+      const layout = this._layoutNarrationText(ctx, clip.content, maxW, lineHeight);
+      const elapsedMs = Math.max(0, this.playhead - clip.start) * 1000;
+
+      if (clip.text_anim_style && clip.text_anim_style !== 'static') {
+        this._renderNarrationAnimated(ctx, layout, pt.x, pt.y, elapsedMs, clip, theme);
+      } else {
+        ctx.textAlign = 'center';
+        this._renderNarrationStatic(ctx, layout, pt.x, pt.y, theme);
+      }
+
       const bx = pt.x - (maxW >> 1);
-      const by = textBounds.startY;
-      this._drawnRects.set(clip.id, { x: bx, y: by, w: maxW, h: textBounds.height });
+      const by = pt.y;
+      const height = layout.lines.length * lineHeight;
+      this._drawnRects.set(clip.id, { x: bx, y: by, w: maxW, h: height });
     }
     else if (clip.clip_type === 'code') {
         this._drawCodeTerminal(ctx, clip, r, pt, theme);
@@ -503,6 +524,230 @@ export class CanvasWidget {
       remaining -= (lines[i].reduce((s, t) => s + t.text.length, 0) + 1); // +1 for the newline
     }
     return lines.length - 1;
+  }
+
+  _layoutNarrationText(ctx, text, maxWidth, lineHeight) {
+    const rawWords = text.split(' ');
+    const spaceWidth = ctx.measureText(' ').width;
+    const lines = [];
+    let currentLine = [];
+    let currentWidth = 0;
+    let gWord = 0;
+    let gChar = 0;
+
+    for (const word of rawWords) {
+      const width = ctx.measureText(word).width;
+      if (currentLine.length && currentWidth + spaceWidth + width > maxWidth) {
+        lines.push(currentLine);
+        currentLine = [];
+        currentWidth = 0;
+      }
+
+      const chars = [];
+      let cx = 0;
+      for (const ch of word) {
+        const cw = ctx.measureText(ch).width;
+        chars.push({ char: ch, x: cx, width: cw, globalIndex: gChar++ });
+        cx += cw;
+      }
+
+      currentLine.push({ text: word, width, chars, globalIndex: gWord++ });
+      currentWidth += (currentLine.length > 1 ? spaceWidth : 0) + width;
+    }
+    if (currentLine.length) lines.push(currentLine);
+
+    const outLines = lines.map((line, li) => {
+      let x = 0;
+      const words = line.map((word, wi) => {
+        if (wi > 0) x += spaceWidth;
+        const result = { ...word, x };
+        x += word.width;
+        return result;
+      });
+      return { words, y: li * lineHeight, lineWidth: x };
+    });
+
+    return {
+      lines: outLines,
+      totalWords: outLines.reduce((sum, line) => sum + line.words.length, 0),
+      totalChars: gChar,
+      lineHeight,
+    };
+  }
+
+  _renderNarrationStatic(ctx, layout, ox, oy, theme) {
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = theme.text;
+
+    for (const line of layout.lines) {
+      const lineOx = ox - line.lineWidth / 2;
+      for (const word of line.words) {
+        ctx.fillText(word.text, lineOx + word.x, oy + line.y);
+      }
+    }
+
+    ctx.restore();
+  }
+
+  _renderNarrationAnimated(ctx, layout, ox, oy, elapsedMs, clip, theme) {
+    if (clip.text_anim_style === 'typewriter') {
+      this._renderNarrationTypewriter(ctx, layout, ox, oy, elapsedMs, clip, theme);
+    } else if (clip.text_anim_style === 'wordblurin') {
+      this._renderNarrationWordBlurIn(ctx, layout, ox, oy, elapsedMs, clip, theme);
+    } else if (clip.text_anim_style === 'linescan') {
+      this._renderNarrationLineScan(ctx, layout, ox, oy, elapsedMs, clip, theme);
+    } else {
+      this._renderNarrationStatic(ctx, layout, ox, oy, theme);
+    }
+  }
+
+  _renderNarrationTypewriter(ctx, layout, ox, oy, elapsedMs, clip, theme) {
+    const msPerChar = 1000 / (clip.text_chars_per_second ?? 26);
+    const popMs = clip.text_pop_duration_ms ?? 90;
+    let lastX = ox;
+    let lastY = oy;
+    const lastH = layout.lineHeight * 0.78;
+    let allDone = true;
+
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = theme.text;
+
+    for (const line of layout.lines) {
+      const lineOx = ox - line.lineWidth / 2;
+      for (const word of line.words) {
+        for (const ch of word.chars) {
+          const revealAt = ch.globalIndex * msPerChar;
+          const localT = elapsedMs - revealAt;
+          if (localT < 0) {
+            allDone = false;
+            continue;
+          }
+          const popT = Math.min(1, localT / popMs);
+          const scale = 0.4 + 0.6 * Math.max(0, Easing.easeOutBack(popT, 1.2));
+          const alpha = Math.min(1, localT / (popMs * 0.6));
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          const cx = lineOx + word.x + ch.x + ch.width / 2;
+          const cy = oy + line.y;
+          ctx.translate(cx, cy);
+          ctx.scale(scale, scale);
+          ctx.fillText(ch.char, -ch.width / 2, 0);
+          ctx.restore();
+          lastX = lineOx + word.x + ch.x + ch.width;
+          lastY = oy + line.y;
+        }
+      }
+    }
+
+    if (!allDone) {
+      const blinkOn = Math.floor(this.playhead * 2) % 2 === 0;
+      if (blinkOn) {
+        ctx.fillStyle = theme.text ?? '#d4d4d4';
+        ctx.fillRect(lastX + 2, lastY, 3, lastH);
+      }
+    }
+
+    ctx.restore();
+  }
+
+  _renderNarrationWordBlurIn(ctx, layout, ox, oy, elapsedMs, clip, theme) {
+    const stagger = clip.text_stagger_ms ?? 60;
+    const dur = clip.text_duration_ms ?? 550;
+    const maxBlur = clip.text_max_blur ?? 14;
+    const rise = clip.text_rise_distance ?? 22;
+
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = theme.text;
+
+    for (const line of layout.lines) {
+      const lineOx = ox - line.lineWidth / 2;
+      for (const word of line.words) {
+        const startTime = word.globalIndex * stagger;
+        const localT = elapsedMs - startTime;
+        if (localT < 0) continue;
+        const t = Math.max(0, Math.min(1, localT / dur));
+        const clearT = Easing.easeOutCubic(Math.min(1, t * 1.6));
+        const springT = Easing.easeOutBack(t, 1.4);
+        const blur = maxBlur * (1 - clearT);
+        const alpha = Math.min(1, t * 2.2);
+        const yOffset = rise * (1 - springT);
+        const scale = 0.85 + 0.15 * springT;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.filter = blur > 0.3 ? 'blur(' + blur.toFixed(1) + 'px)' : 'none';
+        const wx = lineOx + word.x + word.width / 2;
+        const wy = oy + line.y + yOffset;
+        ctx.translate(wx, wy);
+        ctx.scale(scale, scale);
+        ctx.fillText(word.text, -word.width / 2, 0);
+        ctx.restore();
+      }
+    }
+
+    ctx.restore();
+  }
+
+  _renderNarrationLineScan(ctx, layout, ox, oy, elapsedMs, clip, theme) {
+    const dur = clip.text_duration_ms ?? 550;
+    const stagger = clip.text_line_stagger_ms ?? 140;
+    const slideDist = clip.text_slide_distance ?? 90;
+    const sweepWidth = clip.text_sweep_width ?? 140;
+
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = theme.text;
+
+    for (let li = 0; li < layout.lines.length; li++) {
+      const line = layout.lines[li];
+      const startTime = li * stagger;
+      const localT = elapsedMs - startTime;
+      if (localT < 0) continue;
+      const t = Math.max(0, Math.min(1, localT / dur));
+      const eased = Easing.easeOutExpo(t);
+      const xOffset = -slideDist * (1 - eased);
+      const alpha = Math.min(1, t * 3);
+      const lineX = ox - line.lineWidth / 2 + xOffset;
+      const lineText = line.words.map(w => w.text).join(' ');
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillText(lineText, lineX, oy + line.y);
+      ctx.restore();
+
+      if (t < 0.9) {
+        const sweepT = Easing.easeOutCubic(Math.min(1, t / 0.75));
+        const sweepX = -sweepWidth + sweepT * (line.lineWidth + sweepWidth * 2);
+        const off = document.createElement('canvas');
+        off.width = Math.ceil(line.lineWidth + 20);
+        off.height = Math.ceil(layout.lineHeight);
+        const octx = off.getContext('2d');
+        octx.font = ctx.font;
+        octx.textBaseline = ctx.textBaseline;
+        octx.fillStyle = theme.text;
+        octx.fillText(lineText, 0, off.height * 0.7);
+        octx.globalCompositeOperation = 'source-atop';
+        const grad = octx.createLinearGradient(sweepX - sweepWidth / 2, 0, sweepX + sweepWidth / 2, 0);
+        grad.addColorStop(0, 'rgba(255,255,255,0)');
+        grad.addColorStop(0.5, theme.text ?? '#ffffff');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        octx.fillStyle = grad;
+        octx.fillRect(0, 0, off.width, off.height);
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(off, lineX, oy + line.y - off.height * 0.7);
+        ctx.restore();
+      }
+    }
+
+    ctx.restore();
   }
 
   _shade(hex, factor) {

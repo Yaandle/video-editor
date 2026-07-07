@@ -80,15 +80,20 @@ class VideoEditorServer:
             })
 
         elif action == "render":
-            project_data = msg.get("data", {})
+            # Prefer project data supplied by the client; fall back to server's current project
+            project_data = msg.get("data") or self.project.to_dict()
             await websocket.send_text(json.dumps({
                 "type": "render_status",
                 "status": "started",
                 "message": "Render queued"
             }))
-            asyncio.create_task(
-                self._run_render(websocket, project_data)
-            )
+            # Small debug: show project name and first narration clip content to aid debugging
+            try:
+                first_narr = next((c.get('content') for c in project_data.get('clips', []) if c.get('clip_type') == 'narration'), None)
+                print(f"[render] queued: project={project_data.get('name')!r}, clips={len(project_data.get('clips', []))}, first_narration={first_narr!r}", file=sys.stderr)
+            except Exception:
+                pass
+            asyncio.create_task(self._run_render(websocket, project_data))
 
     async def _run_render(self, websocket, project_data):
         """
@@ -150,7 +155,7 @@ class VideoEditorServer:
                     continue
 
                 # ------------------------------------------------------------------
-                # NARRATION  (Pillow text overlay — no ImageMagick needed)
+                # NARRATION  (animated text render via make_frame)
                 # ------------------------------------------------------------------
                 if ctype == "narration":
                     text = clip.get("content", "").strip()
@@ -158,84 +163,59 @@ class VideoEditorServer:
                         print("[render] WARNING: narration clip has empty content", file=sys.stderr)
                         continue
                     try:
-                        from PIL import Image, ImageDraw, ImageFont
+                        from moviepy.editor import VideoClip
+                        from text_anim import render_narration_frame
                         import numpy as np
-                        from moviepy.editor import ImageClip
 
-                        # ── Canvas for text ───────────────────────────────────────
-                        text_canvas_w = int(CANVAS_W * 0.85)
-                        font_size     = int(60 * scale)
-                        line_spacing  = 1.3
+                        anim_style = clip.get("text_anim_style")
+                        font_size  = int(60 * scale)
+                        rise       = clip.get("text_rise_distance", 22)
+                        pad_top    = int(rise + 30)
+                        pad_bottom = int(rise + 30)
+                        canvas_w   = CANVAS_W
+                        x_norm     = float(clip.get("x", 0.5))
 
-                        # Try to load a decent font, fall back to PIL default
-                        try:
-                            font = ImageFont.truetype("arial.ttf", font_size)
-                        except Exception:
-                            try:
-                                font = ImageFont.truetype(
-                                    "C:/Windows/Fonts/arial.ttf", font_size
+                        # cache so RGB pass and mask pass don't re-render the same frame twice
+                        _cache = {"t": None, "img": None}
+
+                        def _get_frame(t, _text=text, _style=anim_style, _clip=clip,
+                                        _canvas_w=canvas_w, _x_norm=x_norm, _font_size=font_size,
+                                        _pad_top=pad_top, _pad_bottom=pad_bottom, _cache=_cache):
+                            elapsed_ms = max(0.0, t) * 1000.0
+                            if _cache["t"] != t:
+                                img = render_narration_frame(
+                                    _text, _style, elapsed_ms, _clip,
+                                    _canvas_w, _x_norm, _font_size, _pad_top, _pad_bottom,
                                 )
-                            except Exception:
-                                font = ImageFont.load_default()
+                                _cache["t"] = t
+                                _cache["img"] = img
+                            return _cache["img"]
 
-                        # ── Word-wrap ─────────────────────────────────────────────
-                        def wrap_text(draw, text, font, max_width):
-                            words   = text.split()
-                            lines   = []
-                            current = []
-                            for word in words:
-                                test = " ".join(current + [word])
-                                bbox = draw.textbbox((0, 0), test, font=font)
-                                if bbox[2] > max_width and current:
-                                    lines.append(" ".join(current))
-                                    current = [word]
-                                else:
-                                    current.append(word)
-                            if current:
-                                lines.append(" ".join(current))
-                            return lines
+                        def make_frame(t, _get_frame=_get_frame):
+                            img = _get_frame(t)
+                            return np.array(img.convert("RGB"))
 
-                        # ── Measure total text block height ───────────────────────
-                        probe_img  = Image.new("RGBA", (text_canvas_w, 100), (0, 0, 0, 0))
-                        probe_draw = ImageDraw.Draw(probe_img)
-                        lines      = wrap_text(probe_draw, text, font, text_canvas_w)
+                        def make_mask(t, _get_frame=_get_frame):
+                            img = _get_frame(t)
+                            return np.array(img.split()[-1]) / 255.0
 
-                        line_h     = int(font_size * line_spacing)
-                        block_h    = line_h * len(lines) + 20  # +20 for stroke bleed
-
-                        # ── Draw text onto transparent image ──────────────────────
-                        img  = Image.new("RGBA", (text_canvas_w, block_h), (0, 0, 0, 0))
-                        draw = ImageDraw.Draw(img)
-
-                        for i, line in enumerate(lines):
-                            bbox   = draw.textbbox((0, 0), line, font=font)
-                            line_w = bbox[2] - bbox[0]
-                            lx     = (text_canvas_w - line_w) // 2  # centre-align
-                            ly     = i * line_h
-
-                            # Stroke (draw offset copies in black)
-                            for ox, oy in [(-2,0),(2,0),(0,-2),(0,2),(-2,-2),(2,-2),(-2,2),(2,2)]:
-                                draw.text((lx + ox, ly + oy), line, font=font, fill=(0, 0, 0, 255))
-
-                            # Fill
-                            draw.text((lx, ly), line, font=font, fill=(255, 255, 255, 255))
-
-                        # ── Convert to numpy RGBA → moviepy ImageClip ─────────────
-                        arr = np.array(img)   # shape (H, W, 4)
-
-                        tc = (
-                            ImageClip(arr, ismask=False)
-                            .set_duration(duration)
-                            .set_start(start)
+                        probe_img = render_narration_frame(
+                            text, anim_style, 0, clip,
+                            canvas_w, x_norm, font_size,
+                            pad_top, pad_bottom
                         )
+                        img_h = probe_img.height
 
-                        # Position: x/y are normalised 0..1, anchor to centre of block
-                        dx = x * CANVAS_W - text_canvas_w / 2
-                        dy = y * CANVAS_H - block_h / 2
-                        tc = tc.set_position((int(dx), int(dy)))
+                        tc = VideoClip(make_frame, duration=duration)
+                        mc = VideoClip(make_mask, duration=duration, ismask=True)
+                        tc = tc.set_mask(mc).set_start(start)
+
+                        dy = y * CANVAS_H - pad_top
+                        tc = tc.set_position((0, int(round(dy))))
 
                         video_layers.append(tc)
-                        print(f"[render] narration OK: {len(lines)} lines at ({dx:.0f},{dy:.0f})", file=sys.stderr)
+                        print(f"[render] narration OK ({anim_style or 'static'}): "
+                              f"{img_h}px block at y={dy:.0f}", file=sys.stderr)
 
                     except Exception as exc:
                         import traceback

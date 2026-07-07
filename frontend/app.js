@@ -991,7 +991,9 @@ class App {
   _refreshAll() {
     if (this.project.clips.length > 0) {
       const maxEnd = Math.max(...this.project.clips.map(c => c.end()));
-      if (maxEnd > this.project.duration) this.project.duration = maxEnd + 2.0;
+      this.project.duration = maxEnd + 2.0;
+    } else {
+      this.project.duration = 30.0; // or whatever your empty-project default is
     }
     this.canvas.redraw();
     this.timeline.redraw();

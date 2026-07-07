@@ -67,6 +67,8 @@ export class PropertiesPanel {
       case 'narration': {
         this._addSection('Content');
         const te = this._addTextarea(c.content, 90);
+        // Allow manual paragraph breaks (\n) in narration for multi-line text.
+        // If you want single-line only, change this handler to: te.value.replace(/[\r\n]+/g, ' ')
         te.addEventListener('input', () => this._set('content', te.value));
         break;
       }

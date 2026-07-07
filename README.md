@@ -137,6 +137,23 @@ Backend mutates the project and broadcasts the full updated state to all connect
 
 `narration`, `code`, `graph`, `image`, `video` — set via `clip_type` on `add_clip`.
 
+
+### Animation Sync Requirement
+
+canvas.js and text_anim.py must stay synchronized for narration animations.
+
+Keep identical across both files:
+- Easing functions and formulas (Easing class)
+- Timing calculations (msPerChar, popMs, stagger, duration, etc.)
+- Scale/alpha/blur transformations
+- Animation math (all render_narration_* functions)
+
+Parameter names (text_chars_per_second, text_duration_ms, etc.) are already 
+shared via clip object and don't need code changes when adjusted by users.
+
+When modifying any animation effect: update BOTH files or preview ≠ output.
+
+
 ## Keyboard shortcuts
 
 | Key | Action |

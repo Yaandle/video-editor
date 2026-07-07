@@ -747,34 +747,39 @@ export class CanvasWidget {
   }
 
   _layoutNarrationText(ctx, text, maxWidth, lineHeight) {
-    const rawWords = text.split(' ');
+    // Split on paragraphs (hard line breaks) first, then wrap words within each
+    const paragraphs = text.split('\n');
     const spaceWidth = ctx.measureText(' ').width;
     const lines = [];
-    let currentLine = [];
-    let currentWidth = 0;
     let gWord = 0;
     let gChar = 0;
 
-    for (const word of rawWords) {
-      const width = ctx.measureText(word).width;
-      if (currentLine.length && currentWidth + spaceWidth + width > maxWidth) {
-        lines.push(currentLine);
-        currentLine = [];
-        currentWidth = 0;
-      }
+    for (const para of paragraphs) {
+      const rawWords = para.split(' ');
+      let currentLine = [];
+      let currentWidth = 0;
 
-      const chars = [];
-      let cx = 0;
-      for (const ch of word) {
-        const cw = ctx.measureText(ch).width;
-        chars.push({ char: ch, x: cx, width: cw, globalIndex: gChar++ });
-        cx += cw;
-      }
+      for (const word of rawWords) {
+        const width = ctx.measureText(word).width;
+        if (currentLine.length && currentWidth + spaceWidth + width > maxWidth) {
+          lines.push(currentLine);
+          currentLine = [];
+          currentWidth = 0;
+        }
 
-      currentLine.push({ text: word, width, chars, globalIndex: gWord++ });
-      currentWidth += (currentLine.length > 1 ? spaceWidth : 0) + width;
+        const chars = [];
+        let cx = 0;
+        for (const ch of word) {
+          const cw = ctx.measureText(ch).width;
+          chars.push({ char: ch, x: cx, width: cw, globalIndex: gChar++ });
+          cx += cw;
+        }
+
+        currentLine.push({ text: word, width, chars, globalIndex: gWord++ });
+        currentWidth += (currentLine.length > 1 ? spaceWidth : 0) + width;
+      }
+      if (currentLine.length) lines.push(currentLine);
     }
-    if (currentLine.length) lines.push(currentLine);
 
     const outLines = lines.map((line, li) => {
       let x = 0;

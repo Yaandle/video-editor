@@ -49,10 +49,14 @@ class VideoEditorServer:
         action = msg.get("action") or msg.get("type")
 
         if action == "add_clip":
-            clip = new_clip(
-                msg["clip_type"],
-                msg.get("start", 0)
-            )
+            from models import CLIP_TYPE_TRACK
+            clip_type = msg["clip_type"]
+            track = CLIP_TYPE_TRACK.get(clip_type, "visual")
+            start = msg.get("start")
+            if start is None:
+                track_clips = [c for c in self.project.clips if c.track == track]
+                start = max((c.end() for c in track_clips), default=0.0)
+            clip = new_clip(clip_type, start)
             self.project.clips.append(clip)
             await self.broadcast({
                 "type": "project",
@@ -237,10 +241,12 @@ class VideoEditorServer:
                 # ------------------------------------------------------------------
                 if ctype == "audio":
                     try:
+                        source_start = float(clip.get("source_start", 0))
                         audio = AudioFileClip(fpath)
+                        end_in_source = min(source_start + duration, audio.duration)
                         audio = (
                             audio
-                            .subclip(0, min(duration, audio.duration))
+                            .subclip(source_start, end_in_source)
                             .set_start(start)
                         )
                         audio_tracks.append(audio)
@@ -256,8 +262,10 @@ class VideoEditorServer:
                 # ------------------------------------------------------------------
                 if ctype == "video":
                     try:
+                        source_start = float(clip.get("source_start", 0))
                         vc = VideoFileClip(fpath, audio=True)
-                        vc = vc.subclip(0, min(duration, vc.duration))
+                        end_in_source = min(source_start + duration, vc.duration)
+                        vc = vc.subclip(source_start, end_in_source)
 
                         natW, natH = vc.size
 

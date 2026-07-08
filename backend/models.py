@@ -39,7 +39,7 @@ class Clip:
     graph_data: str = ""
 
     voice_id: str = ""
-
+    source_start: float = 0.0
     # Animation style for narration clips. None/omitted = static wrapped text.
     text_anim_style: Optional[str] = None
     text_chars_per_second: int = 26

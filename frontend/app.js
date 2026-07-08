@@ -58,6 +58,7 @@ export class Clip {
     this.graph_type = data.graph_type ?? 'bar';
     this.graph_data = data.graph_data ?? '';
     this.voice_id   = data.voice_id   ?? '';
+    this.source_start = data.source_start ?? 0.0;
     this.text_anim_style      = data.text_anim_style ?? null;
     this.text_chars_per_second = data.text_chars_per_second ?? 26;
     this.text_pop_duration_ms  = data.text_pop_duration_ms ?? 90;
@@ -92,6 +93,7 @@ export class Clip {
       animation: this.animation, theme: this.theme,
       code_file: this.code_file, graph_type: this.graph_type,
       graph_data: this.graph_data, voice_id: this.voice_id,
+      source_start: this.source_start,
       text_anim_style: this.text_anim_style,
       text_chars_per_second: this.text_chars_per_second,
       text_pop_duration_ms: this.text_pop_duration_ms,
@@ -253,7 +255,9 @@ class App {
     // For other media types, fall back to 5s if unknown
     if (dur == null) dur = 5.0;
 
-    const c = newClip(clip_type, this.playback.playhead, dur);
+    const track = CLIP_TYPE_TRACK[clip_type] ?? 'visual';
+    const start = Math.max(this.playback.playhead, this._nextStartForTrack(track));
+    const c = newClip(clip_type, start, dur);
     c.code_file = item.url;
 
     this.project.clips.push(c);
@@ -343,22 +347,25 @@ class App {
       const start = clip.start;
       const end = clip.end();
       if (start <= playhead && playhead < end) {
-        const offset = Math.max(0, playhead - start);
+        const srcStart = clip.source_start ?? 0;
+        const offset = srcStart + Math.max(0, playhead - start);
+        const maxOffset = srcStart + clip.duration - 0.001;
         try {
           if (this._audioLoaded[clip.id]) {
-            el.currentTime = Math.min(offset, clip.duration - 0.001);
+            el.currentTime = Math.min(offset, maxOffset);
             el.play().catch(() => {});
           } else {
             // wait for metadata then set time and play
             el.addEventListener('loadedmetadata', () => {
-              try { el.currentTime = Math.min(offset, clip.duration - 0.001); el.play().catch(() => {}); } catch {}
+              try { el.currentTime = Math.min(offset, maxOffset); el.play().catch(() => {}); } catch {}
             }, { once: true });
           }
         } catch (err) { /* ignore */ }
       } else if (start > playhead) {
         const delay = Math.max(0, (start - playhead) * 1000);
+        const srcStart = clip.source_start ?? 0;
         this._audioTimers[clip.id] = setTimeout(() => {
-          try { const el2 = this._audioEls[clip.id]; if (el2) { el2.currentTime = 0; el2.play().catch(() => {}); } } catch (e) {}
+          try { const el2 = this._audioEls[clip.id]; if (el2) { el2.currentTime = srcStart; el2.play().catch(() => {}); } } catch (e) {}
         }, delay);
       }
     }
@@ -385,25 +392,27 @@ class App {
       const el = this._audioEls[clip.id];
       const start = clip.start;
       const end = clip.end();
+      const srcStart = clip.source_start ?? 0;
       if (start <= t && t < end) {
-        const offset = Math.max(0, t - start);
+        const offset = srcStart + Math.max(0, t - start);
+        const maxOffset = srcStart + clip.duration - 0.001;
         try {
           if (this._audioLoaded[clip.id]) {
-            el.currentTime = Math.min(offset, clip.duration - 0.001);
+            el.currentTime = Math.min(offset, maxOffset);
             if (playing) el.play().catch(() => {});
             else el.pause();
           } else {
             el.addEventListener('loadedmetadata', () => {
-              try { el.currentTime = Math.min(offset, clip.duration - 0.001); if (playing) el.play().catch(() => {}); } catch {}
+              try { el.currentTime = Math.min(offset, maxOffset); if (playing) el.play().catch(() => {}); } catch {}
             }, { once: true });
           }
         } catch (err) {}
       } else {
-        try { el.pause(); el.currentTime = 0; } catch (err) {}
+        try { el.pause(); el.currentTime = srcStart; } catch (err) {}
         if (playing && start > t) {
           const delay = Math.max(0, (start - t) * 1000);
           this._audioTimers[clip.id] = setTimeout(() => {
-            try { const el2 = this._audioEls[clip.id]; if (el2) { el2.currentTime = 0; el2.play().catch(() => {}); } } catch (e) {}
+            try { const el2 = this._audioEls[clip.id]; if (el2) { el2.currentTime = srcStart; el2.play().catch(() => {}); } } catch (e) {}
           }, delay);
         }
       }
@@ -490,14 +499,16 @@ class App {
       this._updateStatus();
     });
     document.getElementById('timeline-canvas').addEventListener('timeline:slice', (e) => {
-      const { sourceId, rightStart, rightDur } = e.detail;
+      const { sourceId, rightStart, rightDur, rightSourceStart } = e.detail;
       const source = this._findClip(sourceId);
       if (!source) return;
       const right = deepCloneClip(source);
-      right.id       = genId();
-      right.start    = rightStart;
-      right.duration = rightDur;
+      right.id           = genId();
+      right.start        = rightStart;
+      right.duration     = rightDur;
+      right.source_start = rightSourceStart ?? (source.source_start ?? 0);
       this.project.clips.push(right);
+      if (right.clip_type === 'audio') this._ensureAudioForClip(right);
       this._dirty = true;
       this._refreshAll();
       this._updateStatus(`Sliced at ${rightStart.toFixed(2)}s`);
@@ -713,7 +724,7 @@ class App {
     this._pauseAllAudio(true);
   }
 
-  _onPlaybackTick(t) {
+  _onPlaybackTick(t, isSeek = false) {
     this.canvas.setPlayhead(t);
     this.timeline.setPlayhead(t);
     const mins = Math.floor(t / 60);
@@ -721,20 +732,26 @@ class App {
     const ms   = Math.floor((t % 1) * 1000);
     document.getElementById('timecode-lbl').textContent =
       `${mins}:${String(secs).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
-    // Resync audio elements when playhead is moved by seeking (not during play)
-    if (!this.playback.playing) this._resyncAudioOnSeek(t);
+    // Explicit seeks (dragging the scrubber, Home/End, frame-step) resync audio
+    // immediately regardless of play state. Ordinary RAF playback ticks only
+    // resync while paused, so we don't fight the audio element's own clock
+    // during normal playback.
+    if (isSeek || !this.playback.playing) this._resyncAudioOnSeek(t);
   }
 
+  _nextStartForTrack(track) {
+    const onTrack = this.project.clips.filter(c => c.track === track);
+    if (onTrack.length === 0) return 0.0;
+    return Math.max(...onTrack.map(c => c.end()));
+  }
+
+
+
   _addClip(clip_type) {
-    const c = newClip(clip_type, this.playback.playhead);
-    this.project.clips.push(c);
-    this._dirty = true;
-    this._refreshAll();
-    this._selectedId = c.id;
-    this.timeline.setSelectedId(c.id);
-    this.canvas.setSelectedId(c.id);
-    this.props.showClip(c);
-    this.canvas.redraw();
+    const track = CLIP_TYPE_TRACK[clip_type] ?? 'visual';
+    const start = Math.max(this.playback.playhead, this._nextStartForTrack(track));
+    const c = newClip(clip_type, start);
+    this.project.clips.push(c)
   }
 
   _deleteSelected() {

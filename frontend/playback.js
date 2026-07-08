@@ -32,7 +32,7 @@ export class PlaybackController {
 
   seek(t) {
     this.playhead = Math.max(0, Math.min(t, this.project.duration));
-    this._onTick(this.playhead);
+    this._onTick(this.playhead, true); // true = explicit seek, not a playback tick
   }
 
   // Step forward / back by dt seconds (for frame-stepping)

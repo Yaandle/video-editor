@@ -351,10 +351,16 @@ export class TimelineWidget {
     const sliceT = this._pxToSec(px);
     if (sliceT <= clip.start + MIN_DUR_SEC || sliceT >= clip.start + clip.duration - MIN_DUR_SEC) return;
     const rightDur = clip.start + clip.duration - sliceT;
+    const rightSourceStart = (clip.source_start ?? 0) + (sliceT - clip.start);
     clip.duration = Math.round((sliceT - clip.start) * 1000) / 1000;
     this._el.dispatchEvent(new CustomEvent('timeline:slice', {
       bubbles: true,
-      detail: { sourceId: clip.id, sliceAt: sliceT, rightStart: sliceT, rightDur: Math.round(rightDur * 1000) / 1000, track: clip.track, clip_type: clip.clip_type }
+      detail: {
+        sourceId: clip.id, sliceAt: sliceT, rightStart: sliceT,
+        rightDur: Math.round(rightDur * 1000) / 1000,
+        rightSourceStart: Math.round(rightSourceStart * 1000) / 1000,
+        track: clip.track, clip_type: clip.clip_type
+      }
     }));
     this.redraw();
   }

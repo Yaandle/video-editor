@@ -84,6 +84,7 @@ const SNAP_Y = [0.12, 0.5, 0.85];  // top / centre / bottom
 const SNAP_THRESHOLD = 0.04;
 
 export class CanvasWidget {
+  
   constructor(canvasEl, project, selectedIds) {
     this._el = canvasEl;
     this._ctx = canvasEl.getContext('2d');
@@ -311,9 +312,13 @@ export class CanvasWidget {
 
     if (clip.clip_type === 'narration') {
       const sx = clip.scale_x ?? clip.scale ?? 1.0;
+
       const fontSize = clip.font_size ?? Math.max(7, (r.w / 18) | 0);
-      ctx.font = `${fontSize}px Consolas, monospace`;
-      ctx.fillStyle = theme.text;
+      const fontStyle = clip.font_italic ? 'italic ' : '';
+      const fontWeight = clip.font_bold ? 'bold ' : '';
+      ctx.font = `${fontStyle}${fontWeight}${fontSize}px Consolas, monospace`;
+      const textColor = clip.font_color ?? theme.text;
+      ctx.fillStyle = textColor;
       ctx.textBaseline = 'top';
 
       const lineHeight = fontSize * 1.4;
@@ -324,10 +329,10 @@ export class CanvasWidget {
       const elapsedMs = Math.max(0, this.playhead - clip.start) * 1000;
 
       if (clip.text_anim_style && clip.text_anim_style !== 'static') {
-        this._renderNarrationAnimated(ctx, layout, pt.x, pt.y, elapsedMs, clip, theme);
+        this._renderNarrationAnimated(ctx, layout, pt.x, pt.y, elapsedMs, clip, textColor);
       } else {
         ctx.textAlign = 'center';
-        this._renderNarrationStatic(ctx, layout, pt.x, pt.y, theme);
+        this._renderNarrationStatic(ctx, layout, pt.x, pt.y, textColor);
       }
 
       const bx = pt.x - (maxW >> 1), by = pt.y;
@@ -552,11 +557,11 @@ export class CanvasWidget {
     };
   }
 
-  _renderNarrationStatic(ctx, layout, ox, oy, theme) {
+  _renderNarrationStatic(ctx, layout, ox, oy, color) {
     ctx.save();
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillStyle = theme.text;
+    ctx.fillStyle = color;
     for (const line of layout.lines) {
       const lineOx = ox - line.lineWidth / 2;
       for (const word of line.words) ctx.fillText(word.text, lineOx + word.x, oy + line.y);
@@ -564,19 +569,19 @@ export class CanvasWidget {
     ctx.restore();
   }
 
-  _renderNarrationAnimated(ctx, layout, ox, oy, elapsedMs, clip, theme) {
+  _renderNarrationAnimated(ctx, layout, ox, oy, elapsedMs, clip, color) {
     if (clip.text_anim_style === 'typewriter') {
-      this._renderNarrationTypewriter(ctx, layout, ox, oy, elapsedMs, clip, theme);
+      this._renderNarrationTypewriter(ctx, layout, ox, oy, elapsedMs, clip, color);
     } else if (clip.text_anim_style === 'wordblurin') {
-      this._renderNarrationWordBlurIn(ctx, layout, ox, oy, elapsedMs, clip, theme);
+      this._renderNarrationWordBlurIn(ctx, layout, ox, oy, elapsedMs, clip, color);
     } else if (clip.text_anim_style === 'linescan') {
-      this._renderNarrationLineScan(ctx, layout, ox, oy, elapsedMs, clip, theme);
+      this._renderNarrationLineScan(ctx, layout, ox, oy, elapsedMs, clip, color);
     } else {
-      this._renderNarrationStatic(ctx, layout, ox, oy, theme);
+      this._renderNarrationStatic(ctx, layout, ox, oy, color);
     }
   }
 
-  _renderNarrationTypewriter(ctx, layout, ox, oy, elapsedMs, clip, theme) {
+  _renderNarrationTypewriter(ctx, layout, ox, oy, elapsedMs, clip, color) {
     const msPerChar = 1000 / (clip.text_chars_per_second ?? 26);
     const popMs = clip.text_pop_duration_ms ?? 90;
     let lastX = ox, lastY = oy;
@@ -586,7 +591,7 @@ export class CanvasWidget {
     ctx.save();
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillStyle = theme.text;
+    ctx.fillStyle = color;
 
     for (const line of layout.lines) {
       const lineOx = ox - line.lineWidth / 2;
@@ -615,14 +620,14 @@ export class CanvasWidget {
     if (!allDone) {
       const blinkOn = Math.floor(this.playhead * 2) % 2 === 0;
       if (blinkOn) {
-        ctx.fillStyle = theme.text ?? '#d4d4d4';
+        ctx.fillStyle = color;
         ctx.fillRect(lastX + 2, lastY, 3, lastH);
       }
     }
     ctx.restore();
   }
 
-  _renderNarrationWordBlurIn(ctx, layout, ox, oy, elapsedMs, clip, theme) {
+  _renderNarrationWordBlurIn(ctx, layout, ox, oy, elapsedMs, clip, color) {
     const stagger = clip.text_stagger_ms ?? 60;
     const dur = clip.text_duration_ms ?? 550;
     const maxBlur = clip.text_max_blur ?? 14;
@@ -631,7 +636,7 @@ export class CanvasWidget {
     ctx.save();
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillStyle = theme.text;
+    ctx.fillStyle = color;
 
     for (const line of layout.lines) {
       const lineOx = ox - line.lineWidth / 2;

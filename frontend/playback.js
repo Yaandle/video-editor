@@ -1,28 +1,22 @@
 // playback.js — PlaybackController
 export class PlaybackController {
   constructor(project, onTick) {
-    this.project  = project;
-    this._onTick  = onTick;
-    this.playing  = false;
+    this.project = project;
+    this._onTick = onTick;
+    this.playing = false;
     this.playhead = 0.0;
-    this.loop     = false;       // toggle via .setLoop(bool)
-    this._raf     = null;
-    this._lastTs  = null;
+    this.loop = false; // toggle via .setLoop(bool)
+    this._raf = null;
+    this._lastTs = null;
   }
 
-  // ── Public API ──────────────────────────────────────────────────────────────
   setProject(p) {
     this.project = p;
-    // Clamp playhead to new duration
     this.playhead = Math.min(this.playhead, p.duration);
   }
 
   setLoop(on) { this.loop = on; }
-
-  toggle() {
-    if (this.playing) this.pause();
-    else this._play();
-  }
+  toggle() { this.playing ? this.pause() : this._play(); }
 
   pause() {
     this.playing = false;
@@ -35,21 +29,15 @@ export class PlaybackController {
     this._onTick(this.playhead, true); // true = explicit seek, not a playback tick
   }
 
-  // Step forward / back by dt seconds (for frame-stepping)
-  seekRelative(dt) {
-    this.seek(this.playhead + dt);
-  }
+  seekRelative(dt) { this.seek(this.playhead + dt); }
 
-  // Step by exactly one frame
   stepFrame(dir = 1) {
     const fps = this.project.fps ?? 30;
     this.seekRelative(dir / fps);
   }
 
-  // ── Internal ────────────────────────────────────────────────────────────────
   _play() {
     if (this.playing) return;
-    // Restart from beginning if at end
     if (this.playhead >= this.project.duration) this.playhead = 0.0;
     this.playing = true;
     this._lastTs = null;
@@ -73,7 +61,6 @@ export class PlaybackController {
           return;
         }
       }
-
       this._onTick(this.playhead);
     }
 

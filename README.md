@@ -1,6 +1,6 @@
 # vidkit
 
-A three-panel video compositor with a configurable canvas (9:16, 16:9, 1:1, or custom), multi-track timeline, and properties editor.
+A video compositor with a configurable canvas (9:16, 16:9, 1:1, or custom), toolbar, multi-track timeline, and properties editor.
 
 ```
 ┌─────────────────────────────────────────┐
@@ -23,11 +23,20 @@ A three-panel video compositor with a configurable canvas (9:16, 16:9, 1:1, or c
 
 ## Install
 
-```cmd
+​```bash
 python -m venv videoeditor_venv
+
+# Windows
 videoeditor_venv\Scripts\activate
+
+# macOS/Linux
+source videoeditor_venv/bin/activate
+
 pip install -r requirements.txt
-```
+​```
+
+> Tested on Windows only. Should work cross-platform since the backend/frontend have no OS-specific dependencies, but not yet verified.
+
 
 ## Run
 
@@ -35,15 +44,13 @@ pip install -r requirements.txt
 python backend/main.py
 ```
 
-Then visit `http://localhost:8765/editor.html`.
+Visit `http://localhost:8765/editor.html`. The backend serves frontend, WebSocket, upload, and render in one process — no second terminal needed.
 
-The backend serves the frontend, WebSocket, media upload, and render pipeline in one process. No second terminal needed.
-
-The WS status dot in the toolbar turns green when the connection is live. Editing, timeline, and save/load work offline — the backend is only required for media upload and render.
+The WS status dot turns green when connected. Editing, timeline, and save/load work offline; the backend is only required for upload and render.
 
 ## Project files
 
-Save/load projects as `.vkit` (JSON). Example:
+Saved as `.vkit` (JSON):
 
 ```json
 {
@@ -56,52 +63,28 @@ Save/load projects as `.vkit` (JSON). Example:
 }
 ```
 
-## Frontend
-
-```
-frontend/
-├── editor.html
-├── app.js
-├── canvas.js
-├── timeline.js
-├── properties.js
-├── playback.js
-├── mediaBin.js
-├── styles.css
-└── static/
-```
-
-## Backend
-
-```
-backend/
-├── main.py
-├── models.py
-├── project_store.py
-├── playback.py
-├── websocket_server.py
-├── uploads/
-└── projects/
-```
+## App Directory
 
 | File | Responsibility |
 |------|---------------|
-| `frontend/editor.html` | App shell, toolbar, layout, and entrypoint for the editor UI |
-| `frontend/app.js` | Main application controller, state management, WebSocket client, and UI wiring |
-| `frontend/canvas.js` | HTML5 canvas renderer, clip preview, selection, drag, and canvas positioning |
-| `frontend/timeline.js` | Timeline widget, clip layout, zoom/pan, scrub bar, and clip editing interactions |
-| `frontend/properties.js` | Properties panel UI, clip property controls, and change dispatching |
-| `frontend/playback.js` | Local playback state, play/pause/seek/tick loop, and frame stepping |
-| `frontend/mediaBin.js` | Media upload browser, media list, and adding uploaded files to project clips |
-| `frontend/styles.css` | Editor styling, panel layout, and theme visuals |
-| `frontend/static/` | Static assets served by the backend alongside the editor UI |
-| `backend/main.py` | FastAPI entrypoint, static file serving, `/upload`, `/media-list`, and WebSocket route registration |
-| `backend/models.py` | Project and clip data models, serialization, and clip defaults |
-| `backend/project_store.py` | `.vkit` save/load functionality for project persistence |
-| `backend/playback.py` | Shared playback-related state and controls used by the backend server |
-| `backend/websocket_server.py` | Server state, client registration, message handling, project broadcasts, and render task orchestration |
-| `backend/uploads/` | Uploaded media assets and generated render output files |
-| `backend/projects/` | Saved `.vkit` project files |
+| `frontend/editor.html` | App shell, toolbar, layout, entrypoint |
+| `frontend/app.js` | State management, WebSocket client, UI wiring |
+| `frontend/canvas.js` | Canvas renderer, clip preview, selection, drag |
+| `frontend/timeline.js` | Timeline widget, clip layout, zoom/pan, scrub bar |
+| `frontend/properties.js` | Properties panel, clip property controls, dispatching |
+| `frontend/playback.js` | Local play/pause/seek/tick loop, frame stepping |
+| `frontend/mediaBin.js` | Media upload browser, add media to project clips |
+| `frontend/colourPicker.js` | Color picker component for clip properties |
+| `frontend/styles.css` | Editor styling, panel layout, theme |
+| `frontend/static/` | Static assets served alongside the editor UI |
+| `backend/main.py` | FastAPI entrypoint, static serving, `/upload`, `/media-list`, WS route |
+| `backend/models.py` | Project/clip data models, serialization, defaults |
+| `backend/project_store.py` | `.vkit` save/load |
+| `backend/playback.py` | Shared playback state/controls |
+| `backend/websocket_server.py` | Client registration, message handling, broadcasts, render orchestration |
+| `backend/text_anim.py` | Python port of canvas.js narration animation math, used at render/export time |
+| `backend/uploads/` | Uploaded media + render output |
+| `backend/projects/` | Saved `.vkit` files |
 
 ### Message flow
 
@@ -110,7 +93,7 @@ Frontend sends an action:
 { "action": "add_clip", "clip_type": "narration", "start": 10.5 }
 ```
 
-Backend mutates the project and broadcasts the full updated state to all connected clients:
+Backend mutates project state and broadcasts full state to all clients:
 ```json
 { "type": "project", "data": { "name": "...", "clips": [...] } }
 ```
@@ -122,37 +105,22 @@ Backend mutates the project and broadcasts the full updated state to all connect
 | `add_clip` | `clip_type`, `start` |
 | `delete_clip` | `id` |
 | `duplicate_clip` | `id` |
-| `update_clip` | `id`, + any clip fields to patch |
+| `update_clip` | `id`, + fields to patch |
 | `select_clip` | `id` |
-| `play` | — |
-| `pause` | — |
+| `play` / `pause` | — |
 | `seek` | `t` |
 | `new_project` | — |
 | `load_project` | `path` |
 | `save_project` | `path` (optional) |
 | `render` | — |
 
-
 ### Clip types
 
-`narration`, `code`, `graph`, `image`, `video` — set via `clip_type` on `add_clip`.
+`narration`, `code`, `graph`, `image`, `video` — via `clip_type` on `add_clip`.
 
+### Animation sync requirement
 
-### Animation Sync Requirement
-
-canvas.js and text_anim.py must stay synchronized for narration animations.
-
-Keep identical across both files:
-- Easing functions and formulas (Easing class)
-- Timing calculations (msPerChar, popMs, stagger, duration, etc.)
-- Scale/alpha/blur transformations
-- Animation math (all render_narration_* functions)
-
-Parameter names (text_chars_per_second, text_duration_ms, etc.) are already 
-shared via clip object and don't need code changes when adjusted by users.
-
-When modifying any animation effect: update BOTH files or preview ≠ output.
-
+`canvas.js` (preview) and `text_anim.py` (render) must match exactly, or preview ≠ export. Keep identical: easing functions, timing math (msPerChar, popMs, stagger, duration), scale/alpha/blur transforms, and all `render_narration_*` logic. Shared params (`text_chars_per_second`, `text_duration_ms`, etc.) already pass through the clip object — no code change needed there when users adjust values. **When editing any animation effect: update both files.**
 
 ## Keyboard shortcuts
 

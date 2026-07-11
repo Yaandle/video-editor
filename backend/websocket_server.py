@@ -1,6 +1,6 @@
+# websocket_server.py
 import asyncio
 import json
-
 import os
 import sys
 
@@ -12,24 +12,27 @@ from models import Project, new_clip
 from project_store import ProjectStore
 
 _BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_DIR   = os.path.join(_BACKEND_DIR, "uploads")
+UPLOAD_DIR = os.path.join(_BACKEND_DIR, "uploads")
 PROJECTS_DIR = os.path.join(_BACKEND_DIR, "projects")
 os.makedirs(PROJECTS_DIR, exist_ok=True)
 
-class VideoEditorServer:
 
+def _place(natW, natH, x, y, scale, canvas_w, canvas_h):
+    """Fit media into canvas (max 88% w / 80% h), return (dw, dh, dx, dy)."""
+    fit_scale = min(canvas_w * 0.88 / natW, canvas_h * 0.80 / natH, 1.0)
+    dw, dh = natW * fit_scale * scale, natH * fit_scale * scale
+    dx, dy = x * canvas_w - dw / 2, y * canvas_h - dh / 2
+    return dw, dh, dx, dy
+
+
+class VideoEditorServer:
     def __init__(self):
         self.project = Project()
         self.clients = set()
 
     async def register(self, websocket):
         self.clients.add(websocket)
-        await websocket.send_text(
-            json.dumps({
-                "type": "project",
-                "data": self.project.to_dict()
-            })
-        )
+        await websocket.send_text(json.dumps({"type": "project", "data": self.project.to_dict()}))
 
     async def unregister(self, websocket):
         self.clients.discard(websocket)
@@ -37,15 +40,10 @@ class VideoEditorServer:
     async def broadcast(self, message):
         if not self.clients:
             return
-        await asyncio.gather(
-            *[
-                client.send_text(json.dumps(message))
-                for client in self.clients
-            ]
-        )
+        await asyncio.gather(*[c.send_text(json.dumps(message)) for c in self.clients])
 
     async def handle_message(self, websocket, raw):
-        msg    = json.loads(raw)
+        msg = json.loads(raw)
         action = msg.get("action") or msg.get("type")
 
         if action == "add_clip":
@@ -56,44 +54,27 @@ class VideoEditorServer:
             if start is None:
                 track_clips = [c for c in self.project.clips if c.track == track]
                 start = max((c.end() for c in track_clips), default=0.0)
-            clip = new_clip(clip_type, start)
-            self.project.clips.append(clip)
-            await self.broadcast({
-                "type": "project",
-                "data": self.project.to_dict()
-            })
+            self.project.clips.append(new_clip(clip_type, start))
+            await self.broadcast({"type": "project", "data": self.project.to_dict()})
 
         elif action == "save_project":
             self.project = Project.from_dict(msg.get("data", {}))
             filename = msg.get("filename") or f"{self.project.name}.vkit"
             path = os.path.join(PROJECTS_DIR, filename)
             ProjectStore.save(self.project, path)
-            await websocket.send_text(json.dumps({
-                "type": "save_status",
-                "status": "done",
-                "path": path,
-            })) 
+            await websocket.send_text(json.dumps({"type": "save_status", "status": "done", "path": path}))
 
         elif action == "load_project":
             filename = msg.get("filename") or f"{self.project.name}.vkit"
             path = os.path.join(PROJECTS_DIR, filename)
             self.project = ProjectStore.load(path)
-            await self.broadcast({
-                "type": "project",
-                "data": self.project.to_dict()
-            })
+            await self.broadcast({"type": "project", "data": self.project.to_dict()})
 
         elif action == "render":
-            # Prefer project data supplied by the client; fall back to server's current project
             project_data = msg.get("data") or self.project.to_dict()
-            await websocket.send_text(json.dumps({
-                "type": "render_status",
-                "status": "started",
-                "message": "Render queued"
-            }))
-            # Small debug: show project name and first narration clip content to aid debugging
+            await websocket.send_text(json.dumps({"type": "render_status", "status": "started", "message": "Render queued"}))
             try:
-                first_narr = next((c.get('content') for c in project_data.get('clips', []) if c.get('clip_type') == 'narration'), None)
+                first_narr = next((c.get("content") for c in project_data.get("clips", []) if c.get("clip_type") == "narration"), None)
                 print(f"[render] queued: project={project_data.get('name')!r}, clips={len(project_data.get('clips', []))}, first_narration={first_narr!r}", file=sys.stderr)
             except Exception:
                 pass
@@ -102,65 +83,47 @@ class VideoEditorServer:
     async def _run_render(self, websocket, project_data):
         """
         moviepy 1.x composite render.
-
-        Supported clip types:  video, image, audio
-        Silently skipped:      narration, code, graph
-
-        Emits render_status:   started → done | error
+        Supported clip types: video, image, audio, narration, shape.
+        Skipped: code, graph.
+        Emits render_status: started → done | error
         """
         from moviepy.editor import (
-            VideoFileClip,
-            ImageClip,
-            ColorClip,
-            CompositeVideoClip,
-            AudioFileClip,
-            CompositeAudioClip,
+            VideoFileClip, ImageClip, ColorClip,
+            CompositeVideoClip, AudioFileClip, CompositeAudioClip,
         )
 
-        CANVAS_W  = project_data.get("canvas_w",  1080)
-        CANVAS_H  = project_data.get("canvas_h",  1920)
-        FPS       = project_data.get("fps",        60)
-        DURATION  = project_data.get("duration",   5.0)
+        CANVAS_W = project_data.get("canvas_w", 1080)
+        CANVAS_H = project_data.get("canvas_h", 1920)
+        FPS = project_data.get("fps", 60)
+        DURATION = project_data.get("duration", 5.0)
         proj_name = project_data.get("name", "output").replace(" ", "_")
-        out_path  = os.path.join(UPLOAD_DIR, f"{proj_name}_output.mp4")
+        out_path = os.path.join(UPLOAD_DIR, f"{proj_name}_output.mp4")
 
-        def _resolve(code_file: str) -> str:
-            """Strip the leading /media/ prefix and map to an upload path."""
+        def _resolve(code_file):
             rel = code_file.lstrip("/")
             if rel.startswith("media/"):
                 rel = rel[len("media/"):]
             return os.path.join(UPLOAD_DIR, rel)
 
         try:
-            video_layers: list = []
-            audio_tracks: list = []
+            video_layers = [ColorClip(size=(CANVAS_W, CANVAS_H), color=(0, 0, 0)).set_duration(DURATION)]
+            audio_tracks = []
 
-            # ── Black background ──────────────────────────────────────────────────
-            bg = ColorClip(size=(CANVAS_W, CANVAS_H), color=(0, 0, 0)).set_duration(DURATION)
-            video_layers.append(bg)
-
-            # ── Process clips ─────────────────────────────────────────────────────
-            for clip in project_data.get("clips", []):
-                ctype    = clip.get("clip_type", "")
-                src      = clip.get("code_file") or clip.get("src") or ""
-                start    = float(clip.get("start", 0))
+            for clip in sorted(project_data.get("clips", []), key=lambda c: c.get("layer", 0), reverse=True):
+                ctype = clip.get("clip_type", "")
+                src = clip.get("code_file") or clip.get("src") or ""
+                start = float(clip.get("start", 0))
                 duration = float(clip.get("duration", 5))
+                x, y, scale = float(clip.get("x", 0.5)), float(clip.get("y", 0.5)), float(clip.get("scale", 1.0))
+                scale_x = float(clip.get("scale_x", scale))
+                scale_y = float(clip.get("scale_y", scale))
 
-                # canvas.js stores normalized coordinates (0..1)
-                x        = float(clip.get("x", 0.5))
-                y        = float(clip.get("y", 0.5))
-                scale    = float(clip.get("scale", 1.0))
-
-                # Skip unsupported types
                 if ctype in ("code", "graph"):
                     continue
-
-                if not src and ctype != "narration":
+                if not src and ctype not in ("narration", "shape"):
                     continue
 
-                # ------------------------------------------------------------------
-                # NARRATION  (animated text render via make_frame)
-                # ------------------------------------------------------------------
+                # ── NARRATION ──
                 if ctype == "narration":
                     text = clip.get("content", "").strip()
                     if not text:
@@ -172,228 +135,197 @@ class VideoEditorServer:
                         import numpy as np
 
                         anim_style = clip.get("text_anim_style")
-                        font_size  = int(60 * scale)
-                        rise       = clip.get("text_rise_distance", 22)
-                        pad_top    = int(rise + 30)
-                        pad_bottom = int(rise + 30)
-                        canvas_w   = CANVAS_W
-                        x_norm     = float(clip.get("x", 0.5))
+                        font_size = int(60 * scale)
+                        rise = clip.get("text_rise_distance", 22)
+                        pad_top = pad_bottom = int(rise + 30)
+                        x_norm = x
 
-                        # cache so RGB pass and mask pass don't re-render the same frame twice
                         _cache = {"t": None, "img": None}
 
-                        def _get_frame(t, _text=text, _style=anim_style, _clip=clip,
-                                        _canvas_w=canvas_w, _x_norm=x_norm, _font_size=font_size,
-                                        _pad_top=pad_top, _pad_bottom=pad_bottom, _cache=_cache):
-                            elapsed_ms = max(0.0, t) * 1000.0
+                        def _get_frame(t, _cache=_cache):
                             if _cache["t"] != t:
-                                img = render_narration_frame(
-                                    _text, _style, elapsed_ms, _clip,
-                                    _canvas_w, _x_norm, _font_size, _pad_top, _pad_bottom,
+                                _cache["img"] = render_narration_frame(
+                                    text, anim_style, max(0.0, t) * 1000.0, clip,
+                                    CANVAS_W, x_norm, font_size, pad_top, pad_bottom,
                                 )
                                 _cache["t"] = t
-                                _cache["img"] = img
                             return _cache["img"]
 
-                        def make_frame(t, _get_frame=_get_frame):
-                            img = _get_frame(t)
-                            return np.array(img.convert("RGB"))
+                        def make_frame(t): return np.array(_get_frame(t).convert("RGB"))
+                        def make_mask(t): return np.array(_get_frame(t).split()[-1]) / 255.0
 
-                        def make_mask(t, _get_frame=_get_frame):
-                            img = _get_frame(t)
-                            return np.array(img.split()[-1]) / 255.0
-
-                        probe_img = render_narration_frame(
-                            text, anim_style, 0, clip,
-                            canvas_w, x_norm, font_size,
-                            pad_top, pad_bottom
-                        )
-                        img_h = probe_img.height
+                        probe_img = render_narration_frame(text, anim_style, 0, clip, CANVAS_W, x_norm, font_size, pad_top, pad_bottom)
 
                         tc = VideoClip(make_frame, duration=duration)
                         mc = VideoClip(make_mask, duration=duration, ismask=True)
                         tc = tc.set_mask(mc).set_start(start)
-
                         dy = y * CANVAS_H - pad_top
                         tc = tc.set_position((0, int(round(dy))))
-
                         video_layers.append(tc)
-                        print(f"[render] narration OK ({anim_style or 'static'}): "
-                              f"{img_h}px block at y={dy:.0f}", file=sys.stderr)
-
+                        print(f"[render] narration OK ({anim_style or 'static'}): {probe_img.height}px block at y={dy:.0f}", file=sys.stderr)
                     except Exception as exc:
                         import traceback
                         print(f"[render] ERROR: narration render failed: {exc}", file=sys.stderr)
                         print(traceback.format_exc(), file=sys.stderr)
                     continue
 
-                fpath = _resolve(src)
+                # ── SHAPE ──
+                if ctype == "shape":
+                    try:
+                        from PIL import Image, ImageDraw
+                        import math, numpy as np
 
-                if not os.path.isfile(fpath):
-                    print(
-                        f"[render] WARNING: file not found, skipping — {fpath}",
-                        file=sys.stderr,
-                    )
+                        shape_kind = clip.get("shape_kind", "rectangle")
+                        fill = clip.get("fill", "#FFFFFF")
+                        stroke_color = clip.get("stroke_color", "#000000")
+                        stroke_width = float(clip.get("stroke_width", 0))
+                        corner_r = float(clip.get("corner_radius", 0))
+                        rotation = float(clip.get("rotation", 0))
+                        opacity = float(clip.get("opacity", 1.0))
+                        sides = int(clip.get("sides", 5))
+                        points_n = int(clip.get("points", 5))
+                        inner_ratio = float(clip.get("inner_radius_ratio", 0.5))
+
+                        BASE_W, BASE_H = 200, 200
+                        fit_scale = min(CANVAS_W * 0.88 / BASE_W, CANVAS_H * 0.80 / BASE_H, 1.0)
+                        dw, dh = BASE_W * fit_scale * scale_x, BASE_H * fit_scale * scale_y
+
+                        pad = int(max(dw, dh) * 0.5) + int(stroke_width) + 4
+                        tile_w, tile_h = int(dw) + pad * 2, int(dh) + pad * 2
+                        img = Image.new("RGBA", (tile_w, tile_h), (0, 0, 0, 0))
+                        draw = ImageDraw.Draw(img)
+
+                        x0, y0, x1, y1 = pad, pad, pad + dw, pad + dh
+                        cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+
+                        def _ngon_points(n, cx, cy, r, rot=-90, inner_r=None):
+                            pts, total = [], n * (2 if inner_r is not None else 1)
+                            for i in range(total):
+                                ang = math.radians(rot + i * (360 / total))
+                                rad = r if (inner_r is None or i % 2 == 0) else inner_r
+                                pts.append((cx + rad * math.cos(ang), cy + rad * math.sin(ang)))
+                            return pts
+
+                        stroke_arg = stroke_color if stroke_width > 0 else None
+                        sw_arg = int(stroke_width) if stroke_width > 0 else 0
+
+                        if shape_kind == "rectangle":
+                            if corner_r > 0:
+                                draw.rounded_rectangle([x0, y0, x1, y1], radius=corner_r, fill=fill, outline=stroke_arg, width=sw_arg)
+                            else:
+                                draw.rectangle([x0, y0, x1, y1], fill=fill, outline=stroke_arg, width=sw_arg)
+                        elif shape_kind == "circle":
+                            draw.ellipse([x0, y0, x1, y1], fill=fill, outline=stroke_arg, width=sw_arg)
+                        elif shape_kind == "triangle":
+                            pts = [(cx, y0), (x1, y1), (x0, y1)]
+                            draw.polygon(pts, fill=fill, outline=stroke_arg)
+                            if sw_arg: draw.line(pts + [pts[0]], fill=stroke_color, width=sw_arg)
+                        elif shape_kind == "polygon":
+                            pts = _ngon_points(max(3, sides), cx, cy, min(dw, dh) / 2)
+                            draw.polygon(pts, fill=fill, outline=stroke_arg)
+                            if sw_arg: draw.line(pts + [pts[0]], fill=stroke_color, width=sw_arg)
+                        elif shape_kind == "star":
+                            r = min(dw, dh) / 2
+                            pts = _ngon_points(max(2, points_n), cx, cy, r, inner_r=r * inner_ratio)
+                            draw.polygon(pts, fill=fill, outline=stroke_arg)
+                            if sw_arg: draw.line(pts + [pts[0]], fill=stroke_color, width=sw_arg)
+                        elif shape_kind == "line":
+                            draw.line([(x0, cy), (x1, cy)], fill=stroke_color or fill, width=max(sw_arg, 2))
+                        elif shape_kind == "arrow":
+                            shaft_w, head_w, head_len = dh * 0.25, dh * 0.6, dw * 0.35
+                            shaft = [(x0, cy - shaft_w/2), (x1 - head_len, cy - shaft_w/2), (x1 - head_len, cy + shaft_w/2), (x0, cy + shaft_w/2)]
+                            head = [(x1 - head_len, cy - head_w/2), (x1, cy), (x1 - head_len, cy + head_w/2)]
+                            draw.polygon(shaft, fill=fill, outline=stroke_arg)
+                            draw.polygon(head, fill=fill, outline=stroke_arg)
+
+                        if opacity < 1.0:
+                            r_, g_, b_, a_ = img.split()
+                            a_ = a_.point(lambda px: int(px * opacity))
+                            img = Image.merge("RGBA", (r_, g_, b_, a_))
+                        if rotation:
+                            img = img.rotate(-rotation, resample=Image.BICUBIC, expand=True)
+
+                        arr = np.array(img)
+                        sc = ImageClip(arr, duration=duration).set_start(start)
+                        fw, fh = img.size
+                        sc = sc.set_position((x * CANVAS_W - fw / 2, y * CANVAS_H - fh / 2))
+                        video_layers.append(sc)
+                    except Exception as exc:
+                        import traceback
+                        print(f"[render] ERROR: shape render failed: {exc}", file=sys.stderr)
+                        print(traceback.format_exc(), file=sys.stderr)
                     continue
 
-                # ------------------------------------------------------------------
-                # AUDIO
-                # ------------------------------------------------------------------
+                fpath = _resolve(src)
+                if not os.path.isfile(fpath):
+                    print(f"[render] WARNING: file not found, skipping — {fpath}", file=sys.stderr)
+                    continue
+
+                # ── AUDIO ──
                 if ctype == "audio":
                     try:
                         source_start = float(clip.get("source_start", 0))
                         audio = AudioFileClip(fpath)
                         end_in_source = min(source_start + duration, audio.duration)
-                        audio = (
-                            audio
-                            .subclip(source_start, end_in_source)
-                            .set_start(start)
-                        )
-                        audio_tracks.append(audio)
+                        audio_tracks.append(audio.subclip(source_start, end_in_source).set_start(start))
                     except Exception as exc:
-                        print(
-                            f"[render] WARNING: audio load failed ({src}): {exc}",
-                            file=sys.stderr,
-                        )
+                        print(f"[render] WARNING: audio load failed ({src}): {exc}", file=sys.stderr)
                     continue
 
-                # ------------------------------------------------------------------
-                # VIDEO
-                # ------------------------------------------------------------------
+                # ── VIDEO ──
                 if ctype == "video":
                     try:
                         source_start = float(clip.get("source_start", 0))
                         vc = VideoFileClip(fpath, audio=True)
                         end_in_source = min(source_start + duration, vc.duration)
                         vc = vc.subclip(source_start, end_in_source)
-
-                        natW, natH = vc.size
-
-                        fit_scale = min(
-                            CANVAS_W * 0.88 / natW,
-                            CANVAS_H * 0.80 / natH,
-                            1.0,
-                        )
-
-                        dw = natW * fit_scale * scale
-                        dh = natH * fit_scale * scale
-
-                        dx = x * CANVAS_W - dw / 2
-                        dy = y * CANVAS_H - dh / 2
-
-                        vc = (
-                            vc
-                            .resize((int(round(dw)), int(round(dh))))
-                            .set_position((dx, dy))
-                            .set_start(start)
-                        )
-
+                        dw, dh, dx, dy = _place(*vc.size, x, y, scale, CANVAS_W, CANVAS_H)
+                        vc = vc.resize((int(round(dw)), int(round(dh)))).set_position((dx, dy)).set_start(start)
                         if vc.audio is not None:
                             audio_tracks.append(vc.audio.set_start(start))
                             vc = vc.without_audio()
-
                         video_layers.append(vc)
-
                     except Exception as exc:
-                        print(
-                            f"[render] WARNING: video load failed ({src}): {exc}",
-                            file=sys.stderr,
-                        )
-
+                        print(f"[render] WARNING: video load failed ({src}): {exc}", file=sys.stderr)
                     continue
 
-                # ------------------------------------------------------------------
-                # IMAGE
-                # ------------------------------------------------------------------
+                # ── IMAGE ──
                 if ctype == "image":
                     try:
                         ic = ImageClip(fpath, duration=duration)
-
-                        natW, natH = ic.size
-
-                        fit_scale = min(
-                            CANVAS_W * 0.88 / natW,
-                            CANVAS_H * 0.80 / natH,
-                            1.0,
-                        )
-
-                        dw = natW * fit_scale * scale
-                        dh = natH * fit_scale * scale
-
-                        dx = x * CANVAS_W - dw / 2
-                        dy = y * CANVAS_H - dh / 2
-
-                        ic = (
-                            ic
-                            .resize((int(round(dw)), int(round(dh))))
-                            .set_position((dx, dy))
-                            .set_start(start)
-                        )
-
+                        dw, dh, dx, dy = _place(*ic.size, x, y, scale, CANVAS_W, CANVAS_H)
+                        ic = ic.resize((int(round(dw)), int(round(dh)))).set_position((dx, dy)).set_start(start)
                         video_layers.append(ic)
-
                     except Exception as exc:
-                        print(
-                            f"[render] WARNING: image load failed ({src}): {exc}",
-                            file=sys.stderr,
-                        )
-
+                        print(f"[render] WARNING: image load failed ({src}): {exc}", file=sys.stderr)
                     continue
 
-            # ── Composite ─────────────────────────────────────────────────────────
-            final_video = CompositeVideoClip(
-                video_layers,
-                size=(CANVAS_W, CANVAS_H),
-                use_bgclip=True,     # bg clip sets total duration
-            ).set_duration(DURATION)
-
+            final_video = CompositeVideoClip(video_layers, size=(CANVAS_W, CANVAS_H), use_bgclip=True).set_duration(DURATION)
             if audio_tracks:
-                final_audio = CompositeAudioClip(audio_tracks)
-                final_video = final_video.set_audio(final_audio)
+                final_video = final_video.set_audio(CompositeAudioClip(audio_tracks))
 
-            # ── Write ─────────────────────────────────────────────────────────────
-            # Run the blocking write in a thread so the event loop stays live.
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None,
-                lambda: final_video.write_videofile(
-                    out_path,
-                    fps=FPS,
-                    codec="libx264",
-                    audio_codec="aac",
-                    preset="slow",
-                    ffmpeg_params=[
-                        "-crf", "18",
-                        "-profile:v", "high",
-                        "-level", "4.2",
-                        "-pix_fmt", "yuv420p",
-                        "-b:v", "10M",
-                        "-maxrate", "12M",
-                        "-bufsize", "24M",
-                        "-ar", "48000",
-                        "-b:a", "320k",
-                    ],
-                    logger=None,       # suppress moviepy's tqdm spam
-                )
-            )
+            await loop.run_in_executor(None, lambda: final_video.write_videofile(
+                out_path, fps=FPS, codec="libx264", audio_codec="aac", preset="slow",
+                ffmpeg_params=[
+                    "-crf", "18", "-profile:v", "high", "-level", "4.2", "-pix_fmt", "yuv420p",
+                    "-b:v", "10M", "-maxrate", "12M", "-bufsize", "24M", "-ar", "48000", "-b:a", "320k",
+                ],
+                logger=None,
+            ))
 
             await websocket.send_text(json.dumps({
-                "type":    "render_status",
-                "status":  "done",
-                "message": f"Rendered → {out_path}",
-                "path":    f"/media/{proj_name}_output.mp4",
+                "type": "render_status", "status": "done",
+                "message": f"Rendered → {out_path}", "path": f"/media/{proj_name}_output.mp4",
             }))
-
         except Exception as exc:
             import traceback
             await websocket.send_text(json.dumps({
-                "type":    "render_status",
-                "status":  "error",
-                "message": str(exc),
-                "detail":  traceback.format_exc()[-800:],
+                "type": "render_status", "status": "error",
+                "message": str(exc), "detail": traceback.format_exc()[-800:],
             }))
 
-
+            
     async def handler(self, websocket):
         await websocket.accept()
         await self.register(websocket)

@@ -15,13 +15,16 @@ export class TimelineWidget {
     this.project = project;
     this.playhead = 0.0;
     this._zoom = 1.0;
-    this._panOffsetPx = 0; 
+    this._panOffsetPx = 0;
+    this._selectedIds = new Set();
+    this._selectionPrimaryId = null;
     this._selectedId = null;
     this._dragClip = null;
     this._dragMode = '';
     this._dragOriginX = 0;
     this._dragOriginStart = 0.0;
     this._dragOriginDur = 0.0;
+    this._dragBeforeSnapshot = null;
     this._scrubbing = false;
     this._scrubPlayhead = false;
     this.tool = 'select';
@@ -34,7 +37,8 @@ export class TimelineWidget {
 
   setProject(p) { this.project = p; this._reflowLayers(); this.redraw(); }
   setPlayhead(t) { this.playhead = t; this.redraw(); }
-  setSelectedId(id) { this._selectedId = id; this.redraw(); }
+  setSelectedId(id) { this.setSelectedIds(id ? [id] : []); }
+  setSelectedIds(ids) { this._selectedIds = ids instanceof Set ? ids : new Set(ids); this.redraw(); }
   setTool(name) { this.tool = name; this._updateCursor(null); }
   redraw() { this._paint(); }
 
@@ -42,10 +46,8 @@ export class TimelineWidget {
   zoomIn() { this._zoom = Math.min(this._zoom * 1.25, 32); this._clampPan(); this.redraw(); }
   zoomReset() { this._zoom = 1; this._clampPan(); this.redraw(); }
 
-  _clampPan() {
-    const maxPan = Math.max(0, this._pxPerSec() * this.project.duration - (this._el.width - LABEL_W));
-    this._panOffsetPx = Math.max(0, Math.min(maxPan, this._panOffsetPx));
-  }
+  _maxPan() { return Math.max(0, this._pxPerSec() * this.project.duration - (this._el.width - LABEL_W)); }
+  _clampPan() { this._panOffsetPx = Math.max(0, Math.min(this._maxPan(), this._panOffsetPx)); }
 
   resize(manualH = null) {
     const container = this._el.parentElement;
@@ -160,21 +162,48 @@ export class TimelineWidget {
       ctx.fillText(track.toUpperCase(), LABEL_W / 2, y + trackH / 2);
     }
   }
-  
+
   _drawClips(ctx) {
     ctx.font = '8px Consolas, monospace';
     for (const clip of this.project.clips) {
-      const cr = this._clipRect(clip), col = TRACK_COLOURS[clip.track] ?? {}, isSelected = clip.id === this._selectedId;
+      const cr = this._clipRect(clip), col = TRACK_COLOURS[clip.track] ?? {}, isSelected = this._selectedIds.has(clip.id);
       ctx.fillStyle = col.bg ?? '#282828'; ctx.fillRect(cr.x, cr.y, cr.w, cr.h);
       ctx.strokeStyle = isSelected ? (col.border ?? '#888') : (col.border ? col.border + '99' : '#505050');
       ctx.lineWidth = isSelected ? 1.5 : 0.5;
       ctx.strokeRect(cr.x + 0.5, cr.y + 0.5, cr.w - 1, cr.h - 1);
+      if (clip.clip_type === 'audio') this._drawWaveform(ctx, clip, cr);
       ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(cr.x, cr.y, RESIZE_ZONE, cr.h);
       ctx.fillStyle = 'rgba(255,255,255,0.09)'; ctx.fillRect(cr.x + cr.w - RESIZE_ZONE, cr.y, RESIZE_ZONE, cr.h);
       ctx.fillStyle = col.text ?? '#c8c8c8'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       ctx.save(); ctx.beginPath(); ctx.rect(cr.x + RESIZE_ZONE, cr.y + 1, Math.max(0, cr.w - RESIZE_ZONE * 2), cr.h - 2); ctx.clip();
       ctx.fillText(clip.label(), cr.x + RESIZE_ZONE + 2, cr.y + cr.h / 2); ctx.restore();
     }
+  }
+
+  _drawWaveform(ctx, clip, cr) {
+    const peaks = clip._peaks;
+    if (!peaks) return;
+    const srcStart = clip.source_start ?? 0;
+    const srcEnd = srcStart + clip.duration;
+    const totalDur = peaks.duration || srcEnd;
+    const bucketCount = peaks.mins.length;
+    const startBucket = Math.max(0, Math.floor((srcStart / totalDur) * bucketCount));
+    const endBucket = Math.min(bucketCount, Math.ceil((srcEnd / totalDur) * bucketCount));
+    const visibleBuckets = Math.max(1, endBucket - startBucket);
+    const midY = cr.y + cr.h / 2;
+    const ampScale = (cr.h / 2) - 3;
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let px = 0; px < cr.w; px++) {
+      const bucketIdx = startBucket + Math.floor((px / cr.w) * visibleBuckets);
+      const b = Math.min(bucketCount - 1, Math.max(0, bucketIdx));
+      const min = peaks.mins[b], max = peaks.maxes[b];
+      const x = cr.x + px;
+      ctx.moveTo(x + 0.5, midY + min * ampScale);
+      ctx.lineTo(x + 0.5, midY + max * ampScale);
+    }
+    ctx.stroke();
   }
 
   _drawLayerDividers(ctx) {
@@ -220,8 +249,8 @@ export class TimelineWidget {
     return null;
   }
 
-  _hitResizeRight(clip, px) { return px >= this._clipRect(clip).x + this._clipRect(clip).w - RESIZE_ZONE && px <= this._clipRect(clip).x + this._clipRect(clip).w; }
-  _hitResizeLeft(clip, px) { return px >= this._clipRect(clip).x && px <= this._clipRect(clip).x + RESIZE_ZONE; }
+  _hitResizeRight(clip, px) { const cr = this._clipRect(clip); return px >= cr.x + cr.w - RESIZE_ZONE && px <= cr.x + cr.w; }
+  _hitResizeLeft(clip, px) { const cr = this._clipRect(clip); return px >= cr.x && px <= cr.x + RESIZE_ZONE; }
   _hitPlayheadTriangle(px, py) { return py <= HEADER_H + 10 && Math.abs(px - this._secToPx(this.playhead)) <= 8; }
 
   _bindEvents() {
@@ -251,10 +280,32 @@ export class TimelineWidget {
     }
     const clip = this._clipAt(pos.x, pos.y);
     if (clip) {
-      this._selectedId = clip.id; this._dragClip = clip; this._dragOriginX = pos.x; this._dragOriginStart = clip.start; this._dragOriginDur = clip.duration;
+      if (e.shiftKey) {
+        this._selectedIds.has(clip.id) ? this._selectedIds.delete(clip.id) : this._selectedIds.add(clip.id);
+      } else if (!this._selectedIds.has(clip.id)) {
+        this._selectedIds.clear();
+        this._selectedIds.add(clip.id);
+      }
+      this._selectionPrimaryId = clip.id;
+      this._dragClip = clip;
+      this._dragOriginX = pos.x;
+      this._dragOriginStart = clip.start;
+      this._dragOriginDur = clip.duration;
       this._dragMode = this._hitResizeRight(clip, pos.x) ? 'resize-right' : this._hitResizeLeft(clip, pos.x) ? 'resize-left' : 'move';
-      this._el.dispatchEvent(new CustomEvent('timeline:select', { bubbles: true, detail: { id: clip.id } }));
+      this._dragBeforeSnapshot = JSON.stringify(this.project.toDict());
+      this._groupDragOrigins = new Map();
+      if (this._selectedIds.size > 1 && this._selectedIds.has(clip.id)) {
+        for (const id of this._selectedIds) {
+          const c = this.project.clips.find(item => item.id === id);
+          if (c) this._groupDragOrigins.set(id, { start: c.start, layer: c.layer });
+        }
+      }
+      this._el.dispatchEvent(new CustomEvent('timeline:selectionchanged', {
+        bubbles: true, detail: { selectedIds: Array.from(this._selectedIds), primaryId: clip.id }
+      }));
     } else {
+      this._selectedIds.clear();
+      this._selectionPrimaryId = null;
       this._selectedId = null; this._dragClip = null; this._panning = true; this._panOriginX = e.clientX; this._panOriginOff = this._panOffsetPx;
       this._el.style.cursor = 'grabbing'; this._el.dispatchEvent(new CustomEvent('timeline:deselect', { bubbles: true }));
     }
@@ -264,9 +315,11 @@ export class TimelineWidget {
   _onMouseMove(e) {
     const pos = this._getPos(e);
     if (this._panning && (e.buttons & (1 | 4))) {
-      const dx = e.clientX - this._panOriginX, maxPan = Math.max(0, this._pxPerSec() * this.project.duration - (this._el.width - LABEL_W));
-      this._panOffsetPx = Math.max(0, Math.min(maxPan, this._panOriginOff - dx)); this.redraw();
-      this._el.dispatchEvent(new CustomEvent('timeline:panchanged', { bubbles: true, detail: this.getPanRange() })); return;
+      const dx = e.clientX - this._panOriginX;
+      this._panOffsetPx = Math.max(0, Math.min(this._maxPan(), this._panOriginOff - dx));
+      this.redraw();
+      this._el.dispatchEvent(new CustomEvent('timeline:panchanged', { bubbles: true, detail: this.getPanRange() }));
+      return;
     }
     if (this._scrubPlayhead && (e.buttons & 1)) { this._emitSeek(Math.max(0, Math.min(this._pxToSec(pos.x), this.project.duration))); return; }
     if (!(e.buttons & 1)) { this._updateCursor(pos); return; }
@@ -276,14 +329,27 @@ export class TimelineWidget {
     if (this._dragMode === 'move') {
       let newStart = Math.max(0, this._dragOriginStart + dxSec);
       newStart = this._snapPoint(newStart);
-      this._dragClip.start = Math.round(newStart * 1000) / 1000;
+      const roundedStart = Math.round(newStart * 1000) / 1000;
+      const offset = roundedStart - this._dragOriginStart;
 
       const subH = this._subLayerH();
       const trackTop = this._trackY(this._dragClip.track);
       const rawLayer = Math.floor((pos.y - trackTop) / subH);
       const maxLayer = this._trackLayerCount(this._dragClip.track);
-      this._dragClip.layer = Math.max(0, Math.min(rawLayer, maxLayer));
+      const newLayer = Math.max(0, Math.min(maxLayer, rawLayer));
+      const layerDelta = newLayer - this._dragClip.layer;
 
+      if (this._groupDragOrigins && this._groupDragOrigins.size > 1) {
+        for (const [id, origin] of this._groupDragOrigins.entries()) {
+          const clip = this.project.clips.find(c => c.id === id);
+          if (!clip) continue;
+          clip.start = Math.max(0, Math.round((origin.start + offset) * 1000) / 1000);
+          clip.layer = Math.max(0, Math.min(this._trackLayerCount(clip.track), origin.layer + layerDelta));
+        }
+      } else {
+        this._dragClip.start = roundedStart;
+        this._dragClip.layer = newLayer;
+      }
       this._el.style.cursor = 'grabbing';
     } else if (this._dragMode === 'resize-right') {
       let newEnd = this._dragOriginStart + this._dragOriginDur + dxSec;
@@ -297,7 +363,8 @@ export class TimelineWidget {
       if (newDur >= MIN_DUR_SEC) { this._dragClip.start = Math.round(newStart * 1000) / 1000; this._dragClip.duration = Math.round(newDur * 1000) / 1000; }
       this._el.style.cursor = 'ew-resize';
     }
-    this.redraw(); this._el.dispatchEvent(new CustomEvent('timeline:clipchanged', { bubbles: true }));
+    this.redraw();
+    this._el.dispatchEvent(new CustomEvent('timeline:clipchanged', { bubbles: true }));
   }
 
   _snapPoint(t) {
@@ -315,11 +382,17 @@ export class TimelineWidget {
     }
     return best;
   }
+
   _onMouseUp(_e) {
     if (this._panning) { this._panning = false; this._el.style.cursor = 'default'; return; }
     if (this._scrubPlayhead) { this._scrubPlayhead = false; return; }
     if (this._dragClip) {
       this._reflowLayers();
+      if (this._dragBeforeSnapshot) {
+        this._el.dispatchEvent(new CustomEvent('timeline:committed', { bubbles: true, detail: { before: this._dragBeforeSnapshot } }));
+      }
+      this._dragBeforeSnapshot = null;
+      this._groupDragOrigins = null;
       this._dragClip = null; this._dragMode = ''; this._el.style.cursor = 'default';
       this.resize();
       this._el.dispatchEvent(new CustomEvent('timeline:clipchanged', { bubbles: true }));
@@ -328,24 +401,28 @@ export class TimelineWidget {
 
   _onDblClick(e) {
     const pos = this._getPos(e), clip = this._clipAt(pos.x, pos.y);
-    if (clip) { this._selectedId = clip.id; this.redraw(); this._el.dispatchEvent(new CustomEvent('timeline:select', { bubbles: true, detail: { id: clip.id } })); }
+    if (clip) {
+      this._selectedIds.clear();
+      this._selectedIds.add(clip.id);
+      this._selectionPrimaryId = clip.id;
+      this.redraw();
+      this._el.dispatchEvent(new CustomEvent('timeline:selectionchanged', {
+        bubbles: true, detail: { selectedIds: Array.from(this._selectedIds), primaryId: clip.id }
+      }));
+    }
   }
 
   _onWheel(e) {
     e.preventDefault();
     const pos = this._getPos(e), tAtCursor = this._pxToSec(pos.x);
     this._zoom = e.deltaY < 0 ? Math.min(this._zoom * 1.25, 32) : Math.max(this._zoom / 1.25, 1);
-    this._panOffsetPx = this._pxPerSec() * tAtCursor - (pos.x - LABEL_W); this._clampPan(); this.redraw();
+    this._panOffsetPx = this._pxPerSec() * tAtCursor - (pos.x - LABEL_W);
+    this._clampPan();
+    this.redraw();
   }
 
-  setPanOffset(px) {
-    const maxPan = Math.max(0, this._pxPerSec() * this.project.duration - (this._el.width - LABEL_W));
-    this._panOffsetPx = Math.max(0, Math.min(maxPan, px)); this.redraw();
-  }
-
-  getPanRange() {
-    return { offset: this._panOffsetPx, max: Math.max(0, this._pxPerSec() * this.project.duration - (this._el.width - LABEL_W)) };
-  }
+  setPanOffset(px) { this._panOffsetPx = Math.max(0, Math.min(this._maxPan(), px)); this.redraw(); }
+  getPanRange() { return { offset: this._panOffsetPx, max: this._maxPan() }; }
 
   _sliceClip(clip, px) {
     const sliceT = this._pxToSec(px);

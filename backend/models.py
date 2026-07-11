@@ -1,15 +1,12 @@
+# models.py
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional
 import uuid
 
 CLIP_TYPE_TRACK = {
-    "narration": "text",
-    "code":      "visual",
-    "graph":     "visual",
-    "audio":     "audio",
-    "image":     "visual",  
-    "video":     "visual",  
+    "narration": "text", "code": "visual", "graph": "visual", "audio": "audio",
+    "image": "visual", "video": "visual", "shape": "visual",
 }
 
 
@@ -20,16 +17,15 @@ class Clip:
     clip_type: str
     start: float
     duration: float
-
     content: str = ""
 
     x: float = 0.5
     y: float = 0.15
-    scale: float = 1.0  
-    
+    scale: float = 1.0        # kept for back-compat; no longer read for sizing
+    scale_x: float = 1.0
+    scale_y: float = 1.0
     animation: str = "typewriter"
     theme: str = "dark"
-
     code_file: str = ""
 
     terminal_prompt: str = "user@vidkit:~$"
@@ -40,8 +36,8 @@ class Clip:
 
     voice_id: str = ""
     source_start: float = 0.0
-    # Animation style for narration clips. None/omitted = static wrapped text.
-    text_anim_style: Optional[str] = None
+
+    text_anim_style: Optional[str] = None  # None = static wrapped text
     text_chars_per_second: int = 26
     text_pop_duration_ms: int = 90
     text_stagger_ms: int = 60
@@ -52,20 +48,30 @@ class Clip:
     text_slide_distance: int = 90
     text_sweep_width: int = 140
 
+    shape_kind: str = "rectangle"  # rectangle|circle|triangle|polygon|arrow|star|line
+    fill: str = "#FFFFFF"
+    stroke_color: str = "#000000"
+    stroke_width: float = 0.0
+    corner_radius: float = 0.0  # rectangle only
+    rotation: float = 0.0
+    sides: int = 5      # polygon
+    points: int = 5      # star
+    inner_radius_ratio: float = 0.5  # star
+
+    opacity: float = 1.0
+
     def end(self):
         return self.start + self.duration
 
     def label(self):
         if self.clip_type == "narration":
-            preview = self.content[:28].replace("\n", " ")
-            return f'"{preview}..."'
-
+            return f'"{self.content[:28].replace(chr(10), " ")}..."'
         if self.clip_type == "code":
             return f"code · {Path(self.code_file).name}"
-
         if self.clip_type == "graph":
             return f"graph · {self.graph_type}"
-
+        if self.clip_type == "shape":
+            return f"shape · {self.shape_kind}"
         return self.clip_type
 
 
@@ -76,15 +82,14 @@ class Project:
     canvas_h: int = 1920
     fps: int = 30
     duration: float = 30.0
+    background_color: str = "#000000"
     clips: list = field(default_factory=list)
 
     def to_dict(self):
         return {
-            "name": self.name,
-            "canvas_w": self.canvas_w,
-            "canvas_h": self.canvas_h,
-            "fps": self.fps,
-            "duration": self.duration,
+            "name": self.name, "canvas_w": self.canvas_w, "canvas_h": self.canvas_h,
+            "fps": self.fps, "duration": self.duration,
+            "background_color": self.background_color,
             "clips": [asdict(c) for c in self.clips],
         }
 
@@ -96,21 +101,15 @@ class Project:
             canvas_h=data.get("canvas_h", 1920),
             fps=data.get("fps", 30),
             duration=data.get("duration", 30.0),
+            background_color=data.get("background_color", "#000000"),
         )
-
-        for clip_data in data.get("clips", []):
-            project.clips.append(Clip(**clip_data))
-
+        project.clips = [Clip(**c) for c in data.get("clips", [])]
         return project
 
 
 def new_clip(clip_type, start=0.0, duration=5.0):
-    track = CLIP_TYPE_TRACK.get(clip_type, "visual")
-
     return Clip(
         id=str(uuid.uuid4())[:8],
-        track=track,
-        clip_type=clip_type,
-        start=start,
-        duration=duration,
+        track=CLIP_TYPE_TRACK.get(clip_type, "visual"),
+        clip_type=clip_type, start=start, duration=duration,
     )

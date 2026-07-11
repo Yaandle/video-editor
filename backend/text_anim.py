@@ -285,13 +285,18 @@ ANIM_RENDERERS = {
 
 
 def render_narration_frame(text, style, elapsed_ms, params, canvas_w, x_norm, font_size,
-                            padding_top, padding_bottom, color=(255, 255, 255)):
+                            padding_top, padding_bottom, color=(255, 255, 255), scale_x=1.0):
     """
     Renders one frame of a narration clip onto a full-width transparent RGBA
     image. Returns the PIL Image; caller positions it at (0, y*CANVAS_H - padding_top).
     """
     font = load_narration_font(font_size)
-    max_width = int(canvas_w * 0.85)
+
+    # wrap width now respects scale_x, mirroring canvas.js's baseMaxW * sx.
+    # ratio corrected from 0.85 -> 0.88 to match canvas.js exactly — this was
+    # a second, pre-existing mismatch independent of resize/scale.
+    base_max_width = int(canvas_w * 0.88)
+    max_width = int(base_max_width * scale_x)
     line_height = font_size * 1.4
 
     probe = ImageDraw.Draw(Image.new("RGBA", (1, 1)))

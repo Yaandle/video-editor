@@ -66,9 +66,26 @@
   <button class="btn btn-add" id="add-graph-btn">+ Graph</button>
   <button class="btn btn-add" id="add-audio-btn">+ Audio</button>
 
+  <div class="toolbar-shape-wrap">
+    <button class="btn btn-add" id="add-shape-btn">+ Shape ▾</button>
+    <div class="menu-dropdown" id="add-shape-menu">
+      <div class="menu-dropdown-item" data-shape="rectangle"><span>Rectangle</span></div>
+      <div class="menu-dropdown-item" data-shape="circle"><span>Circle</span></div>
+      <div class="menu-dropdown-item" data-shape="triangle"><span>Triangle</span></div>
+      <div class="menu-dropdown-item" data-shape="polygon"><span>Polygon</span></div>
+      <div class="menu-dropdown-item" data-shape="arrow"><span>Arrow</span></div>
+      <div class="menu-dropdown-item" data-shape="star"><span>Star</span></div>
+      <div class="menu-dropdown-item" data-shape="line"><span>Line</span></div>
+    </div>
+  </div>
+
   <!-- Timeline tools -->
   <div class="toolbar-sep"></div>
+  <div id="bg-color-picker" title="Canvas background color"></div>
+  <button class="btn btn-tool" id="move-btn"       title="Move tool">☚</button>
   <button class="btn btn-tool" id="razor-btn"      title="Razor tool (R)">✂</button>
+  <button class="btn btn-tool" id="undo-btn"       title="Undo (Ctrl+Z)" disabled>↶</button>
+  <button class="btn btn-tool" id="redo-btn"       title="Redo (Ctrl+Shift+Z)" disabled>↷</button>
   <button class="btn btn-zoom" id="zoom-in-btn"    title="Zoom in (+)">+</button>
   <button class="btn btn-zoom" id="zoom-out-btn"   title="Zoom out (−)">−</button>
   <button class="btn btn-zoom" id="zoom-reset-btn" title="Fit to window (0)">⊡</button>

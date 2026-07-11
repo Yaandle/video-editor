@@ -1,7 +1,9 @@
 // mediaBin.js — Media browser / upload panel
+const THUMB_FIT_STYLE = 'width:100%;height:100%;object-fit:contain;';
+
 export class MediaBin {
   constructor(containerEl) {
-    this._el    = containerEl;
+    this._el = containerEl;
     this._items = [];
     this._onAdd = null;
     this._build();
@@ -17,7 +19,6 @@ export class MediaBin {
 
   setItems(items) { this._items = items; this._renderGrid(); }
 
-  // ── DOM ──
   _build() {
     this._el.innerHTML = '';
 
@@ -31,15 +32,15 @@ export class MediaBin {
     const hint = document.createElement('span');
     hint.textContent = 'Drop files or';
     const uploadBtn = document.createElement('button');
-    uploadBtn.className   = 'btn btn-add';
+    uploadBtn.className = 'btn btn-add';
     uploadBtn.textContent = '+ Upload';
     uploadBtn.addEventListener('click', () => this._pickFiles());
     zone.appendChild(hint);
     zone.appendChild(uploadBtn);
     this._el.appendChild(zone);
 
-    zone.addEventListener('dragover',  (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
-    zone.addEventListener('dragleave', ()  => zone.classList.remove('drag-over'));
+    zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
     zone.addEventListener('drop', (e) => {
       e.preventDefault();
       zone.classList.remove('drag-over');
@@ -55,7 +56,7 @@ export class MediaBin {
     this._grid.innerHTML = '';
     if (!this._items.length) {
       const empty = document.createElement('div');
-      empty.className   = 'mediabin-empty';
+      empty.className = 'mediabin-empty';
       empty.textContent = 'No media yet';
       this._grid.appendChild(empty);
       return;
@@ -65,29 +66,28 @@ export class MediaBin {
 
   _makeCard(item) {
     const card = document.createElement('div');
-    card.className  = 'mediabin-card';
-    card.draggable  = true;
-    card.title      = item.original ?? item.name;
+    card.className = 'mediabin-card';
+    card.draggable = true;
+    card.title = item.original ?? item.name;
 
-    // Thumbnail
     const thumb = document.createElement('div');
     thumb.className = 'mediabin-thumb';
 
     if (item.kind === 'image' || item.kind === 'svg') {
       const img = document.createElement('img');
       img.src = item.url;
-      img.style.cssText = 'width:100%;height:100%;object-fit:contain;';
+      img.style.cssText = THUMB_FIT_STYLE;
       thumb.appendChild(img);
     } else if (item.kind === 'video') {
       const vid = document.createElement('video');
-      vid.src   = item.url;
+      vid.src = item.url;
       vid.muted = true;
-      vid.style.cssText = 'width:100%;height:100%;object-fit:contain;';
+      vid.style.cssText = THUMB_FIT_STYLE;
       vid.addEventListener('loadeddata', () => { vid.currentTime = 0.5; });
       thumb.appendChild(vid);
     } else {
       const icon = document.createElement('div');
-      icon.className   = 'mediabin-icon';
+      icon.className = 'mediabin-icon';
       icon.textContent = item.kind === 'audio' ? '♪' : '?';
       thumb.appendChild(icon);
     }
@@ -95,19 +95,18 @@ export class MediaBin {
     card.appendChild(thumb);
 
     const lbl = document.createElement('div');
-    lbl.className   = 'mediabin-label';
+    lbl.className = 'mediabin-label';
     const n = item.original ?? item.name;
     lbl.textContent = n.length > 18 ? n.slice(0, 15) + '…' : n;
     card.appendChild(lbl);
 
     const addBtn = document.createElement('div');
-    addBtn.className   = 'mediabin-add-btn';
+    addBtn.className = 'mediabin-add-btn';
     addBtn.textContent = '+';
-    addBtn.title       = 'Add to timeline';
+    addBtn.title = 'Add to timeline';
     addBtn.addEventListener('click', (e) => { e.stopPropagation(); this._onAdd?.(item); });
     card.appendChild(addBtn);
 
-    // Drag from bin → timeline drop zone
     card.addEventListener('dragstart', (e) => {
       e.dataTransfer.setData('application/vidkit-media', JSON.stringify(item));
     });
@@ -115,12 +114,11 @@ export class MediaBin {
     return card;
   }
 
-  // ── Upload ──
   _pickFiles() {
     const input = document.createElement('input');
-    input.type     = 'file';
+    input.type = 'file';
     input.multiple = true;
-    input.accept   = 'image/*,video/*,audio/*,.svg';
+    input.accept = 'image/*,video/*,audio/*,.svg';
     input.onchange = () => [...input.files].forEach(f => this._uploadFile(f));
     input.click();
   }
@@ -129,7 +127,7 @@ export class MediaBin {
     const form = new FormData();
     form.append('file', file);
     try {
-      const res  = await fetch('/upload', { method: 'POST', body: form });
+      const res = await fetch('/upload', { method: 'POST', body: form });
       if (!res.ok) { console.error('Upload failed:', await res.text()); return; }
       this.addItem(await res.json());
     } catch (err) {

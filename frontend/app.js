@@ -3,6 +3,7 @@ import { TimelineWidget } from './timeline.js';
 import { PropertiesPanel } from './properties.js';
 import { PlaybackController } from './playback.js';
 import { MediaBin } from './mediaBin.js';
+import { createColorPicker } from './colorPicker.js';
 
 export const TRACK_COLOURS = {
   audio:  { bg: '#1e3a5f', border: '#2563eb', text: '#93c5fd' },
@@ -13,6 +14,7 @@ export const TRACK_COLOURS = {
 export const CLIP_TYPE_TRACK = {
   narration: 'text', code: 'visual', graph: 'visual',
   audio: 'audio', image: 'visual', video: 'visual',
+  shape: 'visual',
 };
 
 export const THEMES = {
@@ -42,35 +44,52 @@ export const THEMES = {
   },
 };
 
+export const UNDO_LIMIT = 100;
+
+// Single source of truth for every Clip field + default. Constructor and
+// toDict() both derive from this — a field added here can't silently
+// vanish on save the way `layer` did (see #22 postmortem, §1.1).
+const CLIP_DEFAULTS = {
+  id: '', track: 'visual', clip_type: 'narration', start: 0.0, duration: 5.0,
+  content: '',
+  x: 0.5, y: 0.15, scale: 1.0,
+  scale_x: 1.0,
+  scale_y: 1.0,
+  animation: 'typewriter', theme: 'dark',
+  code_file: '',
+  terminal_prompt: '', terminal_title: '',
+  graph_type: 'bar', graph_data: '',
+  voice_id: '', source_start: 0.0,
+  text_anim_style: null,
+  text_chars_per_second: 26,
+  text_pop_duration_ms: 90,
+  text_stagger_ms: 60,
+  text_duration_ms: 550,
+  text_max_blur: 14,
+  text_rise_distance: 22,
+  text_line_stagger_ms: 140,
+  text_slide_distance: 90,
+  text_sweep_width: 140,
+  layer: 0,
+  // shape (#22)
+  shape_kind: 'rectangle',
+  fill: '#FFFFFF',
+  stroke_color: '#000000',
+  stroke_width: 0,
+  corner_radius: 0,
+  rotation: 0,
+  sides: 5,
+  points: 5,
+  inner_radius_ratio: 0.5,
+  opacity: 1.0,
+};
+const CLIP_FIELDS = Object.keys(CLIP_DEFAULTS);
+
 export class Clip {
   constructor(data) {
-    this.id         = data.id         ?? '';
-    this.track      = data.track      ?? 'visual';
-    this.clip_type  = data.clip_type  ?? 'narration';
-    this.start      = data.start      ?? 0.0;
-    this.duration   = data.duration   ?? 5.0;
-    this.content    = data.content    ?? '';
-    this.x          = data.x          ?? 0.5;
-    this.y          = data.y          ?? 0.15;
-    this.animation  = data.animation  ?? 'typewriter';
-    this.theme      = data.theme      ?? 'dark';
-    this.code_file  = data.code_file  ?? '';
-    this.graph_type = data.graph_type ?? 'bar';
-    this.graph_data = data.graph_data ?? '';
-    this.voice_id   = data.voice_id   ?? '';
-    this.source_start = data.source_start ?? 0.0;
-    this.text_anim_style      = data.text_anim_style ?? null;
-    this.text_chars_per_second = data.text_chars_per_second ?? 26;
-    this.text_pop_duration_ms  = data.text_pop_duration_ms ?? 90;
-    this.text_stagger_ms       = data.text_stagger_ms ?? 60;
-    this.text_duration_ms      = data.text_duration_ms ?? 550;
-    this.text_max_blur         = data.text_max_blur ?? 14;
-    this.text_rise_distance    = data.text_rise_distance ?? 22;
-    this.text_line_stagger_ms  = data.text_line_stagger_ms ?? 140;
-    this.text_slide_distance   = data.text_slide_distance ?? 90;
-    this.text_sweep_width      = data.text_sweep_width ?? 140;
-    this.scale      = data.scale      ?? 1.0;
-    this.layer      = data.layer      ?? 0;
+    for (const f of CLIP_FIELDS) {
+      this[f] = data[f] ?? CLIP_DEFAULTS[f];
+    }
   }
   end() { return this.start + this.duration; }
   label() {
@@ -83,54 +102,16 @@ export class Clip {
     if (this.clip_type === 'audio') return `audio · ${this.content.slice(0, 24).replace(/\n/g, ' ')}`;
     if (this.clip_type === 'video') return `video · ${this.code_file ? this.code_file.split(/[\\/]/).pop() : 'video'}`;
     if (this.clip_type === 'image') return `image · ${this.code_file ? this.code_file.split(/[\\/]/).pop() : 'image'}`;
+    if (this.clip_type === 'shape') return `shape · ${this.shape_kind}`;
     return this.clip_type;
   }
   toDict() {
-    return {
-      id: this.id, track: this.track, clip_type: this.clip_type,
-      start: this.start, duration: this.duration, content: this.content,
-      x: this.x, y: this.y, scale: this.scale,
-      animation: this.animation, theme: this.theme,
-      code_file: this.code_file, graph_type: this.graph_type,
-      graph_data: this.graph_data, voice_id: this.voice_id,
-      source_start: this.source_start,
-      text_anim_style: this.text_anim_style,
-      text_chars_per_second: this.text_chars_per_second,
-      text_pop_duration_ms: this.text_pop_duration_ms,
-      text_stagger_ms: this.text_stagger_ms,
-      text_duration_ms: this.text_duration_ms,
-      text_max_blur: this.text_max_blur,
-      text_rise_distance: this.text_rise_distance,
-      text_line_stagger_ms: this.text_line_stagger_ms,
-      text_slide_distance: this.text_slide_distance,
-      text_sweep_width: this.text_sweep_width,
-    };
+    const d = {};
+    for (const f of CLIP_FIELDS) d[f] = this[f];
+    return d;
   }
 }
 
-export class Project {
-  constructor(data = {}) {
-    this.name     = data.name     ?? 'untitled';
-    this.canvas_w = data.canvas_w ?? 1080;
-    this.canvas_h = data.canvas_h ?? 1920;
-    this.fps      = data.fps      ?? 30;
-    this.duration = data.duration ?? 30.0;
-    this.clips    = (data.clips ?? []).map(cd => new Clip(cd));
-  }
-  toDict() {
-    return {
-      name: this.name,
-      canvas_w: this.canvas_w,
-      canvas_h: this.canvas_h,
-      fps: this.fps,
-      duration: this.duration,
-      clips: this.clips.map(c => c.toDict()),
-    };
-  }
-  static fromDict(d) { return new Project(d); }
-}
-
-function genId() { return Math.random().toString(36).slice(2, 10); }
 
 export function newClip(clip_type, start = 0.0, duration = 5.0) {
   const track = CLIP_TYPE_TRACK[clip_type] ?? 'visual';
@@ -141,13 +122,64 @@ export function newClip(clip_type, start = 0.0, duration = 5.0) {
     audio:     { content: 'Narration goes here', y: 0.0 },
     image:     { theme: 'dark', y: 0.5 },
     video:     { y: 0.5 },
+    shape:     { y: 0.5 },
   };
   return new Clip({ id: genId(), track, clip_type, start, duration, ...(defaults[clip_type] ?? {}) });
 }
 
-export function deepCloneClip(clip) {
-  return new Clip(JSON.parse(JSON.stringify(clip.toDict())));
+
+
+export class Project {
+  constructor(data = {}) {
+    this.name             = data.name             ?? 'untitled';
+    this.canvas_w         = data.canvas_w          ?? 1080;
+    this.canvas_h         = data.canvas_h          ?? 1920;
+    this.fps               = data.fps              ?? 30;
+    this.duration          = data.duration         ?? 30.0;
+    this.background_color  = data.background_color ?? '#000000';
+    this.clips             = (data.clips ?? []).map(cd => new Clip(cd));
+  }
+  toDict() {
+    return {
+      name: this.name,
+      canvas_w: this.canvas_w,
+      canvas_h: this.canvas_h,
+      fps: this.fps,
+      duration: this.duration,
+      background_color: this.background_color,
+      clips: this.clips.map(c => c.toDict()),
+    };
+  }
+  static fromDict(d) { return new Project(d); }
 }
+
+function genId() { return Math.random().toString(36).slice(2, 10); }
+function deepCloneClip(clip) {
+  return new Clip(clip.toDict());
+}
+
+
+
+
+function computeWaveformPeaks(audioBuffer, numBuckets = 600) {
+  const channelData = audioBuffer.getChannelData(0);
+  const samplesPerBucket = Math.max(1, Math.floor(channelData.length / numBuckets));
+  const mins = new Float32Array(numBuckets);
+  const maxes = new Float32Array(numBuckets);
+  for (let i = 0; i < numBuckets; i++) {
+    const start = i * samplesPerBucket;
+    const end = Math.min(start + samplesPerBucket, channelData.length);
+    let min = 1.0, max = -1.0;
+    for (let j = start; j < end; j++) {
+      const v = channelData[j];
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    mins[i] = min; maxes[i] = max;
+  }
+  return { mins, maxes, duration: audioBuffer.duration };
+}
+
 
 class WSClient {
   constructor(url, onMessage) {
@@ -177,6 +209,11 @@ class App {
     this._dirty       = false;
     this._clipboard   = null;
     this._selectedId  = null;
+    this._selectedIds = new Set();
+    this._selectionPrimaryId = null;
+    this._undoStack   = [];
+    this._redoStack   = [];
+    this._pendingPropsBefore = null;
 
     this.canvas   = null;
     this.timeline = null;
@@ -194,9 +231,33 @@ class App {
   }
 
   _init() {
-    this.canvas   = new CanvasWidget(document.getElementById('canvas-widget'), this.project);
+    this.canvas   = new CanvasWidget(document.getElementById('canvas-widget'), this.project, this._selectedIds);
     this.timeline = new TimelineWidget(document.getElementById('timeline-canvas'), this.project);
     this.props    = new PropertiesPanel(document.getElementById('props-inner'));
+
+    this._bgColorDragBefore = null;
+    this._bgColorPicker = createColorPicker(document.getElementById('bg-color-picker'), {
+      initialColor: this.project.background_color,
+      onChange: (hex) => {
+        if (this._bgColorDragBefore === null) {
+          this._bgColorDragBefore = JSON.stringify(this.project.toDict());
+        }
+        this.project.background_color = hex;
+        this.canvas.redraw();
+      },
+      onCommit: (hex) => {
+        const before = this._bgColorDragBefore ?? JSON.stringify(this.project.toDict());
+
+        this.project.background_color = hex;
+        this._dirty = true;
+        this._syncProjectToWidgets();
+        this._refreshAll();
+        this._updateStatus(`Background: ${hex}`);
+
+        this._commit(before);
+        this._bgColorDragBefore = null;
+      },
+    });
 
     this._wireTimelineResize();
     this._wireTimelinePan();
@@ -216,6 +277,7 @@ class App {
     this._wireKeyboard();
 
     this._resizeAll();
+    this._updateUndoRedoButtons();
     window.addEventListener('resize', () => this._resizeAll());
   }
 
@@ -267,12 +329,32 @@ class App {
     // Ensure audio element for audio clips
     if (c.clip_type === 'audio') this._ensureAudioForClip(c);
 
-    this._selectedId = c.id;
-    this.timeline.setSelectedId(c.id);
-    this.canvas.setSelectedId(c.id);
+    this._selectedIds.clear();
+    this._selectedIds.add(c.id);
+    this._selectionPrimaryId = c.id;
+    this.timeline.setSelectedIds(this._selectedIds);
+    this.canvas.setSelectedIds(this._selectedIds);
     this.props.showClip(c);
     this.canvas.redraw();
     this._updateStatus(`Added: ${item.original ?? item.name}`);
+  }
+
+  _addShapeClip(shape_kind) {
+    const track = 'visual';
+    const start = Math.max(this.playback.playhead, this._nextStartForTrack(track));
+    const c = newClip('shape', start);
+    c.shape_kind = shape_kind;
+    this.project.clips.push(c);
+    this._dirty = true;
+    this._refreshAll();
+    this._selectedIds.clear();
+    this._selectedIds.add(c.id);
+    this._selectionPrimaryId = c.id;
+    this.timeline.setSelectedIds(this._selectedIds);
+    this.canvas.setSelectedIds(this._selectedIds);
+    this.props.showClip(c);
+    this.canvas.redraw();
+    this._updateStatus(`Added: ${c.label()}`);
   }
 
   _probeAudioDuration(url) {
@@ -316,6 +398,7 @@ class App {
       }, { once: true });
       a.addEventListener('error', () => { this._audioLoaded[clip.id] = false; }, { once: true });
       this._audioEls[clip.id] = a;
+      this._loadWaveform(clip);
     } catch (err) {
       console.warn('Failed to create audio element for clip', err);
     }
@@ -330,6 +413,25 @@ class App {
     delete this._audioEls[clipId];
     if (this._audioTimers[clipId]) { clearTimeout(this._audioTimers[clipId]); delete this._audioTimers[clipId]; }
     delete this._audioLoaded[clipId];
+  }
+
+  async _loadWaveform(clip) {
+    if (!clip || clip.clip_type !== 'audio' || !clip.code_file) return;
+    if (clip._peaks || clip._peaksLoading) return;
+    clip._peaksLoading = true;
+    try {
+      const resp = await fetch(clip.code_file);
+      const arrayBuf = await resp.arrayBuffer();
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!this._waveformCtx) this._waveformCtx = new AudioCtx();
+      const audioBuffer = await this._waveformCtx.decodeAudioData(arrayBuf);
+      clip._peaks = computeWaveformPeaks(audioBuffer);
+    } catch (err) {
+      console.warn('Waveform decode failed for clip', clip.id, err);
+    } finally {
+      clip._peaksLoading = false;
+      this.timeline.redraw();
+    }
   }
 
   _clearAudioTimers() {
@@ -419,6 +521,17 @@ class App {
     }
   }
 
+  _enforceAudioBounds(t) {
+    for (const clip of this.project.clips) {
+      if (clip.clip_type !== 'audio' || !clip.code_file) continue;
+      const el = this._audioEls[clip.id];
+      if (!el || el.paused) continue;
+      if (t < clip.start || t >= clip.end()) {
+        try { el.pause(); } catch {}
+      }
+    }
+  }
+
   _initAudioForProject() {
     for (const clip of this.project.clips) {
       if (clip.clip_type === 'audio') this._ensureAudioForClip(clip);
@@ -461,34 +574,25 @@ class App {
   _wireEvents() {
     document.getElementById('canvas-widget').addEventListener('canvas:clipresized', (e) => {
       const clip = this._findClip(e.detail.id);
-      if (clip && this._selectedId === e.detail.id) this.props.showClip(clip);
+      if (clip && this._selectionPrimaryId === e.detail.id) this.props.showClip(clip);
       this._dirty = true;
       this._updateStatus();
     });
-    document.getElementById('canvas-widget').addEventListener('canvas:select', (e) => {
-      this._selectedId = e.detail.id;
-      this.timeline.setSelectedId(e.detail.id);
-      const clip = this._findClip(e.detail.id);
-      if (clip) this.props.showClip(clip);
-      this._updateStatus();
+    document.getElementById('canvas-widget').addEventListener('canvas:selectionchanged', (e) => {
+      this._setSelection(e.detail.selectedIds ?? e.detail.ids, e.detail.primaryId);
     });
     document.getElementById('canvas-widget').addEventListener('canvas:deselect', () => {
-      this._selectedId = null;
-      this.timeline.setSelectedId(null);
-      this.props.clear();
+      this._setSelection([], null);
     });
 
-    document.getElementById('timeline-canvas').addEventListener('timeline:select', (e) => {
-      this._selectedId = e.detail.id;
-      this.canvas.setSelectedId(e.detail.id);
-      const clip = this._findClip(e.detail.id);
-      if (clip) this.props.showClip(clip);
+    document.getElementById('timeline-canvas').addEventListener('timeline:clipchanged', () => {
+      this._dirty = true;
+      this.canvas.redraw();
       this._updateStatus();
+      this._resyncAudioOnSeek(this.playback.playhead);
     });
     document.getElementById('timeline-canvas').addEventListener('timeline:deselect', () => {
-      this._selectedId = null;
-      this.canvas.setSelectedId(null);
-      this.props.clear();
+      this._setSelection([], null);
     });
     document.getElementById('timeline-canvas').addEventListener('timeline:playheadmoved', (e) => {
       this.playback.seek(e.detail.t);
@@ -499,6 +603,7 @@ class App {
       this._updateStatus();
     });
     document.getElementById('timeline-canvas').addEventListener('timeline:slice', (e) => {
+      const before = JSON.stringify(this.project.toDict());
       const { sourceId, rightStart, rightDur, rightSourceStart } = e.detail;
       const source = this._findClip(sourceId);
       if (!source) return;
@@ -512,6 +617,7 @@ class App {
       this._dirty = true;
       this._refreshAll();
       this._updateStatus(`Sliced at ${rightStart.toFixed(2)}s`);
+      this._commit(before);
     });
 
     document.getElementById('props-inner').addEventListener('props:changed', () => {
@@ -521,6 +627,24 @@ class App {
       this._updateStatus();
     });
     document.getElementById('props-inner').addEventListener('props:snap', () => this._openSnapModal());
+    document.getElementById('props-inner').addEventListener('props:editstart', () => {
+      if (!this._pendingPropsBefore) {
+        this._pendingPropsBefore = JSON.stringify(this.project.toDict());
+      }
+    });
+    document.getElementById('props-inner').addEventListener('props:commit', () => {
+      if (this._pendingPropsBefore) {
+        this._commit(this._pendingPropsBefore);
+        this._pendingPropsBefore = null;
+      }
+    });
+
+    document.getElementById('canvas-widget').addEventListener('canvas:committed', (e) => {
+      this._commit(e.detail.before);
+    });
+    document.getElementById('timeline-canvas').addEventListener('timeline:committed', (e) => {
+      this._commit(e.detail.before);
+    });
 
     document.addEventListener('click', (e) => {
       if (!e.target.closest('.menu-item')) {
@@ -603,7 +727,7 @@ class App {
     document.querySelectorAll('.menu-dropdown-item[data-action]').forEach(item => {
       item.addEventListener('click', () => {
         document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('open'));
-        this._dispatchAction(item.dataset.action);
+        this._dispatchAction(item.dataset.action, item.dataset.shape ?? null);
       });
     });
   }
@@ -618,12 +742,23 @@ class App {
     document.getElementById('render-btn').addEventListener('click', () => this._render());
 
     const razorBtn = document.getElementById('razor-btn');
+    const moveBtn = document.getElementById('move-btn');
     if (razorBtn) {
       razorBtn.addEventListener('click', () => {
         const next = this.timeline.tool === 'razor' ? 'select' : 'razor';
         this.timeline.setTool(next);
         razorBtn.classList.toggle('active', next === 'razor');
         this._updateStatus(next === 'razor' ? 'Razor tool — click a clip to slice' : 'Select tool');
+      });
+    }
+    if (moveBtn) {
+      moveBtn.addEventListener('click', () => {
+        // Move tool toggles a 'move' state; currently treated as select on timeline
+        const currently = this.timeline.tool === 'move';
+        const next = currently ? 'select' : 'move';
+        this.timeline.setTool(next);
+        moveBtn.classList.toggle('active', next === 'move');
+        this._updateStatus(next === 'move' ? 'Move tool — drag to move selected clips' : 'Select tool');
       });
     }
 
@@ -634,8 +769,33 @@ class App {
     if (zoomOutBtn)   zoomOutBtn.addEventListener('click',   () => this.timeline.zoomOut());
     if (zoomResetBtn) zoomResetBtn.addEventListener('click', () => this.timeline.zoomReset());
 
+    const undoBtn = document.getElementById('undo-btn');
+    const redoBtn = document.getElementById('redo-btn');
+    if (undoBtn) undoBtn.addEventListener('click', () => this._undo());
+    if (redoBtn) redoBtn.addEventListener('click', () => this._redo());
+
     const canvasResizeBtn = document.getElementById('canvas-resize-btn');
     if (canvasResizeBtn) canvasResizeBtn.addEventListener('click', () => this._openCanvasResizeModal());
+
+    const shapeBtn  = document.getElementById('add-shape-btn');
+    const shapeMenu = document.getElementById('add-shape-menu');
+    if (shapeBtn && shapeMenu) {
+      shapeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        shapeMenu.classList.toggle('open');
+      });
+      shapeMenu.querySelectorAll('[data-shape]').forEach(item => {
+        item.addEventListener('click', () => {
+          shapeMenu.classList.remove('open');
+          this._addShapeClip(item.dataset.shape);
+        });
+      });
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('#add-shape-btn') && !e.target.closest('#add-shape-menu')) {
+          shapeMenu.classList.remove('open');
+        }
+      });
+    }
   }
 
   _wireKeyboard() {
@@ -678,14 +838,14 @@ class App {
           case 'v': if (!inInput) { e.preventDefault(); this._pasteClip(); } break;
           case 'z':
             e.preventDefault();
-            this._updateStatus(e.shiftKey ? 'Redo not yet implemented' : 'Undo not yet implemented');
+            if (e.shiftKey) this._redo(); else this._undo();
             break;
         }
       }
     });
   }
 
-  _dispatchAction(action) {
+  _dispatchAction(action, payload = null) {
     switch (action) {
       case 'new':           this._newProject(); break;
       case 'open':          this._openProject(); break;
@@ -699,6 +859,7 @@ class App {
       case 'add-graph':     this._addClip('graph'); break;
       case 'add-audio':     this._addClip('audio'); break;
       case 'add-image':     this._addClip('image'); break;
+      case 'add-shape':     this._addShapeClip(payload ?? 'rectangle'); break;
       case 'delete':        this._deleteSelected(); break;
       case 'duplicate':     this._duplicateSelected(); break;
       case 'cut':           this._cutSelected(); break;
@@ -732,10 +893,8 @@ class App {
     const ms   = Math.floor((t % 1) * 1000);
     document.getElementById('timecode-lbl').textContent =
       `${mins}:${String(secs).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
-    // Explicit seeks (dragging the scrubber, Home/End, frame-step) resync audio
-    // immediately regardless of play state. Ordinary RAF playback ticks only
-    // resync while paused, so we don't fight the audio element's own clock
-    // during normal playback.
+
+    this._enforceAudioBounds(t);
     if (isSeek || !this.playback.playing) this._resyncAudioOnSeek(t);
   }
 
@@ -755,21 +914,22 @@ class App {
   }
 
   _deleteSelected() {
-    if (!this._selectedId) return;
-    const clipToDelete = this._findClip(this._selectedId);
+    if (!this._selectionPrimaryId) return;
+    const before = JSON.stringify(this.project.toDict());
+    const clipToDelete = this._findClip(this._selectionPrimaryId);
     if (clipToDelete && clipToDelete.clip_type === 'audio') this._removeAudioForClip(clipToDelete.id);
-    this.project.clips = this.project.clips.filter(c => c.id !== this._selectedId);
-    this._selectedId = null;
-    this.timeline.setSelectedId(null);
-    this.canvas.setSelectedId(null);
+    this.project.clips = this.project.clips.filter(c => c.id !== this._selectionPrimaryId);
+    this._setSelection([]);
     this.props.clear();
     this._dirty = true;
     this._refreshAll();
+    this._commit(before);
   }
 
   _duplicateSelected() {
-    if (!this._selectedId) return;
-    const clip = this._findClip(this._selectedId);
+    if (!this._selectionPrimaryId) return;
+    const before = JSON.stringify(this.project.toDict());
+    const clip = this._findClip(this._selectionPrimaryId ?? '');
     if (!clip) return;
     const dup = deepCloneClip(clip);
     dup.id    = genId();
@@ -778,10 +938,11 @@ class App {
     if (dup.clip_type === 'audio') this._ensureAudioForClip(dup);
     this._dirty = true;
     this._refreshAll();
+    this._commit(before);
   }
 
   _copySelected() {
-    const clip = this._findClip(this._selectedId ?? '');
+    const clip = this._findClip(this._selectionPrimaryId ?? '');
     if (clip) {
       this._clipboard = deepCloneClip(clip);
       this._updateStatus(`Copied: ${clip.label()}`);
@@ -789,7 +950,7 @@ class App {
   }
 
   _cutSelected() {
-    const clip = this._findClip(this._selectedId ?? '');
+    const clip = this._findClip(this._selectionPrimaryId ?? '');
     if (clip) {
       this._clipboard = deepCloneClip(clip);
       this._deleteSelected();
@@ -799,18 +960,17 @@ class App {
 
   _pasteClip() {
     if (!this._clipboard) { this._updateStatus('Nothing to paste'); return; }
+    const before = JSON.stringify(this.project.toDict());
     const pasted = deepCloneClip(this._clipboard);
     pasted.id    = genId();
     pasted.start = this.playback.playhead;
     this.project.clips.push(pasted);
     if (pasted.clip_type === 'audio') this._ensureAudioForClip(pasted);
     this._dirty = true;
-    this._selectedId = pasted.id;
-    this.timeline.setSelectedId(pasted.id);
-    this.canvas.setSelectedId(pasted.id);
-    this.props.showClip(pasted);
+    this._setSelection([pasted.id], pasted.id);
     this._refreshAll();
     this._updateStatus(`Pasted: ${pasted.label()}`);
+    this._commit(before);
   }
 
   _newProject() {
@@ -818,7 +978,7 @@ class App {
       this.project = new Project();
       this._projectPath = null;
       this._dirty = false;
-      this._selectedId = null;
+      this._selectionPrimaryId = null;
       this._syncProjectToWidgets();
       this.props.clear();
       this._refreshAll();
@@ -840,7 +1000,7 @@ class App {
             this.project = Project.fromDict(data);
             this._projectPath = file.name;
             this._dirty = false;
-            this._selectedId = null;
+            this._selectionPrimaryId = null;
             this._syncProjectToWidgets();
             this.props.clear();
             this._refreshAll();
@@ -894,7 +1054,7 @@ class App {
       btn.className = 'snap-option';
       btn.textContent = label;
       btn.addEventListener('click', () => {
-        const clip = this._findClip(this._selectedId ?? '');
+        const clip = this._findClip(this._selectionPrimaryId ?? '');
         if (clip) {
           clip.x = sx;
           clip.y = sy;
@@ -961,6 +1121,7 @@ class App {
         const w = parseInt(overlay.querySelector('#canvas-w-input').value, 10);
         const h = parseInt(overlay.querySelector('#canvas-h-input').value, 10);
         if (!w || !h || w < 1 || h < 1) return;
+        const before = JSON.stringify(this.project.toDict());
         this.project.canvas_w = w;
         this.project.canvas_h = h;
         this._dirty = true;
@@ -968,6 +1129,7 @@ class App {
         this._refreshAll();
         this._updateStatus(`Canvas: ${w}×${h}`);
         overlay.classList.remove('open');
+        this._commit(before);
       });
 
       overlay.querySelector('#canvas-resize-cancel').addEventListener('click', () => {
@@ -998,6 +1160,80 @@ class App {
   }
 
   _findClip(id) { return this.project.clips.find(c => c.id === id) ?? null; }
+
+  _setSelection(ids, primaryId = null, options = { broadcast: true }) {
+    const incoming = ids instanceof Set ? Array.from(ids) : Array.isArray(ids) ? ids : [];
+    this._selectedIds.clear();
+    for (const id of incoming) this._selectedIds.add(id);
+    this._selectionPrimaryId = primaryId ?? (incoming.length ? incoming[0] : null);
+    this.canvas.setSelectedIds(this._selectedIds);
+    this.timeline.setSelectedIds(this._selectedIds);
+    if (this._selectedIds.size === 1) {
+      const clip = this._findClip(this._selectionPrimaryId);
+      if (clip) {
+        this.props.showClip(clip);
+      } else {
+        this.props.clear();
+      }
+    } else {
+      this.props.clear();
+    }
+    this._updateStatus();
+    if (options.broadcast) this._sendSelectionUpdate();
+  }
+
+  _sendSelectionUpdate() {
+    if (!this._ws) return;
+    this._ws.send({ type: 'selection', data: [...this._selectedIds] });
+  }
+
+  _commit(beforeJSON) {
+    const afterJSON = JSON.stringify(this.project.toDict());
+    if (beforeJSON === afterJSON) return;
+    this._undoStack.push({ before: beforeJSON, after: afterJSON });
+    if (this._undoStack.length > UNDO_LIMIT) this._undoStack.shift();
+    this._redoStack.length = 0;
+    this._updateUndoRedoButtons();
+  }
+
+  _undo() {
+    if (!this._undoStack.length) { this._updateStatus('Nothing to undo'); return; }
+    const entry = this._undoStack.pop();
+    this._redoStack.push(entry);
+    if (this._redoStack.length > UNDO_LIMIT) this._redoStack.shift();
+    this._applySnapshot(entry.before);
+    this._updateUndoRedoButtons();
+    this._updateStatus('Undo');
+  }
+
+  _redo() {
+    if (!this._redoStack.length) { this._updateStatus('Nothing to redo'); return; }
+    const entry = this._redoStack.pop();
+    this._undoStack.push(entry);
+    if (this._undoStack.length > UNDO_LIMIT) this._undoStack.shift();
+    this._applySnapshot(entry.after);
+    this._updateUndoRedoButtons();
+    this._updateStatus('Redo');
+  }
+
+  _applySnapshot(json) {
+    this.project = Project.fromDict(JSON.parse(json));
+    this._selectionPrimaryId = null;
+    this.timeline.setSelectedId(null);
+    this.canvas.setSelectedId(null);
+    this.props.clear();
+    this._syncProjectToWidgets();
+    this._initAudioForProject();
+    this._dirty = true;
+    this._refreshAll();
+  }
+
+  _updateUndoRedoButtons() {
+    const undoBtn = document.getElementById('undo-btn');
+    const redoBtn = document.getElementById('redo-btn');
+    if (undoBtn) undoBtn.disabled = this._undoStack.length === 0;
+    if (redoBtn) redoBtn.disabled = this._redoStack.length === 0;
+  }
 
   _syncProjectToWidgets() {
     this.canvas.setProject(this.project);

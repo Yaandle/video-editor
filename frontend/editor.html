@@ -90,6 +90,9 @@
   <button class="btn btn-zoom" id="zoom-out-btn"   title="Zoom out (−)">−</button>
   <button class="btn btn-zoom" id="zoom-reset-btn" title="Fit to window (0)">⊡</button>
 
+  <html lang="en" data-theme="dark"></html>
+  <button class="btn btn-tool" id="theme-toggle" title="Toggle light/dark theme">☾</button>
+
   <!-- Render + WS indicator -->
   <div class="toolbar-sep"></div>
   <button class="btn btn-render" id="render-btn">⬤  Render</button>
@@ -172,6 +175,15 @@
   document.getElementById('mediabin-upload-btn')
     .addEventListener('click', () => document.getElementById('media-upload').click());
 </script>
+
+
+<script>
+  (function() {
+    var saved = localStorage.getItem('vidkit-theme');
+    if (saved) document.documentElement.setAttribute('data-theme', saved);
+  })();
+</script>
+
 
 <script type="module" src="app.js"></script>
 </body>

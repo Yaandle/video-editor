@@ -1,0 +1,105 @@
+app.js:194:      this.ws.onopen    = () => { document.getElementById('ws-dot').className = 'connected'; };
+app.js:195:      this.ws.onclose   = () => { document.getElementById('ws-dot').className = ''; setTimeout(() => this._connect(), 3000); };
+app.js:196:      this.ws.onerror   = () => { document.getElementById('ws-dot').className = ''; };
+app.js:234:    this.canvas   = new CanvasWidget(document.getElementById('canvas-widget'), this.project, this._selectedIds);
+app.js:235:    this.timeline = new TimelineWidget(document.getElementById('timeline-canvas'), this.project);
+app.js:236:    this.props    = new PropertiesPanel(document.getElementById('props-inner'));
+app.js:239:    this._bgColorPicker = createColorPicker(document.getElementById('bg-color-picker'), {
+app.js:267:    this.mediaBin = new MediaBin(document.getElementById('media-bin'));
+app.js:554:    const toast = document.getElementById('render-toast');
+app.js:557:      toast.classList.remove('done', 'error');
+app.js:560:      toast.classList.add('done');
+app.js:561:      toast.classList.remove('error');
+app.js:563:      setTimeout(() => toast.classList.remove('visible', 'done'), 6000);
+app.js:565:      toast.classList.add('error');
+app.js:566:      toast.classList.remove('done');
+app.js:568:      setTimeout(() => toast.classList.remove('visible', 'error'), 8000);
+app.js:575:    document.getElementById('canvas-widget').addEventListener('canvas:clipresized', (e) => {
+app.js:581:    document.getElementById('canvas-widget').addEventListener('canvas:selectionchanged', (e) => {
+app.js:584:    document.getElementById('canvas-widget').addEventListener('canvas:deselect', () => {
+app.js:588:    document.getElementById('timeline-canvas').addEventListener('timeline:clipchanged', () => {
+app.js:594:    document.getElementById('timeline-canvas').addEventListener('timeline:deselect', () => {
+app.js:597:    document.getElementById('timeline-canvas').addEventListener('timeline:playheadmoved', (e) => {
+app.js:600:    document.getElementById('timeline-canvas').addEventListener('timeline:clipchanged', () => {
+app.js:605:    document.getElementById('timeline-canvas').addEventListener('timeline:slice', (e) => {
+app.js:623:    document.getElementById('props-inner').addEventListener('props:changed', () => {
+app.js:629:    document.getElementById('props-inner').addEventListener('props:snap', () => this._openSnapModal());
+app.js:630:    document.getElementById('props-inner').addEventListener('props:editstart', () => {
+app.js:635:    document.getElementById('props-inner').addEventListener('props:commit', () => {
+app.js:642:    document.getElementById('canvas-widget').addEventListener('canvas:committed', (e) => {
+app.js:645:    document.getElementById('timeline-canvas').addEventListener('timeline:committed', (e) => {
+app.js:651:        document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('open'));
+app.js:655:    document.getElementById('snap-modal-cancel').addEventListener('click', () => {
+app.js:656:      document.getElementById('snap-modal-overlay').classList.remove('open');
+app.js:658:    document.getElementById('snap-modal-overlay').addEventListener('click', (e) => {
+app.js:659:      if (e.target === document.getElementById('snap-modal-overlay'))
+app.js:660:        document.getElementById('snap-modal-overlay').classList.remove('open');
+app.js:663:    const mediaInput = document.getElementById('media-upload');
+app.js:680:    const handle = document.getElementById('timeline-resize-handle');
+app.js:687:      startH = document.getElementById('timeline-container').clientHeight;
+app.js:688:      handle.classList.add('active');
+app.js:702:      handle.classList.remove('active');
+app.js:708:    const slider = document.getElementById('timeline-pan-slider');
+app.js:711:    document.getElementById('timeline-canvas').addEventListener('timeline:panchanged', (e) => {
+app.js:718:    document.querySelectorAll('.menu-item[data-menu]').forEach(item => {
+app.js:721:        const wasOpen = item.classList.contains('open');
+app.js:722:        document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('open'));
+app.js:723:        if (!wasOpen) item.classList.add('open');
+app.js:727:    document.querySelectorAll('.menu-dropdown-item[data-action]').forEach(item => {
+app.js:729:        document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('open'));
+app.js:738:    document.getElementById('play-btn').addEventListener('click', () => this._togglePlay());
+app.js:739:    document.getElementById('stop-btn').addEventListener('click', () => this._stop());
+app.js:740:    document.getElementById('add-narration-btn').addEventListener('click', () => this._addClip('narration'));
+app.js:741:    document.getElementById('add-code-btn').addEventListener('click', () => this._addClip('code'));
+app.js:742:    document.getElementById('add-graph-btn').addEventListener('click', () => this._addClip('graph'));
+app.js:743:    document.getElementById('add-audio-btn').addEventListener('click', () => this._addClip('audio'));
+app.js:744:    document.getElementById('render-btn').addEventListener('click', () => this._render());
+app.js:745:      const themeToggleBtn = document.getElementById('theme-toggle');
+app.js:759:    const razorBtn = document.getElementById('razor-btn');
+app.js:760:    const moveBtn = document.getElementById('move-btn');
+app.js:765:        razorBtn.classList.toggle('active', next === 'razor');
+app.js:775:        moveBtn.classList.toggle('active', next === 'move');
+app.js:780:    const zoomInBtn    = document.getElementById('zoom-in-btn');
+app.js:781:    const zoomOutBtn   = document.getElementById('zoom-out-btn');
+app.js:782:    const zoomResetBtn = document.getElementById('zoom-reset-btn');
+app.js:787:    const undoBtn = document.getElementById('undo-btn');
+app.js:788:    const redoBtn = document.getElementById('redo-btn');
+app.js:792:    const canvasResizeBtn = document.getElementById('canvas-resize-btn');
+app.js:795:    const shapeBtn  = document.getElementById('add-shape-btn');
+app.js:796:    const shapeMenu = document.getElementById('add-shape-menu');
+app.js:800:        shapeMenu.classList.toggle('open');
+app.js:802:      shapeMenu.querySelectorAll('[data-shape]').forEach(item => {
+app.js:804:          shapeMenu.classList.remove('open');
+app.js:810:          shapeMenu.classList.remove('open');
+app.js:827:        const razorBtn = document.getElementById('razor-btn');
+app.js:828:        if (razorBtn) razorBtn.classList.toggle('active', next === 'razor');
+app.js:888:    document.getElementById('play-btn').textContent = this.playback.playing ? '⏸  Pause' : '▶  Play';
+app.js:899:    document.getElementById('play-btn').textContent = '▶  Play';
+app.js:909:    document.getElementById('timecode-lbl').textContent =
+app.js:1065:    const container = document.getElementById('snap-options');
+app.js:1082:        document.getElementById('snap-modal-overlay').classList.remove('open');
+app.js:1086:    document.getElementById('snap-modal-overlay').classList.add('open');
+app.js:1097:    let overlay = document.getElementById('canvas-resize-overlay');
+app.js:1123:      const presetContainer = overlay.querySelector('#canvas-resize-presets');
+app.js:1129:          overlay.querySelector('#canvas-w-input').value = p.w;
+app.js:1130:          overlay.querySelector('#canvas-h-input').value = p.h;
+app.js:1135:      overlay.querySelector('#canvas-resize-apply').addEventListener('click', () => {
+app.js:1136:        const w = parseInt(overlay.querySelector('#canvas-w-input').value, 10);
+app.js:1137:        const h = parseInt(overlay.querySelector('#canvas-h-input').value, 10);
+app.js:1146:        overlay.classList.remove('open');
+app.js:1150:      overlay.querySelector('#canvas-resize-cancel').addEventListener('click', () => {
+app.js:1151:        overlay.classList.remove('open');
+app.js:1154:        if (e.target === overlay) overlay.classList.remove('open');
+app.js:1158:    overlay.querySelector('#canvas-w-input').value = this.project.canvas_w;
+app.js:1159:    overlay.querySelector('#canvas-h-input').value = this.project.canvas_h;
+app.js:1160:    overlay.classList.add('open');
+app.js:1165:    document.getElementById('confirm-overlay').classList.add('open');
+app.js:1166:    const yes = document.getElementById('confirm-yes');
+app.js:1167:    const no  = document.getElementById('confirm-no');
+app.js:1169:      document.getElementById('confirm-overlay').classList.remove('open');
+app.js:1173:    document.getElementById('confirm-yes').addEventListener('click', () => { cleanup(); onYes(); }, { once: true });
+app.js:1174:    document.getElementById('confirm-no').addEventListener('click', () => { cleanup(); }, { once: true });
+app.js:1247:    const undoBtn = document.getElementById('undo-btn');
+app.js:1248:    const redoBtn = document.getElementById('redo-btn');
+app.js:1275:    document.getElementById('project-name-lbl').textContent = this.project.name + dirty;
+app.js:1282:    document.getElementById('status-text').textContent = '  ' + base + (msg ? `  |  ${msg}` : '');

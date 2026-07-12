@@ -732,6 +732,8 @@ class App {
     });
   }
 
+
+
   _wireToolbar() {
     document.getElementById('play-btn').addEventListener('click', () => this._togglePlay());
     document.getElementById('stop-btn').addEventListener('click', () => this._stop());
@@ -740,7 +742,20 @@ class App {
     document.getElementById('add-graph-btn').addEventListener('click', () => this._addClip('graph'));
     document.getElementById('add-audio-btn').addEventListener('click', () => this._addClip('audio'));
     document.getElementById('render-btn').addEventListener('click', () => this._render());
+      const themeToggleBtn = document.getElementById('theme-toggle');
+      const setThemeIcon = (theme) => {
+        themeToggleBtn.textContent = theme === 'light' ? '☀' : '☾';
+      };
+      setThemeIcon(document.documentElement.getAttribute('data-theme') || 'dark');
 
+      themeToggleBtn.addEventListener('click', () => {
+      const html = document.documentElement;
+      const next = html.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+      html.setAttribute('data-theme', next);
+      localStorage.setItem('vidkit-theme', next);
+      setThemeIcon(next);
+      this.timeline.redraw();
+    });
     const razorBtn = document.getElementById('razor-btn');
     const moveBtn = document.getElementById('move-btn');
     if (razorBtn) {

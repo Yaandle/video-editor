@@ -111,10 +111,33 @@ export class TimelineWidget {
     };
   }
 
+  _themeColors() {
+    const cs = getComputedStyle(document.documentElement);
+    const v = (name) => cs.getPropertyValue(name).trim();
+    return {
+      bg: v('--timeline-bg'),
+      rulerBg: v('--timeline-ruler-bg'),
+      tick: v('--timeline-tick'),
+      border: v('--timeline-border'),
+      labelBg: v('--timeline-label-bg'),
+      labelBorder: v('--timeline-label-border'),
+      divider: v('--timeline-divider'),
+      text: v('--timeline-text'),
+      clipBg: v('--timeline-clip-bg'),
+      clipBorder: v('--timeline-clip-border'),
+      clipText: v('--timeline-clip-text'),
+      overlay: v('--timeline-overlay'),
+      overlayStrong: v('--timeline-overlay-strong'),
+      waveform: v('--timeline-waveform'),
+      playhead: v('--accent-red-dot'),
+    };
+  }
+
   _paint() {
     const ctx = this._ctx, W = this._el.width, H = this._el.height;
+    this._colors = this._themeColors();
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#121212';
+    ctx.fillStyle = this._colors.bg;
     ctx.fillRect(0, 0, W, H);
     ctx.save(); ctx.beginPath(); ctx.rect(LABEL_W, 0, W - LABEL_W, H); ctx.clip(); this._drawRuler(ctx, W); ctx.restore();
     ctx.save(); ctx.beginPath(); ctx.rect(LABEL_W, HEADER_H, W - LABEL_W, H - HEADER_H); ctx.clip();
@@ -126,8 +149,9 @@ export class TimelineWidget {
   }
 
   _drawRuler(ctx, W) {
-    ctx.fillStyle = '#1c1c1c'; ctx.fillRect(LABEL_W, 0, W - LABEL_W, HEADER_H);
-    ctx.strokeStyle = '#505050'; ctx.lineWidth = 1;
+    const c = this._colors;
+    ctx.fillStyle = c.rulerBg; ctx.fillRect(LABEL_W, 0, W - LABEL_W, HEADER_H);
+    ctx.strokeStyle = c.border; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(LABEL_W, HEADER_H - 0.5); ctx.lineTo(W, HEADER_H - 0.5); ctx.stroke();
     ctx.font = '8px Consolas, monospace';
     const pps = this._pxPerSec();
@@ -137,9 +161,9 @@ export class TimelineWidget {
     while (t <= this.project.duration + interval) {
       const x = this._secToPx(t);
       if (x > W) break;
-      ctx.strokeStyle = '#464646'; ctx.lineWidth = 1;
+      ctx.strokeStyle = c.tick; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(x + 0.5, HEADER_H - 8); ctx.lineTo(x + 0.5, HEADER_H); ctx.stroke();
-      ctx.fillStyle = '#787878';
+      ctx.fillStyle = c.text;
       const mins = Math.floor(t / 60), secs = Math.floor(t % 60);
       const label = mins ? `${mins}:${String(secs).padStart(2, '0')}` : `${secs}s`;
       ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
@@ -149,32 +173,34 @@ export class TimelineWidget {
   }
 
   _drawTrackLabels(ctx, W) {
+    const c = this._colors;
     ctx.font = '8px "Segoe UI", system-ui, sans-serif';
     for (const track of TRACKS) {
       const y = this._trackY(track);
       const trackH = this._trackHeightPx(track);
-      ctx.fillStyle = '#161616'; ctx.fillRect(0, y, LABEL_W, trackH);
-      ctx.strokeStyle = '#373737'; ctx.lineWidth = 1;
+      ctx.fillStyle = c.labelBg; ctx.fillRect(0, y, LABEL_W, trackH);
+      ctx.strokeStyle = c.labelBorder; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(0, y + trackH - 0.5); ctx.lineTo(W, y + trackH - 0.5); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(LABEL_W + 0.5, y); ctx.lineTo(LABEL_W + 0.5, y + trackH); ctx.stroke();
       const col = TRACK_COLOURS[track] ?? {};
-      ctx.fillStyle = col.text ?? '#b4b4b4'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = col.text ?? c.text; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(track.toUpperCase(), LABEL_W / 2, y + trackH / 2);
     }
   }
 
   _drawClips(ctx) {
+    const c = this._colors;
     ctx.font = '8px Consolas, monospace';
     for (const clip of this.project.clips) {
       const cr = this._clipRect(clip), col = TRACK_COLOURS[clip.track] ?? {}, isSelected = this._selectedIds.has(clip.id);
-      ctx.fillStyle = col.bg ?? '#282828'; ctx.fillRect(cr.x, cr.y, cr.w, cr.h);
-      ctx.strokeStyle = isSelected ? (col.border ?? '#888') : (col.border ? col.border + '99' : '#505050');
+      ctx.fillStyle = col.bg ?? c.clipBg; ctx.fillRect(cr.x, cr.y, cr.w, cr.h);
+      ctx.strokeStyle = isSelected ? (col.border ?? c.text) : (col.border ? col.border + '99' : c.clipBorder);
       ctx.lineWidth = isSelected ? 1.5 : 0.5;
       ctx.strokeRect(cr.x + 0.5, cr.y + 0.5, cr.w - 1, cr.h - 1);
       if (clip.clip_type === 'audio') this._drawWaveform(ctx, clip, cr);
-      ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(cr.x, cr.y, RESIZE_ZONE, cr.h);
-      ctx.fillStyle = 'rgba(255,255,255,0.09)'; ctx.fillRect(cr.x + cr.w - RESIZE_ZONE, cr.y, RESIZE_ZONE, cr.h);
-      ctx.fillStyle = col.text ?? '#c8c8c8'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = c.overlay; ctx.fillRect(cr.x, cr.y, RESIZE_ZONE, cr.h);
+      ctx.fillStyle = c.overlayStrong; ctx.fillRect(cr.x + cr.w - RESIZE_ZONE, cr.y, RESIZE_ZONE, cr.h);
+      ctx.fillStyle = col.text ?? c.clipText; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       ctx.save(); ctx.beginPath(); ctx.rect(cr.x + RESIZE_ZONE, cr.y + 1, Math.max(0, cr.w - RESIZE_ZONE * 2), cr.h - 2); ctx.clip();
       ctx.fillText(clip.label(), cr.x + RESIZE_ZONE + 2, cr.y + cr.h / 2); ctx.restore();
     }
@@ -192,7 +218,7 @@ export class TimelineWidget {
     const visibleBuckets = Math.max(1, endBucket - startBucket);
     const midY = cr.y + cr.h / 2;
     const ampScale = (cr.h / 2) - 3;
-    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.strokeStyle = this._colors.waveform;
     ctx.lineWidth = 1;
     ctx.beginPath();
     for (let px = 0; px < cr.w; px++) {
@@ -207,7 +233,7 @@ export class TimelineWidget {
   }
 
   _drawLayerDividers(ctx) {
-    ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 0.5;
+    ctx.strokeStyle = this._colors.divider; ctx.lineWidth = 0.5;
     for (const track of TRACKS) {
       const count = this._trackLayerCount(track);
       if (count <= 1) continue;
@@ -222,10 +248,10 @@ export class TimelineWidget {
   _drawPlayhead(ctx, H) {
     const x = this._secToPx(this.playhead);
     ctx.save(); ctx.beginPath(); ctx.rect(LABEL_W, 0, this._el.width - LABEL_W, H); ctx.clip();
-    ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1.5;
+    ctx.strokeStyle = this._colors.playhead; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, H); ctx.stroke(); ctx.restore();
     if (x >= LABEL_W) {
-      ctx.fillStyle = '#ef4444';
+      ctx.fillStyle = this._colors.playhead;
       ctx.beginPath(); ctx.moveTo(x - 6, 0); ctx.lineTo(x + 6, 0); ctx.lineTo(x, 10); ctx.closePath(); ctx.fill();
     }
   }

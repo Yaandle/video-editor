@@ -630,24 +630,23 @@ class App {
     document.getElementById('canvas-widget').addEventListener('canvas:deselect', () => {
       this._setSelection([], null);
     });
-
+    document.getElementById('timeline-canvas').addEventListener('timeline:selectionchanged', (e) => {
+      this._setSelection(e.detail.selectedIds ?? e.detail.ids, e.detail.primaryId);
+    });
     document.getElementById('timeline-canvas').addEventListener('timeline:clipchanged', () => {
       this._dirty = true;
       this.canvas.redraw();
       this._updateStatus();
       this._resyncAudioOnSeek(this.playback.playhead);
     });
+    
     document.getElementById('timeline-canvas').addEventListener('timeline:deselect', () => {
       this._setSelection([], null);
     });
     document.getElementById('timeline-canvas').addEventListener('timeline:playheadmoved', (e) => {
       this.playback.seek(e.detail.t);
     });
-    document.getElementById('timeline-canvas').addEventListener('timeline:clipchanged', () => {
-      this._dirty = true;
-      this.canvas.redraw();
-      this._updateStatus();
-    });
+
     document.getElementById('timeline-canvas').addEventListener('timeline:slice', (e) => {
       const before = JSON.stringify(this.project.toDict());
       const { sourceId, rightStart, rightDur, rightSourceStart } = e.detail;
@@ -994,11 +993,13 @@ class App {
   }
 
   _deleteSelected() {
-    if (!this._selectionPrimaryId) return;
+    if (this._selectedIds.size === 0) return;
     const before = JSON.stringify(this.project.toDict());
-    const clipToDelete = this._findClip(this._selectionPrimaryId);
-    if (clipToDelete && clipToDelete.clip_type === 'audio') this._removeAudioForClip(clipToDelete.id);
-    this.project.clips = this.project.clips.filter(c => c.id !== this._selectionPrimaryId);
+    for (const id of this._selectedIds) {
+      const clip = this._findClip(id);
+      if (clip && clip.clip_type === 'audio') this._removeAudioForClip(clip.id);
+    }
+    this.project.clips = this.project.clips.filter(c => !this._selectedIds.has(c.id));
     this._setSelection([]);
     this.props.clear();
     this._dirty = true;
@@ -1310,11 +1311,10 @@ class App {
     this.timeline.setSelectedIds(this._selectedIds);
     if (this._selectedIds.size === 1) {
       const clip = this._findClip(this._selectionPrimaryId);
-      if (clip) {
-        this.props.showClip(clip);
-      } else {
-        this.props.clear();
-      }
+      if (clip) this.props.showClip(clip); else this.props.clear();
+    } else if (this._selectedIds.size > 1) {
+      const clips = [...this._selectedIds].map(id => this._findClip(id)).filter(Boolean);
+      this.props.showMultiple(clips);
     } else {
       this.props.clear();
     }

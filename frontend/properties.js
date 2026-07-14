@@ -5,11 +5,15 @@ import { createColorPicker } from './colorPicker.js';
 export class PropertiesPanel {
   constructor(containerEl) {
     this._container = containerEl;
-    this._clip = null;
+    this._clips = []; 
     this._updating = false;
     this._dirtySinceCommit = false;
     this._container.addEventListener('change', () => this._commitNow());
   }
+
+  showClip(clip) { this._clip = clip; this._clips = clip ? [clip] : []; this._rebuild(); }
+  showMultiple(clips) { this._clips = clips ?? []; this._clip = this._clips[0] ?? null; this._rebuild(); } 
+  clear() { this._clip = null; this._clips = []; this._rebuild(); }
 
   _commitNow() {
     if (this._dirtySinceCommit) {
@@ -18,8 +22,7 @@ export class PropertiesPanel {
     }
   }
 
-  showClip(clip) { this._clip = clip; this._rebuild(); }
-  clear() { this._clip = null; this._rebuild(); }
+
 
   _rebuild() {
     this._container.innerHTML = '';
@@ -37,11 +40,29 @@ export class PropertiesPanel {
     this._addLabelRow('type', c.clip_type);
     this._addLabelRow('track', c.track);
 
+    const multi = this._clips.length > 1;
+    if (multi) {
+      this._addLabelRow('selected', `${this._clips.length} clips`);
+    } else {
+      this._addLabelRow('type', c.clip_type);
+      this._addLabelRow('track', c.track);
+    }
+
     this._addSection('Timing');
-    const startSpin = this._addSpin('Start (s)', c.start, 0, 3600, 0.1, 2);
     const durSpin = this._addSpin('Duration (s)', c.duration, 0.1, 600, 0.1, 2);
-    this._onInputAndChange(startSpin, v => this._set('start', v));
     this._onInputAndChange(durSpin, v => this._set('duration', v));
+    if (!multi) {
+      const startSpin = this._addSpin('Start (s)', c.start, 0, 3600, 0.1, 2);
+      this._onInputAndChange(startSpin, v => this._set('start', v));
+    }
+
+
+    const sameType = this._clips.every(cl => cl.clip_type === c.clip_type);
+    if (!multi || sameType) {
+      switch (c.clip_type) { /* unchanged */ }
+    }
+    
+
 
     if (c.track === 'text' || c.track === 'visual') {
       this._addSection('Canvas position');
@@ -231,12 +252,12 @@ export class PropertiesPanel {
   }
 
   _set(attr, value) {
-    if (this._clip && !this._updating) {
+    if (this._clips.length && !this._updating) {
       if (!this._dirtySinceCommit) {
         this._dirtySinceCommit = true;
         this._container.dispatchEvent(new CustomEvent('props:editstart', { bubbles: true }));
       }
-      this._clip[attr] = value;
+      for (const clip of this._clips) clip[attr] = value;
       this._container.dispatchEvent(new CustomEvent('props:changed', { bubbles: true }));
     }
   }

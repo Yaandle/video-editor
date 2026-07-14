@@ -136,4 +136,3 @@ Backend mutates project state and broadcasts full state to all clients:
 | `Ctrl+R` | Render |
 
 
-Testin branch set rule

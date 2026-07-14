@@ -59,16 +59,22 @@ class VideoEditorServer:
 
         elif action == "save_project":
             self.project = Project.from_dict(msg.get("data", {}))
-            filename = msg.get("filename") or f"{self.project.name}.vkit"
+            filename = os.path.basename(msg.get("filename") or f"{self.project.name}.vkit")
+            if not filename.endswith(".vkit"):
+                filename += ".vkit"
             path = os.path.join(PROJECTS_DIR, filename)
             ProjectStore.save(self.project, path)
-            await websocket.send_text(json.dumps({"type": "save_status", "status": "done", "path": path}))
+            await websocket.send_text(json.dumps({"type": "save_status", "status": "done", "path": path, "filename": filename}))
 
         elif action == "load_project":
-            filename = msg.get("filename") or f"{self.project.name}.vkit"
+            filename = os.path.basename(msg.get("filename") or f"{self.project.name}.vkit")
             path = os.path.join(PROJECTS_DIR, filename)
+            if not os.path.isfile(path):
+                await websocket.send_text(json.dumps({"type": "save_status", "status": "error", "message": f"Project not found: {filename}"}))
+                return
             self.project = ProjectStore.load(path)
-            await self.broadcast({"type": "project", "data": self.project.to_dict()})
+            await self.broadcast({"type": "project", "data": self.project.to_dict(), "filename": filename})
+            
 
         elif action == "render":
             project_data = msg.get("data") or self.project.to_dict()
@@ -332,7 +338,18 @@ class VideoEditorServer:
         try:
             while True:
                 raw = await websocket.receive_text()
-                await self.handle_message(websocket, raw)
+                try:
+                    await self.handle_message(websocket, raw)
+                except Exception as exc:
+                    import traceback
+                    print(f"[ws] error handling message: {exc}", file=sys.stderr)
+                    print(traceback.format_exc(), file=sys.stderr)
+                    try:
+                        await websocket.send_text(json.dumps({
+                            "type": "save_status", "status": "error", "message": str(exc),
+                        }))
+                    except Exception:
+                        pass
         except Exception:
             pass
         finally:

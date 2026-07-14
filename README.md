@@ -23,7 +23,7 @@ A video compositor with a configurable canvas (9:16, 16:9, 1:1, or custom), tool
 
 ## Install
 
-​```bash
+​```cmd
 python -m venv videoeditor_venv
 
 # Windows

@@ -756,12 +756,13 @@ export class CanvasWidget {
       if (Math.abs(el.currentTime - target) > 0.15) el.currentTime = target;
     }
 
-    const scale = clip.scale ?? 1.0;
+    const scaleX = clip.scale_x ?? clip.scale ?? 1.0;
+    const scaleY = clip.scale_y ?? clip.scale ?? 1.0;
     const maxW = (r.w * 0.88) | 0, maxH = (r.h * 0.80) | 0;
     const fitScale = Math.min(maxW / natW, maxH / natH, 1);
-    const dw = (natW * fitScale * scale) | 0, dh = (natH * fitScale * scale) | 0;
+    const dw = (natW * fitScale * scaleX) | 0, dh = (natH * fitScale * scaleY) | 0;
     const dx = pt.x - (dw >> 1), dy = pt.y - (dh >> 1);
-
+    
     ctx.drawImage(el, dx, dy, dw, dh);
     this._drawnRects.set(clip.id, { x: dx, y: dy, w: dw, h: dh });
   }

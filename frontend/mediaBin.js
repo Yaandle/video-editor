@@ -107,12 +107,31 @@ export class MediaBin {
     addBtn.addEventListener('click', (e) => { e.stopPropagation(); this._onAdd?.(item); });
     card.appendChild(addBtn);
 
+    const delBtn = document.createElement('div');
+    delBtn.className = 'mediabin-del-btn';
+    delBtn.textContent = '✕';
+    delBtn.title = 'Remove from media bin';
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._removeItem(item);
+    });
+    card.appendChild(delBtn);
+
     card.addEventListener('dragstart', (e) => {
       e.dataTransfer.setData('application/vidkit-media', JSON.stringify(item));
     });
 
     return card;
   }
+
+
+  _removeItem(item) {
+    this._items = this._items.filter(i => i.url !== item.url);
+    this._renderGrid();
+    this._onDelete?.(item);
+  }
+
+  onDeleteClip(fn) { this._onDelete = fn; }
 
   _pickFiles() {
     const input = document.createElement('input');

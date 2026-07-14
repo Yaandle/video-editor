@@ -1,8 +1,8 @@
 # main.py
 import os, hashlib, time, uvicorn
-from fastapi import FastAPI, WebSocket, UploadFile, File
+from fastapi import FastAPI, HTTPException, WebSocket, UploadFile, File
 from fastapi.staticfiles import StaticFiles
-from websocket_server import VideoEditorServer
+from websocket_server import PROJECTS_DIR, VideoEditorServer
 
 try:
     from moviepy.editor import VideoFileClip, AudioFileClip
@@ -77,6 +77,25 @@ async def upload(file: UploadFile = File(...)):
         "kind": kind, "mime": file.content_type, "size": len(content),
         **({"metadata": metadata} if metadata else {}),
     }
+
+@app.delete("/media/{name}")
+async def delete_media(name: str):
+    # prevent path traversal — only allow deleting exactly what's in UPLOAD_DIR
+    safe_name = os.path.basename(name)
+    fpath = os.path.join(UPLOAD_DIR, safe_name)
+    if not os.path.isfile(fpath):
+        raise HTTPException(status_code=404, detail="File not found")
+    os.remove(fpath)
+    return {"status": "deleted", "name": safe_name}
+
+@app.get("/projects-list")
+async def list_projects():
+    items = []
+    for fname in os.listdir(PROJECTS_DIR):
+        if fname.endswith(".vkit"):
+            items.append({"name": fname})
+    items.sort(key=lambda i: i["name"].lower())
+    return items
 
 
 @app.get("/media-list")

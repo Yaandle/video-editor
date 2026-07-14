@@ -266,6 +266,39 @@ class App {
 
     this.mediaBin = new MediaBin(document.getElementById('media-bin'));
     this.mediaBin.onAddClip((item) => this._addMediaClip(item));
+    this.mediaBin.onDeleteClip(async (item) => {
+      
+      const filename = item.url.split('/').pop();
+
+      const inUse = this.project.clips.some(c => c.code_file === item.url);
+
+      if (inUse) {
+        const ok = confirm(
+          `"${item.original ?? item.name}" is used by one or more clips on the timeline. ` +
+          `Deleting it will break those clips on next render. Delete anyway?`
+        );
+        if (!ok) {
+          // re-add to the bin's list since MediaBin already removed it optimistically
+          this.mediaBin.addItem(item);
+          return;
+        }
+      }
+
+      try {
+        const res = await fetch(`/media/${filename}`, { method: 'DELETE' });
+        if (!res.ok) {
+          console.error('Delete failed:', await res.text());
+          this.mediaBin.addItem(item); // roll back UI state
+          this._updateStatus(`Failed to delete ${item.original ?? item.name}`);
+          return;
+        }
+        this._updateStatus(`Deleted ${item.original ?? item.name}`);
+      } catch (err) {
+        console.error('Delete error:', err);
+        this.mediaBin.addItem(item);
+      }
+    });
+    
     this._loadMediaBin();
 
     const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -275,6 +308,7 @@ class App {
     this._wireMenu();
     this._wireToolbar();
     this._wireKeyboard();
+    this._wireProjectName()
 
     this._resizeAll();
     this._updateUndoRedoButtons();
@@ -541,13 +575,25 @@ class App {
   _onWsMessage(msg) {
     if (msg.type === 'project') {
       this.project = Project.fromDict(msg.data);
+      if (msg.filename) this._projectPath = msg.filename;
       this._syncProjectToWidgets();
-      // initialize audio elements for any audio clips in the incoming project
       this._initAudioForProject();
       this._refreshAll();
+      this._dirty = false;
+      this._updateTitle();
       return;
     }
     if (msg.type === 'render_status') this._showRenderToast(msg.status, msg.message ?? '');
+    if (msg.type === 'save_status') {
+      if (msg.status === 'done') {
+        this._dirty = false;
+        if (msg.filename) this._projectPath = msg.filename;
+        this._updateTitle();
+        this._updateStatus(`Saved: ${msg.filename ?? msg.path}`);
+      } else if (msg.status === 'error') {
+        this._updateStatus(`Save/load failed: ${msg.message}`);
+      }
+    }
   }
 
   _showRenderToast(status, message) {
@@ -674,6 +720,25 @@ class App {
         mediaInput.value = '';
       });
     }
+  }
+
+  _wireProjectName() {
+    const input = document.getElementById('project-name-lbl');
+    input.addEventListener('change', () => {
+      const newName = input.value.trim();
+      if (!newName || newName === this.project.name) {
+        input.value = this.project.name; // revert if empty/unchanged
+        return;
+      }
+      this.project.name = newName;
+      this._dirty = true;
+      this._updateTitle();
+      this._updateStatus(`Renamed to ${newName}`);
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') input.blur();
+      if (e.key === 'Escape') { input.value = this.project.name; input.blur(); }
+    });
   }
 
   _wireTimelineResize() {
@@ -819,7 +884,7 @@ class App {
       const inInput = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT');
 
       if (e.code === 'Space' && !inInput) { e.preventDefault(); this._togglePlay(); return; }
-      if (e.key === 'Delete' && !inInput) { e.preventDefault(); this._deleteSelected(); return; }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !inInput) { e.preventDefault(); this._deleteSelected(); return; }
       if (e.key.toLowerCase() === 'r' && !inInput && !e.ctrlKey) {
         e.preventDefault();
         const next = this.timeline.tool === 'razor' ? 'select' : 'razor';
@@ -1000,56 +1065,116 @@ class App {
     });
   }
 
-  _openProject() {
-    this._confirmDiscard(() => {
-      const input = document.createElement('input');
-      input.type   = 'file';
-      input.accept = '.vkit,.json';
-      input.onchange = () => {
-        const file = input.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          try {
-            const data = JSON.parse(e.target.result);
-            this.project = Project.fromDict(data);
-            this._projectPath = file.name;
-            this._dirty = false;
-            this._selectionPrimaryId = null;
-            this._syncProjectToWidgets();
-            this.props.clear();
-            this._refreshAll();
-          } catch (err) {
-            alert('Open failed: ' + err.message);
-          }
-        };
-        reader.readAsText(file);
-      };
-      input.click();
-    });
-  }
+  async _openProject() {
+      let projects;
+      try {
+        const res = await fetch('/projects-list');
+        projects = await res.json();
+      } catch (err) {
+        this._updateStatus('Could not load project list');
+        return;
+      }
+      this._showOpenProjectModal(projects);
+    }
+
+    _showOpenProjectModal(projects) {
+      let overlay = document.getElementById('open-project-overlay');
+      if (overlay) overlay.remove();
+
+      overlay = document.createElement('div');
+      overlay.id = 'open-project-overlay';
+      overlay.className = 'modal-overlay open';
+
+      const box = document.createElement('div');
+      box.className = 'modal-box';
+      box.style.minWidth = '220px';
+
+      const heading = document.createElement('h3');
+      heading.textContent = 'Open Project';
+      heading.style.marginBottom = '10px';
+      box.appendChild(heading);
+
+      if (!projects.length) {
+        const empty = document.createElement('div');
+        empty.className = 'props-placeholder';
+        empty.textContent = 'No saved projects yet';
+        box.appendChild(empty);
+      }
+
+      projects.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = 'snap-option';
+        btn.textContent = p.name;
+        btn.addEventListener('click', () => {
+          this._wsSend({ type: 'load_project', filename: p.name });
+          overlay.remove();
+        });
+        box.appendChild(btn);
+      });
+
+      const cancel = document.createElement('span');
+      cancel.id = 'snap-modal-cancel';
+      cancel.textContent = 'Cancel';
+      cancel.addEventListener('click', () => overlay.remove());
+      box.appendChild(cancel);
+
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    }
 
   _saveProject() { this._writeProject(this._projectPath ?? (this.project.name + '.vkit')); }
-  _saveAs()      { this._writeProject(this.project.name + '.vkit'); }
+  async _saveAs() {
+    const json = JSON.stringify(this.project.toDict(), null, 2);
+    const suggestedName = (this.project.name.endsWith('.vkit') || this.project.name.endsWith('.json'))
+      ? this.project.name
+      : this.project.name + '.vkit';
+
+    if (window.showSaveFilePicker) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName,
+          types: [{
+            description: 'vidkit project',
+            accept: { 'application/json': ['.vkit', '.json'] },
+          }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(json);
+        await writable.close();
+        this._updateStatus(`Exported: ${handle.name}`);
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          console.error('Save As failed:', err);
+          this._updateStatus('Save As failed');
+        }
+        // AbortError = user cancelled the picker, do nothing
+      }
+      return;
+    }
+
+    // Fallback for browsers without File System Access API (Firefox, Safari)
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = suggestedName;
+    a.click();
+    URL.revokeObjectURL(url);
+    this._updateStatus(`Exported: ${suggestedName}`);
+  }
 
   _writeProject(filename) {
-    try {
-      const json = JSON.stringify(this.project.toDict(), null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      a.href     = url;
-      a.download = filename.endsWith('.vkit') || filename.endsWith('.json') ? filename : filename + '.vkit';
-      a.click();
-      URL.revokeObjectURL(url);
-      this._dirty = false;
-      this._projectPath = a.download;
-      this._updateTitle();
-      this._updateStatus(`Saved: ${a.download}`);
-      this._wsSend({ type: 'save_project', data: this.project.toDict() });
-    } catch (err) {
-      alert('Save failed: ' + err.message);
-    }
+    const name = filename.endsWith('.vkit') || filename.endsWith('.json')
+      ? filename
+      : filename + '.vkit';
+
+    this._wsSend({
+      type: 'save_project',
+      data: this.project.toDict(),
+      filename: name,
+    });
+    // _dirty/_projectPath/_updateTitle now happen on save_status confirmation, not here
   }
 
   _render() { this._wsSend({ type: 'render', data: this.project.toDict() }); }
@@ -1272,7 +1397,10 @@ class App {
   _updateTitle() {
     const dirty = this._dirty ? ' *' : '';
     document.title = `vidkit — ${this.project.name}${dirty}`;
-    document.getElementById('project-name-lbl').textContent = this.project.name + dirty;
+    const nameInput = document.getElementById('project-name-lbl');
+    if (document.activeElement !== nameInput) {
+      nameInput.value = this.project.name;
+    }
   }
 
   _updateStatus(msg = '') {

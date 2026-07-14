@@ -1,5 +1,6 @@
 # models.py
 from dataclasses import dataclass, field, asdict
+import dataclasses
 from pathlib import Path
 from typing import Optional
 import uuid
@@ -18,6 +19,7 @@ class Clip:
     start: float
     duration: float
     content: str = ""
+    layer: int = 0  
 
     x: float = 0.5
     y: float = 0.15
@@ -103,7 +105,15 @@ class Project:
             duration=data.get("duration", 30.0),
             background_color=data.get("background_color", "#000000"),
         )
-        project.clips = [Clip(**c) for c in data.get("clips", [])]
+        known_fields = {f.name for f in dataclasses.fields(Clip)}
+        clips = []
+        for c in data.get("clips", []):
+            unknown = set(c.keys()) - known_fields
+            if unknown:
+                print(f"[Project.from_dict] WARNING: dropping unknown clip fields: {unknown}")
+            filtered = {k: v for k, v in c.items() if k in known_fields}
+            clips.append(Clip(**filtered))
+        project.clips = clips
         return project
 
 

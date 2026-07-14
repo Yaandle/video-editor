@@ -7,6 +7,9 @@ const MIN_CLIP_PX = 8;
 const RESIZE_ZONE = 10;
 const MIN_DUR_SEC = 0.1;
 const MIN_TRACK_H = 38;
+const MAX_TIMELINE_H = 260
+
+
 
 export class TimelineWidget {
   constructor(canvasEl, project) {
@@ -33,6 +36,10 @@ export class TimelineWidget {
     this._panOriginOff = 0;
     this._bindEvents();
     this.resize();
+    this._insertedTopLayer = false;
+    this._scrollY = 0;
+    this._contentH = 0;
+
   }
 
   setProject(p) { this.project = p; this._reflowLayers(); this.redraw(); }
@@ -52,15 +59,22 @@ export class TimelineWidget {
   resize(manualH = null) {
     const container = this._el.parentElement;
     const layerTotal = TRACKS.reduce((s, t) => s + this._trackLayerCount(t), 0);
-    const minH = HEADER_H + layerTotal * MIN_TRACK_H + 4;
-    const totalH = manualH != null ? Math.max(minH, manualH) : (this._manualH ?? minH);
-    if (manualH != null) this._manualH = totalH;
+    this._contentH = HEADER_H + layerTotal * MIN_TRACK_H + 4;
+    const desired = manualH != null ? manualH : (this._manualH ?? this._contentH);
+    if (manualH != null) this._manualH = manualH;
+    const totalH = Math.min(desired, MAX_TIMELINE_H);
     container.style.height = totalH + 'px';
     this._el.width = container.clientWidth;
     this._el.height = totalH;
     this._el.style.height = totalH + 'px';
+    this._clampScrollY();
     this.redraw();
   }
+
+  // scroll helpers
+  _maxScrollY() { return Math.max(0, this._contentH - this._el.height); }
+  _clampScrollY() { this._scrollY = Math.max(0, Math.min(this._maxScrollY(), this._scrollY)); }
+  _toContentY(py) { return py + this._scrollY; }
 
   _pxPerSec() { return ((this._el.width - LABEL_W) * this._zoom) / Math.max(this.project.duration, 1.0); }
   _secToPx(t) { return LABEL_W + (t * this._pxPerSec()) - this._panOffsetPx | 0; }
@@ -71,10 +85,7 @@ export class TimelineWidget {
     return Math.max(1, max);
   }
 
-  _subLayerH() {
-    const totalLayers = TRACKS.reduce((s, t) => s + this._trackLayerCount(t), 0);
-    return Math.max(MIN_TRACK_H, (this._el.height - HEADER_H - 4) / totalLayers);
-  }
+  _subLayerH() { return MIN_TRACK_H; }
 
   _trackHeightPx(track) { return this._trackLayerCount(track) * this._subLayerH(); }
 
@@ -139,12 +150,22 @@ export class TimelineWidget {
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = this._colors.bg;
     ctx.fillRect(0, 0, W, H);
-    ctx.save(); ctx.beginPath(); ctx.rect(LABEL_W, 0, W - LABEL_W, H); ctx.clip(); this._drawRuler(ctx, W); ctx.restore();
-    ctx.save(); ctx.beginPath(); ctx.rect(LABEL_W, HEADER_H, W - LABEL_W, H - HEADER_H); ctx.clip();
+
+    ctx.save(); ctx.beginPath(); ctx.rect(LABEL_W, 0, W - LABEL_W, HEADER_H); ctx.clip();
+    this._drawRuler(ctx, W);
+    ctx.restore();
+
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, HEADER_H, W, H - HEADER_H); ctx.clip(); // viewport, screen space
+    ctx.translate(0, -this._scrollY);
+    this._drawTrackLabels(ctx, W);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(LABEL_W, 0, W - LABEL_W, this._contentH); ctx.clip();
     this._drawClips(ctx);
     this._drawLayerDividers(ctx);
     ctx.restore();
-    this._drawTrackLabels(ctx, W);
+    ctx.restore();
+
     this._drawPlayhead(ctx, H);
   }
 
@@ -268,9 +289,10 @@ export class TimelineWidget {
   }
 
   _clipAt(px, py) {
+    const cy = this._toContentY(py);
     for (let i = this.project.clips.length - 1; i >= 0; i--) {
       const clip = this.project.clips[i], cr = this._clipRect(clip);
-      if (px >= cr.x && px <= cr.x + cr.w && py >= cr.y && py <= cr.y + cr.h) return clip;
+      if (px >= cr.x && px <= cr.x + cr.w && cy >= cr.y && cy <= cr.y + cr.h) return clip;
     }
     return null;
   }
@@ -360,8 +382,28 @@ export class TimelineWidget {
 
       const subH = this._subLayerH();
       const trackTop = this._trackY(this._dragClip.track);
-      const rawLayer = Math.floor((pos.y - trackTop) / subH);
-      const maxLayer = this._trackLayerCount(this._dragClip.track);
+      const contentY = this._toContentY(pos.y); // see Issue 2 - needed once scroll exists
+      const rawLayer = Math.floor((contentY - trackTop) / subH);
+
+      const draggedIds = (this._groupDragOrigins && this._groupDragOrigins.size > 1)
+        ? new Set(this._groupDragOrigins.keys())
+        : new Set([this._dragClip.id]);
+
+      if (rawLayer < 0) {
+        if (!this._insertedTopLayer) {
+          for (const c of this.project.clips) {
+            if (c.track === this._dragClip.track && !draggedIds.has(c.id)) c.layer = (c.layer ?? 0) + 1;
+          }
+          this._insertedTopLayer = true;
+        }
+      } else if (this._insertedTopLayer) {
+        for (const c of this.project.clips) {
+          if (c.track === this._dragClip.track && !draggedIds.has(c.id)) c.layer = Math.max(0, (c.layer ?? 0) - 1);
+        }
+        this._insertedTopLayer = false;
+      }
+
+      const maxLayer = this._trackLayerCount(this._dragClip.track); // recompute — shift changed it
       const newLayer = Math.max(0, Math.min(maxLayer, rawLayer));
       const layerDelta = newLayer - this._dragClip.layer;
 
@@ -419,6 +461,8 @@ export class TimelineWidget {
       }
       this._dragBeforeSnapshot = null;
       this._groupDragOrigins = null;
+      this._insertedTopLayer = false;
+
       this._dragClip = null; this._dragMode = ''; this._el.style.cursor = 'default';
       this.resize();
       this._el.dispatchEvent(new CustomEvent('timeline:clipchanged', { bubbles: true }));
@@ -440,6 +484,12 @@ export class TimelineWidget {
 
   _onWheel(e) {
     e.preventDefault();
+    if (!e.shiftKey) {
+      this._scrollY += e.deltaY;
+      this._clampScrollY();
+      this.redraw();
+      return;
+    }
     const pos = this._getPos(e), tAtCursor = this._pxToSec(pos.x);
     this._zoom = e.deltaY < 0 ? Math.min(this._zoom * 1.25, 32) : Math.max(this._zoom / 1.25, 1);
     this._panOffsetPx = this._pxPerSec() * tAtCursor - (pos.x - LABEL_W);

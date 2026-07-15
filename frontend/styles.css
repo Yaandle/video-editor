@@ -679,6 +679,22 @@ body {
   margin-bottom: 8px;
   background: linear-gradient(90deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
 }
+
+.vk-cp-eyedropper-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--vk-border-color, #ccc);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--vk-text-color);
+}
+
+
 .vk-cp-hue::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 16px; height: 16px;

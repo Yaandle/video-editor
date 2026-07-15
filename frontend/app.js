@@ -822,24 +822,17 @@ class App {
     });
     const razorBtn = document.getElementById('razor-btn');
     const moveBtn = document.getElementById('move-btn');
-    if (razorBtn) {
-      razorBtn.addEventListener('click', () => {
-        const next = this.timeline.tool === 'razor' ? 'select' : 'razor';
-        this.timeline.setTool(next);
-        razorBtn.classList.toggle('active', next === 'razor');
-        this._updateStatus(next === 'razor' ? 'Razor tool — click a clip to slice' : 'Select tool');
-      });
-    }
     if (moveBtn) {
       moveBtn.addEventListener('click', () => {
-        // Move tool toggles a 'move' state; currently treated as select on timeline
         const currently = this.timeline.tool === 'move';
         const next = currently ? 'select' : 'move';
-        this.timeline.setTool(next);
+        this.timeline.tool = next;
+        this.canvas.setTool(next);   // <-- added
         moveBtn.classList.toggle('active', next === 'move');
         this._updateStatus(next === 'move' ? 'Move tool — drag to move selected clips' : 'Select tool');
       });
     }
+
 
     const zoomInBtn    = document.getElementById('zoom-in-btn');
     const zoomOutBtn   = document.getElementById('zoom-out-btn');

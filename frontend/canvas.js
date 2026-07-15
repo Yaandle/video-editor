@@ -71,6 +71,20 @@ const Easing = {
   }
 };
 
+function resolvePos(clip, playhead) {
+  if (!clip.motion_keyframes?.length) return { x: clip.x, y: clip.y };
+  const [a, b] = clip.motion_keyframes; // {t, x, y} pairs, t normalized 0-1
+  let localT = clip.duration > 0 ? (playhead - clip.start) / clip.duration : 0;
+  localT = Math.max(0, Math.min(1, localT));
+  const span = (b.t - a.t) || 1;
+  const p = Math.max(0, Math.min(1, (localT - a.t) / span));
+  return {
+    x: a.x + (b.x - a.x) * p,
+    y: a.y + (b.y - a.y) * p,
+  };
+}
+
+
 // aspect derived from project at paint time — see _canvasRect()
 const MIN_SCALE = 0.05;
 const MAX_SCALE = 4.0;
@@ -172,7 +186,8 @@ export class CanvasWidget {
   }
 
   _clipRect(clip, r) {
-    const pt = this._normToPx(clip.x, clip.y);
+    const { x, y } = resolvePos(clip, this.playhead);
+    const pt = this._normToPx(x, y);
     const maxW = (r.w * 0.88) | 0;
     return { x: pt.x - (maxW >> 1), y: pt.y - 14, w: maxW, h: 28 };
   }
@@ -313,7 +328,8 @@ export class CanvasWidget {
     const theme = THEMES[clip.theme] ?? THEMES.dark;
     if (clip.track === 'audio') return;
 
-    const pt = this._normToPx(clip.x, clip.y);
+    const { x, y } = resolvePos(clip, this.playhead);
+    const pt = this._normToPx(x, y);
 
     if (clip.clip_type === 'narration') {
       const sx = clip.scale_x ?? clip.scale ?? 1.0;
@@ -990,7 +1006,8 @@ export class CanvasWidget {
           if (px >= drawn.x && px <= drawn.x + drawn.w && py >= drawn.y && py <= drawn.y + drawn.h) return clip;
           continue;
         }
-        const pt = this._normToPx(clip.x, clip.y);
+        const { x, y } = resolvePos(clip, this.playhead);
+        const pt = this._normToPx(x, y);
         const fallbackR = 60;
         if (Math.abs(px - pt.x) < fallbackR && Math.abs(py - pt.y) < fallbackR) return clip;
         continue;
@@ -1081,7 +1098,8 @@ export class CanvasWidget {
           return [id, c ? { x: c.x, y: c.y } : { x: 0, y: 0 }];
         })
       );
-      const pt = this._normToPx(clip.x, clip.y);
+      const { x, y } = resolvePos(clip, this.playhead);
+      const pt = this._normToPx(x, y);
       this._dragOffsetX = pos.x - pt.x;
       this._dragOffsetY = pos.y - pt.y;
       this._dragBeforeSnapshot = JSON.stringify(this.project.toDict());
@@ -1230,7 +1248,8 @@ export class CanvasWidget {
         };
         const selected = new Set(this._selectedIds);
         for (const clip of this.project.clips) {
-          const pt = this._normToPx(clip.x, clip.y);
+          const { x, y } = resolvePos(clip, this.playhead);
+          const pt = this._normToPx(x, y);
           const isInside = pt.x >= rect.x && pt.x <= rect.x + rect.w && pt.y >= rect.y && pt.y <= rect.y + rect.h;
           if (!isInside) continue;
           if (this._marqueeShift) {

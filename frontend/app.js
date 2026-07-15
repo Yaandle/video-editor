@@ -82,6 +82,8 @@ const CLIP_DEFAULTS = {
   points: 5,
   inner_radius_ratio: 0.5,
   opacity: 1.0,
+
+  motion_keyframes: null, // or [{t: 0, x: 0.3, y: 0.5}, {t: 1, x: 0.7, y: 0.2}]
 };
 const CLIP_FIELDS = Object.keys(CLIP_DEFAULTS);
 

@@ -820,7 +820,26 @@ class App {
       setThemeIcon(next);
       this.timeline.redraw();
     });
-    const razorBtn = document.getElementById('razor-btn');
+      const razorBtn = document.getElementById('razor-btn');
+        if (razorBtn) {
+      razorBtn.addEventListener('click', () => {
+        const next = this.timeline.tool === 'razor' ? 'select' : 'razor';
+
+        this.timeline.setTool(next);
+        this.canvas.setTool(next);
+
+        razorBtn.classList.toggle('active', next === 'razor');
+
+        // Optional: keep move button in sync
+        if (moveBtn) moveBtn.classList.remove('active');
+
+        this._updateStatus(
+          next === 'razor'
+            ? 'Razor tool — click a clip to slice'
+            : 'Select tool'
+        );
+      });
+    }
     const moveBtn = document.getElementById('move-btn');
     if (moveBtn) {
       moveBtn.addEventListener('click', () => {

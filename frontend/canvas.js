@@ -106,6 +106,8 @@ export class CanvasWidget {
     this._zoom = 1.0;
     this._panX = 0;
 
+    this._tool = 'select'; // 'select' | 'move'
+
     this._isPanning = false;
     this._panDragOrigin = null; // { mouseX, mouseY, panX, panY }
 
@@ -117,7 +119,10 @@ export class CanvasWidget {
     this._bindEvents();
     this.resize();
   }
-
+  setTool(tool) {
+    this._tool = tool;
+    this._el.style.cursor = tool === 'move' ? 'grab' : '';
+  }
   setProject(p) { this.project = p; this.redraw(); }
   setPlayhead(t) { this.playhead = t; this.redraw(); }
   setSelectedId(id) {
@@ -1018,7 +1023,7 @@ export class CanvasWidget {
     const raw = this._getPos(e);
     const pos = this._toLogical(raw.x, raw.y);
 
-    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+    if (e.button === 1 || (e.button === 0 && e.altKey) || this._tool === 'move') {
       this._isPanning = true;
       this._panDragOrigin = { mouseX: raw.x, mouseY: raw.y, panX: this._panX, panY: this._panY };
       this._el.style.cursor = 'grabbing';

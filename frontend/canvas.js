@@ -350,10 +350,9 @@ export class CanvasWidget {
       const elapsedMs = Math.max(0, this.playhead - clip.start) * 1000;
 
       if (clip.text_anim_style && clip.text_anim_style !== 'static') {
-        this._renderNarrationAnimated(ctx, layout, pt.x, pt.y, elapsedMs, clip, textColor);
+        this._renderNarrationAnimated(ctx, layout, pt.x, pt.y, elapsedMs, clip);
       } else {
-        ctx.textAlign = 'center';
-        this._renderNarrationStatic(ctx, layout, pt.x, pt.y, textColor);
+        this._renderNarrationStatic(ctx, layout, pt.x, pt.y, clip);
       }
 
       const bx = pt.x - (maxW >> 1), by = pt.y;
@@ -578,31 +577,34 @@ export class CanvasWidget {
     };
   }
 
-  _renderNarrationStatic(ctx, layout, ox, oy, color) {
+  _renderNarrationStatic(ctx, layout, ox, oy, clip) {
     ctx.save();
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillStyle = color;
+
     for (const line of layout.lines) {
       const lineOx = ox - line.lineWidth / 2;
-      for (const word of line.words) ctx.fillText(word.text, lineOx + word.x, oy + line.y);
+      for (const word of line.words) {
+        this._drawNarrationText(ctx, word.text, lineOx + word.x, oy + line.y, clip);
+      }
     }
+
     ctx.restore();
   }
 
-  _renderNarrationAnimated(ctx, layout, ox, oy, elapsedMs, clip, color) {
+  _renderNarrationAnimated(ctx, layout, ox, oy, elapsedMs, clip) {
     if (clip.text_anim_style === 'typewriter') {
-      this._renderNarrationTypewriter(ctx, layout, ox, oy, elapsedMs, clip, color);
+      this._renderNarrationTypewriter(ctx, layout, ox, oy, elapsedMs, clip);
     } else if (clip.text_anim_style === 'wordblurin') {
-      this._renderNarrationWordBlurIn(ctx, layout, ox, oy, elapsedMs, clip, color);
+      this._renderNarrationWordBlurIn(ctx, layout, ox, oy, elapsedMs, clip);
     } else if (clip.text_anim_style === 'linescan') {
-      this._renderNarrationLineScan(ctx, layout, ox, oy, elapsedMs, clip, color);
+      this._renderNarrationLineScan(ctx, layout, ox, oy, elapsedMs, clip);
     } else {
-      this._renderNarrationStatic(ctx, layout, ox, oy, color);
+      this._renderNarrationStatic(ctx, layout, ox, oy, clip);
     }
   }
 
-  _renderNarrationTypewriter(ctx, layout, ox, oy, elapsedMs, clip, color) {
+  _renderNarrationTypewriter(ctx, layout, ox, oy, elapsedMs, clip) {
     const msPerChar = 1000 / (clip.text_chars_per_second ?? 26);
     const popMs = clip.text_pop_duration_ms ?? 90;
     let lastX = ox, lastY = oy;
@@ -612,7 +614,6 @@ export class CanvasWidget {
     ctx.save();
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillStyle = color;
 
     for (const line of layout.lines) {
       const lineOx = ox - line.lineWidth / 2;
@@ -620,18 +621,23 @@ export class CanvasWidget {
         for (const ch of word.chars) {
           const revealAt = ch.globalIndex * msPerChar;
           const localT = elapsedMs - revealAt;
-          if (localT < 0) { allDone = false; continue; }
+          if (localT < 0) {
+            allDone = false;
+            continue;
+          }
+
           const popT = Math.min(1, localT / popMs);
           const scale = 0.4 + 0.6 * Math.max(0, Easing.easeOutBack(popT, 1.2));
           const alpha = Math.min(1, localT / (popMs * 0.6));
-          ctx.save();
-          ctx.globalAlpha = alpha;
           const cx = lineOx + word.x + ch.x + ch.width / 2;
           const cy = oy + line.y;
+
+          ctx.save();
           ctx.translate(cx, cy);
           ctx.scale(scale, scale);
-          ctx.fillText(ch.char, -ch.width / 2, 0);
+          this._drawNarrationText(ctx, ch.char, -ch.width / 2, 0, clip, alpha);
           ctx.restore();
+
           lastX = lineOx + word.x + ch.x + ch.width;
           lastY = oy + line.y;
         }
@@ -641,14 +647,16 @@ export class CanvasWidget {
     if (!allDone) {
       const blinkOn = Math.floor(this.playhead * 2) % 2 === 0;
       if (blinkOn) {
-        ctx.fillStyle = color;
+        const theme = THEMES[clip.theme] ?? THEMES.dark;
+        ctx.fillStyle = clip.font_color ?? theme.text;
         ctx.fillRect(lastX + 2, lastY, 3, lastH);
       }
     }
+
     ctx.restore();
   }
 
-  _renderNarrationWordBlurIn(ctx, layout, ox, oy, elapsedMs, clip, color) {
+  _renderNarrationWordBlurIn(ctx, layout, ox, oy, elapsedMs, clip) {
     const stagger = clip.text_stagger_ms ?? 60;
     const dur = clip.text_duration_ms ?? 550;
     const maxBlur = clip.text_max_blur ?? 14;
@@ -657,7 +665,6 @@ export class CanvasWidget {
     ctx.save();
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillStyle = color;
 
     for (const line of layout.lines) {
       const lineOx = ox - line.lineWidth / 2;
@@ -665,6 +672,7 @@ export class CanvasWidget {
         const startTime = word.globalIndex * stagger;
         const localT = elapsedMs - startTime;
         if (localT < 0) continue;
+
         const t = Math.max(0, Math.min(1, localT / dur));
         const clearT = Easing.easeOutCubic(Math.min(1, t * 1.6));
         const springT = Easing.easeOutBack(t, 1.4);
@@ -674,20 +682,25 @@ export class CanvasWidget {
         const scale = 0.85 + 0.15 * springT;
 
         ctx.save();
-        ctx.globalAlpha = alpha;
         ctx.filter = blur > 0.3 ? 'blur(' + blur.toFixed(1) + 'px)' : 'none';
+
         const wx = lineOx + word.x + word.width / 2;
         const wy = oy + line.y + yOffset;
+
         ctx.translate(wx, wy);
         ctx.scale(scale, scale);
-        ctx.fillText(word.text, -word.width / 2, 0);
+        this._drawNarrationText(ctx, word.text, -word.width / 2, 0, clip, alpha);
         ctx.restore();
       }
     }
+
     ctx.restore();
   }
 
-  _renderNarrationLineScan(ctx, layout, ox, oy, elapsedMs, clip, theme) {
+  _renderNarrationLineScan(ctx, layout, ox, oy, elapsedMs, clip) {
+    const theme = THEMES[clip.theme] ?? THEMES.dark;
+    const color = clip.font_color ?? theme.text;
+
     const dur = clip.text_duration_ms ?? 550;
     const stagger = clip.text_line_stagger_ms ?? 140;
     const slideDist = clip.text_slide_distance ?? 90;
@@ -696,13 +709,13 @@ export class CanvasWidget {
     ctx.save();
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillStyle = theme.text;
 
     for (let li = 0; li < layout.lines.length; li++) {
       const line = layout.lines[li];
       const startTime = li * stagger;
       const localT = elapsedMs - startTime;
       if (localT < 0) continue;
+
       const t = Math.max(0, Math.min(1, localT / dur));
       const eased = Easing.easeOutExpo(t);
       const xOffset = -slideDist * (1 - eased);
@@ -710,35 +723,44 @@ export class CanvasWidget {
       const lineX = ox - line.lineWidth / 2 + xOffset;
       const lineText = line.words.map(w => w.text).join(' ');
 
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.fillText(lineText, lineX, oy + line.y);
-      ctx.restore();
+      this._drawNarrationText(ctx, lineText, lineX, oy + line.y, clip, alpha);
 
       if (t < 0.9) {
         const sweepT = Easing.easeOutCubic(Math.min(1, t / 0.75));
         const sweepX = -sweepWidth + sweepT * (line.lineWidth + sweepWidth * 2);
+
         const off = document.createElement('canvas');
         off.width = Math.ceil(line.lineWidth + 20);
         off.height = Math.ceil(layout.lineHeight);
+
         const octx = off.getContext('2d');
         octx.font = ctx.font;
         octx.textBaseline = ctx.textBaseline;
-        octx.fillStyle = theme.text;
+        octx.fillStyle = color;
         octx.fillText(lineText, 0, off.height * 0.7);
+
         octx.globalCompositeOperation = 'source-atop';
-        const grad = octx.createLinearGradient(sweepX - sweepWidth / 2, 0, sweepX + sweepWidth / 2, 0);
+
+        const grad = octx.createLinearGradient(
+          sweepX - sweepWidth / 2,
+          0,
+          sweepX + sweepWidth / 2,
+          0
+        );
         grad.addColorStop(0, 'rgba(255,255,255,0)');
-        grad.addColorStop(0.5, theme.text ?? '#ffffff');
+        grad.addColorStop(0.5, color ?? '#ffffff');
         grad.addColorStop(1, 'rgba(255,255,255,0)');
+
         octx.fillStyle = grad;
         octx.fillRect(0, 0, off.width, off.height);
+
         ctx.save();
         ctx.globalAlpha = alpha;
         ctx.drawImage(off, lineX, oy + line.y - off.height * 0.7);
         ctx.restore();
       }
     }
+
     ctx.restore();
   }
 
@@ -939,6 +961,32 @@ export class CanvasWidget {
     if (line) ctx.fillText(line, cx, curY);
     const endY = curY + lineH;
     return { startY, endY, height: endY - startY };
+  }
+
+  _drawNarrationText(ctx, text, x, y, clip, alpha = 1) {
+    if (!text) return;
+    const theme = THEMES[clip.theme] ?? THEMES.dark;
+    const color = clip.font_color ?? theme.text;
+
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    ctx.fillStyle = color;
+
+    if (clip.text_shadow_color) {
+      ctx.shadowColor = clip.text_shadow_color;
+      ctx.shadowBlur = clip.text_shadow_blur ?? 0;
+      ctx.shadowOffsetX = clip.text_shadow_offset_x ?? 0;
+      ctx.shadowOffsetY = clip.text_shadow_offset_y ?? 0;
+    }
+
+    if (clip.text_stroke_color && (clip.text_stroke_width ?? 0) > 0) {
+      ctx.lineWidth = clip.text_stroke_width;
+      ctx.strokeStyle = clip.text_stroke_color;
+      ctx.strokeText(text, x, y);
+    }
+
+    ctx.fillText(text, x, y);
+    ctx.restore();
   }
 
   _drawGraphPreview(ctx, clip, bx, by, bw, bh, theme, r) {

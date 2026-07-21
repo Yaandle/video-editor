@@ -74,7 +74,20 @@ class VideoEditorServer:
                 return
             self.project = ProjectStore.load(path)
             await self.broadcast({"type": "project", "data": self.project.to_dict(), "filename": filename})
-            
+
+        elif action == "delete_project":
+            filename = os.path.basename(msg.get("filename") or "")
+
+            success, message = ProjectStore.delete(
+                os.path.join(PROJECTS_DIR, filename)
+            )
+
+            await websocket.send_json({
+                "type": "delete_project_result",
+                "success": success,
+                "filename": filename,
+                "message": message,
+            }) 
 
         elif action == "render":
             project_data = msg.get("data") or self.project.to_dict()

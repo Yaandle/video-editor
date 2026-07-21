@@ -61,7 +61,14 @@
   --timeline-clip-text: #eee;
   --timeline-overlay: rgba(255,255,255,0.08);
   --timeline-overlay-strong: rgba(255,255,255,0.14);
-  --timeline-waveform: rgba(255,255,255,0.65);
+  --timeline-waveform: rgba(74, 222, 128, 0.35);
+  --timeline-text-audio: #4ade80;
+
+  --timeline-clip-fill-mode: solid;
+
+  --track-label-audio:  #7dd3fc;   /* light blue */
+  --track-label-text:   #4ade80;   /* green, reuse accent-green */
+  --track-label-visual: #fbbf24;   /* amber */
 }
 
 [data-theme="light"] {
@@ -121,7 +128,15 @@
   --timeline-clip-text: #111111;
   --timeline-overlay: rgba(0,0,0,0.05);
   --timeline-overlay-strong: rgba(0,0,0,0.09);
-  --timeline-waveform: rgba(0,0,0,0.55);
+  --timeline-waveform: rgba(18, 145, 90, 0.35);
+  --timeline-text-audio: #12915a;
+
+  --timeline-clip-fill-mode: glow;
+  --track-label-audio:  #0099ff;
+  --track-label-text:   #4aff77;
+  --track-label-visual: #fff23b;
+
+
 }
 
 
@@ -293,6 +308,10 @@ body {
 .btn-render:hover { background: var(--accent-green-bg-hover); }
 .btn-add  { height: 26px; padding: 0 8px; font-size: 11px; }
 .btn-tool { height: 26px; padding: 0 8px; font-size: 11px; }
+#move-btn {
+    font-size: 14px;
+
+}
 .btn-zoom { height: 26px; padding: 0 6px; font-size: 13px; min-width: 26px; }
 
 /* Razor active state */

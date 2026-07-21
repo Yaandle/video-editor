@@ -5,11 +5,26 @@ import { PlaybackController } from './playback.js';
 import { MediaBin } from './mediaBin.js';
 import { createColorPicker } from './colorPicker.js';
 
-export const TRACK_COLOURS = {
-  audio:  { bg: '#1e3a5f', border: '#2563eb', text: '#93c5fd' },
-  text:   { bg: '#14311a', border: '#16a34a', text: '#86efac' },
-  visual: { bg: '#2c1e0a', border: '#d97706', text: '#fcd34d' },
+const TRACK_COLOURS_DARK = {
+  audio: { bg: '#1A2733', border: '#5AB8FF', text: '#7CC8FF',
+  },
+
+  text: { bg: '#24311F', border: '#7DDB63', text: '#9AE87D',
+  }, visual: { bg: '#332B1C', border: '#FFD66B', text: '#FFE08A',
+  },
 };
+
+const TRACK_COLOURS_LIGHT = {
+  audio:  { bg: '#F1F7FC', border: '#5AA8E8', text: '#256DAA' },
+  text:   { bg: '#F3F8EE', border: '#7EB85A', text: '#03ad03' },
+  visual: { bg: '#FCF7EC', border: '#E2B95C', text: '#A86A00' },
+};
+
+export function TRACK_COLOURS(track) {
+  const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+  const table = theme === 'light' ? TRACK_COLOURS_LIGHT : TRACK_COLOURS_DARK;
+  return table[track] ?? {};
+}
 
 export const CLIP_TYPE_TRACK = {
   narration: 'text', code: 'visual', graph: 'visual',
@@ -854,13 +869,10 @@ class App {
       });
     }
 
-
-    const zoomInBtn    = document.getElementById('zoom-in-btn');
-    const zoomOutBtn   = document.getElementById('zoom-out-btn');
     const zoomResetBtn = document.getElementById('zoom-reset-btn');
-    if (zoomInBtn)    zoomInBtn.addEventListener('click',    () => this.timeline.zoomIn());
-    if (zoomOutBtn)   zoomOutBtn.addEventListener('click',   () => this.timeline.zoomOut());
-    if (zoomResetBtn) zoomResetBtn.addEventListener('click', () => this.timeline.zoomReset());
+    if (zoomResetBtn) {
+        zoomResetBtn.addEventListener('click', () => this.timeline.zoomReset());
+    }
 
     const undoBtn = document.getElementById('undo-btn');
     const redoBtn = document.getElementById('redo-btn');

@@ -227,10 +227,10 @@ export class PropertiesPanel {
     }
 
     if (c.clip_type === 'code') {
-      this._addSection('Style');
-      const themeCombo = this._addCombo('Theme', Object.keys(THEMES), c.theme);
-      themeCombo.addEventListener('change', () => this._set('theme', themeCombo.value));
-  }
+        this._addSection('Style');
+        const themeCombo = this._addCombo('Theme', Object.keys(THEMES), c.theme);
+        themeCombo.addEventListener('change', () => this._set('theme', themeCombo.value));
+    }
 
     if (c.clip_type === 'code') {
       const animCombo = this._addCombo('Animation', ['typewriter', 'static'], c.animation);

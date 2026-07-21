@@ -133,11 +133,8 @@ export class Clip {
 export function newClip(clip_type, start = 0.0, duration = 5.0) {
   const track = CLIP_TYPE_TRACK[clip_type] ?? 'visual';
   const defaults = {
-    narration: { content: 'New narration text', animation: 'typewriter', theme: 'dark', y: 0.12 },
     code:      { animation: 'typewriter', theme: 'dark', y: 0.55 },
-    graph:     { graph_type: 'bar', graph_data: 'A:10,B:20,C:15', theme: 'dark', y: 0.55 },
     audio:     { content: 'Narration goes here', y: 0.0 },
-    image:     { theme: 'dark', y: 0.5 },
     video:     { y: 0.5 },
     shape:     { y: 0.5 },
   };
@@ -589,7 +586,7 @@ class App {
     }
   }
 
-  _onWsMessage(msg) {
+  async _onWsMessage(msg) {
     if (msg.type === 'project') {
       this.project = Project.fromDict(msg.data);
       if (msg.filename) this._projectPath = msg.filename;
@@ -610,6 +607,20 @@ class App {
       } else if (msg.status === 'error') {
         this._updateStatus(`Save/load failed: ${msg.message}`);
       }
+    }
+
+    if (msg.type === 'delete_project_result') {
+        if (msg.success) {
+            this._updateStatus(`Deleted: ${msg.filename}`);
+
+            const projects = await fetch('/projects-list')
+                .then(r => r.json());
+
+            document.getElementById('open-project-overlay')?.remove();
+            this._showOpenProjectModal(projects);
+        } else {
+            this._updateStatus(msg.message ?? 'Delete failed');
+        }
     }
   }
 
@@ -1104,7 +1115,7 @@ class App {
       this._showOpenProjectModal(projects);
     }
 
-    _showOpenProjectModal(projects) {
+  _showOpenProjectModal(projects) {
       let overlay = document.getElementById('open-project-overlay');
       if (overlay) overlay.remove();
 
@@ -1129,14 +1140,42 @@ class App {
       }
 
       projects.forEach(p => {
-        const btn = document.createElement('button');
-        btn.className = 'snap-option';
-        btn.textContent = p.name;
-        btn.addEventListener('click', () => {
-          this._wsSend({ type: 'load_project', filename: p.name });
-          overlay.remove();
-        });
-        box.appendChild(btn);
+          const row = document.createElement('div');
+          row.className = 'snap-option';
+
+          const btn = document.createElement('button');
+          btn.className = 'snap-option-label';
+          btn.textContent = p.name;
+
+          btn.addEventListener('click', () => {
+              this._wsSend({
+                  type: 'load_project',
+                  filename: p.name
+              });
+              overlay.remove();
+          });
+
+          const del = document.createElement('button');
+          del.className = 'snap-option-delete';
+          del.innerHTML = '&times;';
+          del.title = 'Delete project';
+
+          del.addEventListener('click', (e) => {
+              e.stopPropagation();
+
+              if (!confirm(`Delete "${p.name}"?`))
+                  return;
+
+              this._wsSend({
+                  type: 'delete_project',
+                  filename: p.name
+              });
+          });
+
+          row.appendChild(btn);
+          
+          box.appendChild(row);
+          row.appendChild(del);
       });
 
       const cancel = document.createElement('span');

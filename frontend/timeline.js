@@ -141,6 +141,7 @@ export class TimelineWidget {
       overlayStrong: v('--timeline-overlay-strong'),
       waveform: v('--timeline-waveform'),
       playhead: v('--accent-red-dot'),
+      clipMode: v('--timeline-clip-mode'), 
     };
   }
 
@@ -203,7 +204,7 @@ export class TimelineWidget {
       ctx.strokeStyle = c.labelBorder; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(0, y + trackH - 0.5); ctx.lineTo(W, y + trackH - 0.5); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(LABEL_W + 0.5, y); ctx.lineTo(LABEL_W + 0.5, y + trackH); ctx.stroke();
-      const col = TRACK_COLOURS[track] ?? {};
+      const col = TRACK_COLOURS(track);
       ctx.fillStyle = col.text ?? c.text; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(track.toUpperCase(), LABEL_W / 2, y + trackH / 2);
     }
@@ -213,11 +214,29 @@ export class TimelineWidget {
     const c = this._colors;
     ctx.font = '8px Consolas, monospace';
     for (const clip of this.project.clips) {
-      const cr = this._clipRect(clip), col = TRACK_COLOURS[clip.track] ?? {}, isSelected = this._selectedIds.has(clip.id);
-      ctx.fillStyle = col.bg ?? c.clipBg; ctx.fillRect(cr.x, cr.y, cr.w, cr.h);
-      ctx.strokeStyle = isSelected ? (col.border ?? c.text) : (col.border ? col.border + '99' : c.clipBorder);
-      ctx.lineWidth = isSelected ? 1.5 : 0.5;
-      ctx.strokeRect(cr.x + 0.5, cr.y + 0.5, cr.w - 1, cr.h - 1);
+      const cr = this._clipRect(clip), col = TRACK_COLOURS(clip.track), isSelected = this._selectedIds.has(clip.id);
+      const glowColor = col.border ?? c.clipBorder;
+
+      if (c.clipMode === 'glow') {
+        // light mode: no fill, glowing stroke only
+        ctx.save();
+        ctx.shadowColor = glowColor;
+        ctx.shadowBlur = isSelected ? 10 : 6;
+        ctx.strokeStyle = glowColor;
+        ctx.lineWidth = isSelected ? 1.5 : 1;
+        ctx.strokeRect(cr.x + 0.5, cr.y + 0.5, cr.w - 1, cr.h - 1);
+        ctx.restore();
+        // faint fill so waveform/text stay legible, not fully transparent
+        ctx.fillStyle = glowColor + '14'; // ~8% alpha hex suffix
+        ctx.fillRect(cr.x, cr.y, cr.w, cr.h);
+      } else {
+        // dark mode: existing solid fill, unchanged
+        ctx.fillStyle = col.bg ?? c.clipBg; ctx.fillRect(cr.x, cr.y, cr.w, cr.h);
+        ctx.strokeStyle = isSelected ? (col.border ?? c.text) : (col.border ? col.border + '99' : c.clipBorder);
+        ctx.lineWidth = isSelected ? 1.5 : 0.5;
+        ctx.strokeRect(cr.x + 0.5, cr.y + 0.5, cr.w - 1, cr.h - 1);
+      }
+
       if (clip.clip_type === 'audio') this._drawWaveform(ctx, clip, cr);
       ctx.fillStyle = c.overlay; ctx.fillRect(cr.x, cr.y, RESIZE_ZONE, cr.h);
       ctx.fillStyle = c.overlayStrong; ctx.fillRect(cr.x + cr.w - RESIZE_ZONE, cr.y, RESIZE_ZONE, cr.h);

@@ -5,11 +5,26 @@ import { PlaybackController } from './playback.js';
 import { MediaBin } from './mediaBin.js';
 import { createColorPicker } from './colorPicker.js';
 
-export const TRACK_COLOURS = {
-  audio:  { bg: '#1e3a5f', border: '#2563eb', text: '#93c5fd' },
-  text:   { bg: '#14311a', border: '#16a34a', text: '#86efac' },
-  visual: { bg: '#2c1e0a', border: '#d97706', text: '#fcd34d' },
+const TRACK_COLOURS_DARK = {
+  audio: { bg: '#1A2733', border: '#5AB8FF', text: '#7CC8FF',
+  },
+
+  text: { bg: '#24311F', border: '#7DDB63', text: '#9AE87D',
+  }, visual: { bg: '#332B1C', border: '#FFD66B', text: '#FFE08A',
+  },
 };
+
+const TRACK_COLOURS_LIGHT = {
+  audio:  { bg: '#F1F7FC', border: '#5AA8E8', text: '#256DAA' },
+  text:   { bg: '#F3F8EE', border: '#7EB85A', text: '#03ad03' },
+  visual: { bg: '#FCF7EC', border: '#E2B95C', text: '#A86A00' },
+};
+
+export function TRACK_COLOURS(track) {
+  const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+  const table = theme === 'light' ? TRACK_COLOURS_LIGHT : TRACK_COLOURS_DARK;
+  return table[track] ?? {};
+}
 
 export const CLIP_TYPE_TRACK = {
   narration: 'text', code: 'visual', graph: 'visual',
@@ -82,6 +97,8 @@ const CLIP_DEFAULTS = {
   points: 5,
   inner_radius_ratio: 0.5,
   opacity: 1.0,
+
+  motion_keyframes: null, // or [{t: 0, x: 0.3, y: 0.5}, {t: 1, x: 0.7, y: 0.2}]
 };
 const CLIP_FIELDS = Object.keys(CLIP_DEFAULTS);
 
@@ -116,11 +133,8 @@ export class Clip {
 export function newClip(clip_type, start = 0.0, duration = 5.0) {
   const track = CLIP_TYPE_TRACK[clip_type] ?? 'visual';
   const defaults = {
-    narration: { content: 'New narration text', animation: 'typewriter', theme: 'dark', y: 0.12 },
     code:      { animation: 'typewriter', theme: 'dark', y: 0.55 },
-    graph:     { graph_type: 'bar', graph_data: 'A:10,B:20,C:15', theme: 'dark', y: 0.55 },
     audio:     { content: 'Narration goes here', y: 0.0 },
-    image:     { theme: 'dark', y: 0.5 },
     video:     { y: 0.5 },
     shape:     { y: 0.5 },
   };
@@ -572,7 +586,7 @@ class App {
     }
   }
 
-  _onWsMessage(msg) {
+  async _onWsMessage(msg) {
     if (msg.type === 'project') {
       this.project = Project.fromDict(msg.data);
       if (msg.filename) this._projectPath = msg.filename;
@@ -593,6 +607,20 @@ class App {
       } else if (msg.status === 'error') {
         this._updateStatus(`Save/load failed: ${msg.message}`);
       }
+    }
+
+    if (msg.type === 'delete_project_result') {
+        if (msg.success) {
+            this._updateStatus(`Deleted: ${msg.filename}`);
+
+            const projects = await fetch('/projects-list')
+                .then(r => r.json());
+
+            document.getElementById('open-project-overlay')?.remove();
+            this._showOpenProjectModal(projects);
+        } else {
+            this._updateStatus(msg.message ?? 'Delete failed');
+        }
     }
   }
 
@@ -852,13 +880,10 @@ class App {
       });
     }
 
-
-    const zoomInBtn    = document.getElementById('zoom-in-btn');
-    const zoomOutBtn   = document.getElementById('zoom-out-btn');
     const zoomResetBtn = document.getElementById('zoom-reset-btn');
-    if (zoomInBtn)    zoomInBtn.addEventListener('click',    () => this.timeline.zoomIn());
-    if (zoomOutBtn)   zoomOutBtn.addEventListener('click',   () => this.timeline.zoomOut());
-    if (zoomResetBtn) zoomResetBtn.addEventListener('click', () => this.timeline.zoomReset());
+    if (zoomResetBtn) {
+        zoomResetBtn.addEventListener('click', () => this.timeline.zoomReset());
+    }
 
     const undoBtn = document.getElementById('undo-btn');
     const redoBtn = document.getElementById('redo-btn');
@@ -1090,7 +1115,7 @@ class App {
       this._showOpenProjectModal(projects);
     }
 
-    _showOpenProjectModal(projects) {
+  _showOpenProjectModal(projects) {
       let overlay = document.getElementById('open-project-overlay');
       if (overlay) overlay.remove();
 
@@ -1115,14 +1140,42 @@ class App {
       }
 
       projects.forEach(p => {
-        const btn = document.createElement('button');
-        btn.className = 'snap-option';
-        btn.textContent = p.name;
-        btn.addEventListener('click', () => {
-          this._wsSend({ type: 'load_project', filename: p.name });
-          overlay.remove();
-        });
-        box.appendChild(btn);
+          const row = document.createElement('div');
+          row.className = 'snap-option';
+
+          const btn = document.createElement('button');
+          btn.className = 'snap-option-label';
+          btn.textContent = p.name;
+
+          btn.addEventListener('click', () => {
+              this._wsSend({
+                  type: 'load_project',
+                  filename: p.name
+              });
+              overlay.remove();
+          });
+
+          const del = document.createElement('button');
+          del.className = 'snap-option-delete';
+          del.innerHTML = '&times;';
+          del.title = 'Delete project';
+
+          del.addEventListener('click', (e) => {
+              e.stopPropagation();
+
+              if (!confirm(`Delete "${p.name}"?`))
+                  return;
+
+              this._wsSend({
+                  type: 'delete_project',
+                  filename: p.name
+              });
+          });
+
+          row.appendChild(btn);
+          
+          box.appendChild(row);
+          row.appendChild(del);
       });
 
       const cancel = document.createElement('span');

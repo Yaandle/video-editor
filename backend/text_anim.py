@@ -1,11 +1,4 @@
-"""
-Frame-accurate port of canvas.js narration text animations
-(typewriter / wordblurin / linescan) for the moviepy renderer.
 
-Mirrors: _layoutNarrationText, _renderNarrationStatic,
-_renderNarrationTypewriter, _renderNarrationWordBlurIn,
-_renderNarrationLineScan in frontend/canvas.js
-"""
 import math
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
@@ -95,7 +88,6 @@ def layout_narration_text(font, text, max_width, line_height):
     return {"lines": out_lines, "line_height": line_height}
 
 
-
 def _font_scaled_variant(font, scale):
     if scale == 1.0:
         return font
@@ -110,8 +102,70 @@ def _font_scaled_variant(font, scale):
         return None
 
 
+def draw_narration_text(draw_target, text, font, x, y, color, params=None, alpha=1.0):
+    """
+    Single source of truth for narration text drawing: shadow -> stroke -> fill.
+    Mirrors canvas.js _drawNarrationText. Used directly by static/linescan;
+    typewriter/wordblurin apply the same order inside _draw_text_transformed,
+    since those need scale/blur baked into an intermediate glyph image.
+    """
+    params = params or {}
+    text = text.replace('\n', '').replace('\r', '')
+    if not text:
+        return
+
+    a = int(max(0.0, min(1.0, alpha)) * 255)
+
+    shadow_color = params.get("text_shadow_color")
+    if shadow_color:
+        sx = x + params.get("text_shadow_offset_x", 0)
+        sy = y + params.get("text_shadow_offset_y", 0)
+        draw_target.text(
+            (sx, sy),
+            text,
+            font=font,
+            fill=(*shadow_color, a),
+            anchor="la"
+        )
+
+    stroke_color = params.get("text_stroke_color")
+    stroke_width = params.get("text_stroke_width", 0)
+
+    if stroke_color and stroke_width > 0:
+        draw_target.text(
+            (x, y),
+            text,
+            font=font,
+            fill=(*color, a),
+            anchor="la",
+            stroke_width=stroke_width,
+            stroke_fill=(*stroke_color, a)
+        )
+    else:
+        draw_target.text(
+            (x, y),
+            text,
+            font=font,
+            fill=(*color, a),
+            anchor="la"
+        )
+
+
 # ── Low-level transformed glyph/word draw (mirrors ctx.translate+scale+fillText) ─
-def _draw_text_transformed(base_img, text, font, cx, cy, scale, alpha, color, blur=0.0):
+def _draw_text_transformed(
+    base_img,
+    text,
+    font,
+    cx,
+    cy,
+    scale,
+    alpha,
+    color,
+    blur=0.0,
+    params=None
+):
+    params = params or {}
+
     text = text.replace('\n', '').replace('\r', '')
     if alpha <= 0.003 or not text:
         return
@@ -133,8 +187,44 @@ def _draw_text_transformed(base_img, text, font, cx, cy, scale, alpha, color, bl
     pad = 4
     glyph = Image.new("RGBA", (math.ceil(w) + pad * 2, h + pad * 2), (0, 0, 0, 0))
     gd = ImageDraw.Draw(glyph)
+
     a = int(max(0.0, min(1.0, alpha)) * 255)
-    gd.text((pad, pad), text, font=draw_font, fill=(*color, a), anchor="la")
+
+    # Same shadow -> stroke -> fill order as draw_narration_text, applied to
+    # the glyph before it's scaled/blurred and composited.
+    shadow_color = params.get("text_shadow_color")
+    if shadow_color:
+        sx = pad + params.get("text_shadow_offset_x", 0)
+        sy = pad + params.get("text_shadow_offset_y", 0)
+        gd.text(
+            (sx, sy),
+            text,
+            font=draw_font,
+            fill=(*shadow_color, a),
+            anchor="la"
+        )
+
+    stroke_color = params.get("text_stroke_color")
+    stroke_width = params.get("text_stroke_width", 0)
+
+    if stroke_color and stroke_width > 0:
+        gd.text(
+            (pad, pad),
+            text,
+            font=draw_font,
+            fill=(*color, a),
+            anchor="la",
+            stroke_width=stroke_width,
+            stroke_fill=(*stroke_color, a)
+        )
+    else:
+        gd.text(
+            (pad, pad),
+            text,
+            font=draw_font,
+            fill=(*color, a),
+            anchor="la"
+        )
 
     if scale != 1.0 and scaled_font is None:
         nw = max(1, round(glyph.width * scale))
@@ -152,15 +242,21 @@ def _draw_text_transformed(base_img, text, font, cx, cy, scale, alpha, color, bl
     base_img.alpha_composite(glyph, (round(left), round(top)))
 
 
-def render_narration_static(base_img, layout, ox, oy, font, color):
+def render_narration_static(base_img, layout, ox, oy, font, color, params=None):
     draw = ImageDraw.Draw(base_img)
+
     for line in layout["lines"]:
         line_ox = ox - line["line_width"] / 2
         for word in line["words"]:
-            # Defensive: strip any embedded newlines before drawing
-            word_text = word["text"].replace('\n', '').replace('\r', '')
-            draw.text((line_ox + word["x"], oy + line["y"]), word_text,
-                      font=font, fill=(*color, 255), anchor="la")
+            draw_narration_text(
+                draw,
+                word["text"],
+                font,
+                line_ox + word["x"],
+                oy + line["y"],
+                color,
+                params
+            )
 
 
 def render_narration_typewriter(base_img, layout, ox, oy, elapsed_ms, params, font, color):
@@ -185,7 +281,17 @@ def render_narration_typewriter(base_img, layout, ox, oy, elapsed_ms, params, fo
                 alpha = min(1.0, local_t / (pop_ms * 0.6))
                 cx = line_ox + word["x"] + ch["x"] + ch["width"] / 2
                 cy = oy + line["y"]
-                _draw_text_transformed(base_img, ch["char"], font, cx, cy, scale, alpha, color)
+                _draw_text_transformed(
+                    base_img,
+                    ch["char"],
+                    font,
+                    cx,
+                    cy,
+                    scale,
+                    alpha,
+                    color,
+                    params=params
+                )
                 last_x = line_ox + word["x"] + ch["x"] + ch["width"]
                 last_y = oy + line["y"]
 
@@ -198,8 +304,6 @@ def render_narration_typewriter(base_img, layout, ox, oy, elapsed_ms, params, fo
                 [last_x + 2, last_y, last_x + 2 + 3, last_y + last_h],
                 fill=(*cursor_color, 255),
             )
-    
-                
 
 
 def render_narration_wordblurin(base_img, layout, ox, oy, elapsed_ms, params, font, color):
@@ -225,7 +329,18 @@ def render_narration_wordblurin(base_img, layout, ox, oy, elapsed_ms, params, fo
 
             wx = line_ox + word["x"] + word["width"] / 2
             wy = oy + line["y"] + y_offset
-            _draw_text_transformed(base_img, word["text"], font, wx, wy, scale, alpha, color, blur=blur)
+            _draw_text_transformed(
+                base_img,
+                word["text"],
+                font,
+                wx,
+                wy,
+                scale,
+                alpha,
+                color,
+                blur=blur,
+                params=params
+            )
 
 
 def render_narration_linescan(base_img, layout, ox, oy, elapsed_ms, params, font, color):
@@ -249,8 +364,9 @@ def render_narration_linescan(base_img, layout, ox, oy, elapsed_ms, params, font
         # Defensive: strip any embedded newlines from each word before joining
         line_text = " ".join(w["text"].replace('\n', '').replace('\r', '') for w in line["words"])
 
-        a = int(max(0.0, min(1.0, alpha)) * 255)
-        draw.text((line_x, oy + line["y"]), line_text, font=font, fill=(*color, a), anchor="la")
+        # Base draw now goes through the shared helper — shadow/stroke/fill,
+        # same order and same colour resolution as every other style.
+        draw_narration_text(draw, line_text, font, line_x, oy + line["y"], color, params, alpha)
 
         # Sweep highlight (approximation — soft bright band crossing the line as it settles)
         if t < 0.9 and line["line_width"] > 0:
@@ -299,7 +415,6 @@ def render_narration_frame(text, style, elapsed_ms, params, canvas_w, x_norm, fo
     max_width = int(base_max_width * scale_x)
     line_height = font_size * 1.4
 
-    probe = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
     layout = layout_narration_text(font, text, max_width, line_height)
 
     block_h = len(layout["lines"]) * line_height
@@ -310,11 +425,11 @@ def render_narration_frame(text, style, elapsed_ms, params, canvas_w, x_norm, fo
     oy = padding_top
 
     if not style or style == "static":
-        render_narration_static(img, layout, ox, oy, font, color)
+        render_narration_static(img, layout, ox, oy, font, color, params)
     else:
         renderer = ANIM_RENDERERS.get(style, render_narration_static)
         if renderer is render_narration_static:
-            renderer(img, layout, ox, oy, font, color)
+            renderer(img, layout, ox, oy, font, color, params)
         else:
             renderer(img, layout, ox, oy, elapsed_ms, params, font, color)
 

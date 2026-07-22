@@ -80,6 +80,15 @@ export class PropertiesPanel {
       this._container.appendChild(snapBtn);
     }
 
+    const animateBtn = document.createElement('button');
+    animateBtn.className = 'props-btn';
+    animateBtn.textContent = 'Animate Position';
+    animateBtn.addEventListener('click', () =>
+      this._container.dispatchEvent(new CustomEvent('props:animatepos', { bubbles: true }))
+    );
+    this._container.appendChild(animateBtn);
+
+    
     switch (c.clip_type) {
       case 'narration': {
         this._addSection('Content');

@@ -381,7 +381,7 @@ class App {
     this._selectedIds.add(c.id);
     this._selectionPrimaryId = c.id;
     this.timeline.setSelectedIds(this._selectedIds);
-    this.canvas.setSelectedIds(this._selectedIds);
+    this.canvas.setSelectedIds(this._selectedIds, this._selectionPrimaryId);
     this.props.showClip(c);
     this.canvas.redraw();
     this._updateStatus(`Added: ${item.original ?? item.name}`);
@@ -399,7 +399,7 @@ class App {
     this._selectedIds.add(c.id);
     this._selectionPrimaryId = c.id;
     this.timeline.setSelectedIds(this._selectedIds);
-    this.canvas.setSelectedIds(this._selectedIds);
+    this.canvas.setSelectedIds(this._selectedIds, this._selectionPrimaryId);
     this.props.showClip(c);
     this.canvas.redraw();
     this._updateStatus(`Added: ${c.label()}`);
@@ -699,7 +699,27 @@ class App {
       this.timeline.redraw();
       this._updateStatus();
     });
-    document.getElementById('props-inner').addEventListener('props:snap', () => this._openSnapModal());
+    document.getElementById('props-inner').addEventListener('props:snap', () =>
+      this._openSnapModal()
+    );
+
+    document.getElementById('props-inner').addEventListener('props:animatepos', () => {
+      this.canvas.setTool('motionA');
+      this._updateStatus('Click canvas to set START position');
+    });
+
+    document.getElementById('canvas-widget').addEventListener('canvas:motioncaptured', (e) => {
+      if (e.detail.point === 'A') {
+        this.canvas.setTool('motionB');
+        this._updateStatus('Click canvas to set END position');
+      } else {
+        this.canvas.setTool('select');
+        this._dirty = true;
+        this.canvas.redraw();
+        this.timeline.redraw();
+        this._updateStatus('Motion path set');
+      }
+    });
     document.getElementById('props-inner').addEventListener('props:editstart', () => {
       if (!this._pendingPropsBefore) {
         this._pendingPropsBefore = JSON.stringify(this.project.toDict());
@@ -1372,7 +1392,7 @@ class App {
     this._selectedIds.clear();
     for (const id of incoming) this._selectedIds.add(id);
     this._selectionPrimaryId = primaryId ?? (incoming.length ? incoming[0] : null);
-    this.canvas.setSelectedIds(this._selectedIds);
+    this.canvas.setSelectedIds(this._selectedIds, this._selectionPrimaryId);
     this.timeline.setSelectedIds(this._selectedIds);
     if (this._selectedIds.size === 1) {
       const clip = this._findClip(this._selectionPrimaryId);

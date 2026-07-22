@@ -72,16 +72,23 @@ const Easing = {
 };
 
 function resolvePos(clip, playhead) {
-  if (!clip.motion_keyframes?.length) return { x: clip.x, y: clip.y };
+
+  if (!clip.motion_keyframes || clip.motion_keyframes.length < 2) {
+    return { x: clip.x, y: clip.y };
+  }
   const [a, b] = clip.motion_keyframes; // {t, x, y} pairs, t normalized 0-1
   let localT = clip.duration > 0 ? (playhead - clip.start) / clip.duration : 0;
   localT = Math.max(0, Math.min(1, localT));
   const span = (b.t - a.t) || 1;
   const p = Math.max(0, Math.min(1, (localT - a.t) / span));
-  return {
-    x: a.x + (b.x - a.x) * p,
-    y: a.y + (b.y - a.y) * p,
+  const result = {
+  x: a.x + (b.x - a.x) * p,
+  y: a.y + (b.y - a.y) * p,
   };
+
+
+
+  return result;
 }
 
 
@@ -133,9 +140,23 @@ export class CanvasWidget {
     this._bindEvents();
     this.resize();
   }
+
   setTool(tool) {
     this._tool = tool;
-    this._el.style.cursor = tool === 'move' ? 'grab' : '';
+    this._el.style.cursor =
+      tool === 'move' ? 'grab' :
+      (tool === 'motionA' || tool === 'motionB') ? 'crosshair' : '';
+
+    const badge = document.getElementById('motion-mode-badge');
+    if (tool === 'motionA') {
+      badge.textContent = 'SET START';
+      badge.classList.remove('hidden');
+    } else if (tool === 'motionB') {
+      badge.textContent = 'SET END';
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
   }
   setProject(p) { this.project = p; this.redraw(); }
   setPlayhead(t) { this.playhead = t; this.redraw(); }
@@ -144,8 +165,15 @@ export class CanvasWidget {
     if (id) this._selectedIds.add(id);
     this.redraw();
   }
-  setSelectedIds(selectedIds) { this._selectedIds = selectedIds; this.redraw(); }
-  redraw() { this._paint(); }
+  setSelectedIds(selectedIds, primaryId = null) { 
+  this._selectedIds = selectedIds;
+  this._selectionPrimaryId = primaryId ?? (
+    this._selectedIds.size === 1 
+      ? this._selectedIds.values().next().value 
+      : null
+  );
+  this.redraw();
+}
 
   resize() {
     const frame = this._el.parentElement;
@@ -306,6 +334,10 @@ export class CanvasWidget {
     }
   }
 
+  redraw() {
+    this._paint();
+  }
+
   _drawResizeOverlay(ctx, rect) {
     ctx.strokeStyle = 'rgba(59,130,246,0.9)';
     ctx.lineWidth = 1;
@@ -327,8 +359,9 @@ export class CanvasWidget {
   _drawClip(ctx, clip, r) {
     const theme = THEMES[clip.theme] ?? THEMES.dark;
     if (clip.track === 'audio') return;
-
+    
     const { x, y } = resolvePos(clip, this.playhead);
+    
     const pt = this._normToPx(x, y);
 
     if (clip.clip_type === 'narration') {
@@ -1084,9 +1117,53 @@ export class CanvasWidget {
   }
 
   _onMouseDown(e) {
+    
     if (e.button !== 0) return;
     const raw = this._getPos(e);
     const pos = this._toLogical(raw.x, raw.y);
+
+    if (this._tool === 'motionA' || this._tool === 'motionB') {
+      const clip = this.project.clips.find(c => c.id === this._selectionPrimaryId);
+      if (clip) {
+        const { nx, ny } = this._pxToNorm(pos.x, pos.y);
+
+        if (!Array.isArray(clip.motion_keyframes))
+          clip.motion_keyframes = [];
+
+
+        const before = JSON.stringify(this.project.toDict());
+
+        if (this._tool === 'motionA') {
+          clip.motion_keyframes[0] = { t: 0, x: nx, y: ny };
+          
+        } 
+        
+        else {
+          clip.motion_keyframes[1] = { t: 1, x: nx, y: ny };
+
+    
+        }
+
+        this._el.dispatchEvent(new CustomEvent('canvas:motioncaptured', {
+          bubbles: true,
+          detail: {
+            id: clip.id,
+            point: this._tool === 'motionA' ? 'A' : 'B',
+            nx,
+            ny
+          }
+        }));
+
+        this._el.dispatchEvent(new CustomEvent('canvas:committed', {
+          bubbles: true,
+          detail: { before }
+        }));
+
+        this.redraw();
+      }
+
+      return;
+    }
 
     if (e.button === 1 || (e.button === 0 && e.altKey) || this._tool === 'move') {
       this._isPanning = true;
@@ -1174,6 +1251,11 @@ export class CanvasWidget {
   _onMouseMove(e) {
     const raw = this._getPos(e);
     const pos = this._toLogical(raw.x, raw.y);
+
+    if (this._tool === 'motionA' || this._tool === 'motionB') {
+      this._el.style.cursor = 'crosshair';
+      return;
+    }
 
     if (this._marqueeActive && (e.buttons & 1)) {
       this._marqueeCurrent = { x: raw.x, y: raw.y };

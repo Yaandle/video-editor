@@ -62,6 +62,9 @@ class Clip:
 
     opacity: float = 1.0
 
+    motion_keyframes: list = field(default_factory=list)
+
+
     def end(self):
         return self.start + self.duration
 

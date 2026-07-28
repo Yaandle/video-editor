@@ -1046,7 +1046,18 @@ class App {
     const track = CLIP_TYPE_TRACK[clip_type] ?? 'visual';
     const start = Math.max(this.playback.playhead, this._nextStartForTrack(track));
     const c = newClip(clip_type, start);
-    this.project.clips.push(c)
+    this.project.clips.push(c);
+    this._dirty = true;
+    this._refreshAll();
+
+    this._selectedIds.clear();
+    this._selectedIds.add(c.id);
+    this._selectionPrimaryId = c.id;
+    this.timeline.setSelectedIds(this._selectedIds);
+    this.canvas.setSelectedIds(this._selectedIds, this._selectionPrimaryId);
+    this.props.showClip(c);
+    this.canvas.redraw();
+    this._updateStatus(`Added: ${clip_type}`);
   }
 
   _deleteSelected() {

@@ -356,6 +356,18 @@ export class CanvasWidget {
     }
   }
 
+  _roundRect(ctx, x, y, w, h, r) {
+    if (r <= 0) { ctx.fillRect(x, y, w, h); return; }
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+    ctx.fill();
+  }
+
   _drawClip(ctx, clip, r) {
     const theme = THEMES[clip.theme] ?? THEMES.dark;
     if (clip.track === 'audio') return;
@@ -365,33 +377,92 @@ export class CanvasWidget {
     const pt = this._normToPx(x, y);
 
     if (clip.clip_type === 'narration') {
-      const sx = clip.scale_x ?? clip.scale ?? 1.0;
+        const sx = clip.scale_x ?? clip.scale ?? 1.0;
 
-      const fontSize = clip.font_size ?? Math.max(7, (r.w / 18) | 0);
-      const fontStyle = clip.font_italic ? 'italic ' : '';
-      const fontWeight = clip.font_bold ? 'bold ' : '';
-      ctx.font = `${fontStyle}${fontWeight}${fontSize}px Consolas, monospace`;
-      const textColor = clip.font_color ?? theme.text;
-      ctx.fillStyle = textColor;
-      ctx.textBaseline = 'top';
+        const fontSize = clip.font_size ?? Math.max(7, (r.w / 18) | 0);
+        const fontStyle = clip.font_italic ? 'italic ' : '';
+        const fontWeight = clip.font_bold ? 'bold ' : '';
+        const fontFamily = clip.text_font_family || 'Consolas, monospace';
+        ctx.font = `${fontStyle}${fontWeight}${fontSize}px ${fontFamily}`;
+        const textColor = clip.font_color ?? theme.text;
+        ctx.fillStyle = textColor;
+        ctx.textBaseline = 'top';
+        ctx.textAlign = clip.text_align ?? 'center';
 
-      const lineHeight = fontSize * 1.4;
-      const baseMaxW = (r.w * 0.88) | 0;
-      const maxW = (baseMaxW * sx) | 0;
+        const lineHeight = fontSize * (clip.text_line_height ?? 1.4);
+        const baseMaxW = (r.w * 0.88) | 0;
+        const maxW = (baseMaxW * sx) | 0;
 
-      const layout = this._layoutNarrationText(ctx, clip.content, maxW, lineHeight);
-      const elapsedMs = Math.max(0, this.playhead - clip.start) * 1000;
+        const displayContent = clip.text_uppercase
+          ? clip.content.toUpperCase()
+          : clip.content;
 
-      if (clip.text_anim_style && clip.text_anim_style !== 'static') {
-        this._renderNarrationAnimated(ctx, layout, pt.x, pt.y, elapsedMs, clip);
-      } else {
-        this._renderNarrationStatic(ctx, layout, pt.x, pt.y, clip);
+        const layout = this._layoutNarrationText(ctx, displayContent, maxW, lineHeight);
+        const elapsedMs = Math.max(0, this.playhead - clip.start) * 1000;
+
+        ctx.save();
+        ctx.globalAlpha = clip.text_opacity ?? 1.0;
+
+        if (clip.text_plate) {
+          const p = clip.text_plate;
+          const h = layout.lines.length * lineHeight + p.padding * 2;
+          ctx.fillStyle = p.color;
+          this._roundRect(ctx, pt.x - (maxW >> 1) - p.padding, pt.y - p.padding, maxW + p.padding * 2, h, p.radius ?? 0);
+          ctx.fill();
+        }
+
+        if (clip.text_glow) {
+          const g = clip.text_glow;
+          ctx.shadowColor = g.color;
+          ctx.shadowBlur = g.blur;
+          ctx.globalAlpha = (clip.text_opacity ?? 1.0) * (g.opacity ?? 1.0);
+        } else if (clip.text_shadow) {
+          const s = clip.text_shadow;
+          ctx.shadowOffsetX = s.x;
+          ctx.shadowOffsetY = s.y;
+          ctx.shadowBlur = s.blur;
+          ctx.shadowColor = s.color;
+        }
+
+        if (clip.text_anim_style && clip.text_anim_style !== 'static') {
+          this._renderNarrationAnimated(ctx, layout, pt.x, pt.y, elapsedMs, clip);
+        } else {
+          this._renderNarrationStatic(ctx, layout, pt.x, pt.y, clip);
+        }
+
+        if (clip.text_stroke && clip.text_stroke.width > 0) {
+          ctx.strokeStyle = clip.text_stroke.color;
+          ctx.lineWidth = clip.text_stroke.width;
+          ctx.shadowBlur = 0;
+          layout.lines.forEach((line, i) => {
+            ctx.strokeText(line, pt.x, pt.y + i * lineHeight);
+          });
+        }
+
+        if (clip.text_underline || clip.text_strike) {
+          ctx.strokeStyle = textColor;
+          ctx.lineWidth = Math.max(1, fontSize * 0.05);
+          layout.lines.forEach((line, i) => {
+            const w = ctx.measureText(line).width;
+            const lx = ctx.textAlign === 'center' ? pt.x - w / 2 : ctx.textAlign === 'right' ? pt.x - w : pt.x;
+            const ly = clip.text_underline
+              ? pt.y + i * lineHeight + fontSize * 1.05
+              : pt.y + i * lineHeight + fontSize * 0.55;
+            ctx.beginPath();
+            ctx.moveTo(lx, ly);
+            ctx.lineTo(lx + w, ly);
+            ctx.stroke();
+          });
+        }
+
+        ctx.restore();
+
+        const bx = pt.x - (maxW >> 1), by = pt.y;
+        const height = layout.lines.length * lineHeight;
+        this._drawnRects.set(clip.id, { x: bx, y: by, w: maxW, h: height });
       }
 
-      const bx = pt.x - (maxW >> 1), by = pt.y;
-      const height = layout.lines.length * lineHeight;
-      this._drawnRects.set(clip.id, { x: bx, y: by, w: maxW, h: height });
-    }
+
     else if (clip.clip_type === 'code') {
       this._drawCodeTerminal(ctx, clip, r, pt, theme);
     }

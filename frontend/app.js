@@ -85,6 +85,20 @@ const CLIP_DEFAULTS = {
   text_line_stagger_ms: 140,
   text_slide_distance: 90,
   text_sweep_width: 140,
+
+  text_font_family: 'Consolas, monospace',
+  text_letter_spacing: 0,
+  text_line_height: 1.4,
+  text_align: 'center',
+  text_uppercase: false,
+  text_underline: false,
+  text_strike: false,
+  text_opacity: 1.0,
+  text_shadow: null,   // {x,y,blur,color,opacity}
+  text_glow: null,     // {blur,color,opacity}
+  text_stroke: null,   // {width,color}
+  text_plate: null,    // {color,padding,radius}
+
   layer: 0,
   // shape (#22)
   shape_kind: 'rectangle',
@@ -1339,6 +1353,7 @@ class App {
     };
     window.addEventListener('message', onReady);
 
+    iframe.src = 'animationwindow.html?t=' + Date.now(); // forces reload every open
     document.getElementById('advtext-modal-overlay').classList.add('open');
   }
 
@@ -1348,24 +1363,90 @@ class App {
   }
   
   _clipToAdvancedState(clip) {
-    // TODO: verify field names against Clip / canvas.js narration schema
     return {
-      text: clip.text ?? '',
+      text: clip.content ?? '',
+      fontFamily: clip.text_font_family ?? "'Space Grotesk', sans-serif",
+      fontSize: clip.font_size ?? 64,
+      fontWeight: clip.font_bold ? 700 : 600,
+      letterSpacing: clip.text_letter_spacing ?? 0,
+      lineHeight: clip.text_line_height ?? 1.15,
+      textAlign: clip.text_align ?? 'center',
+      bold: !!clip.font_bold,
+      italic: !!clip.font_italic,
+      underline: !!clip.text_underline,
+      strike: !!clip.text_strike,
+      uppercase: !!clip.text_uppercase,
+
       animType: clip.text_anim_style ?? 'none',
+      animDuration: clip.text_duration_ms ?? 700,
+      animDelay: 0,
+      animStagger: clip.text_stagger_ms ?? 40,
+      animEasing: 'easeInOut',
+      loop: false,
+      loopPause: 900,
+
+      textColor: clip.font_color ?? '#f5f4f0',
+      plate: !!clip.text_plate,
+      plateColor: clip.text_plate?.color ?? '#111111',
+      platePadding: clip.text_plate?.padding ?? 24,
+      plateRadius: clip.text_plate?.radius ?? 0,
+
+      shadow: !!clip.text_shadow,
+      shadowX: clip.text_shadow?.x ?? 4,
+      shadowY: clip.text_shadow?.y ?? 4,
+      shadowBlur: clip.text_shadow?.blur ?? 0,
+      shadowColor: clip.text_shadow?.color ?? '#000000',
+      shadowOpacity: (clip.text_shadow?.opacity ?? 0.6) * 100,
+
+      glow: !!clip.text_glow,
+      glowBlur: clip.text_glow?.blur ?? 20,
+      glowColor: clip.text_glow?.color ?? '#d8341c',
+      glowOpacity: (clip.text_glow?.opacity ?? 0.7) * 100,
+
+      stroke: !!clip.text_stroke,
+      strokeWidth: clip.text_stroke?.width ?? 2,
+      strokeColor: clip.text_stroke?.color ?? '#111111',
+
+      textOpacity: (clip.text_opacity ?? 1.0) * 100,
     };
   }
 
   _applyAdvancedTextToClip(payload) {
     const clip = this._findClip(this._advTextClipId);
     if (!clip) return;
-    // TODO: verify field names against Clip / canvas.js narration schema
-    clip.text = payload.content;
+
+    clip.content = payload.content;
+    clip.font_size = payload.typography.fontSize;
+    clip.font_color = payload.typography.color;
+    clip.font_bold = payload.typography.fontWeight >= 700;
+    clip.font_italic = payload.typography.italic;
+    clip.text_font_family = payload.typography.fontFamily;
+    clip.text_letter_spacing = payload.typography.letterSpacing;
+    clip.text_line_height = payload.typography.lineHeight;
+    clip.text_align = payload.typography.align;
+    clip.text_underline = payload.typography.underline;
+    clip.text_strike = payload.typography.strikethrough;
+    clip.text_uppercase = payload.typography.uppercase;
+
     clip.text_anim_style = payload.animation.type === 'none' ? null : payload.animation.type;
+    clip.text_duration_ms = payload.animation.durationMs;
+    clip.text_stagger_ms = payload.animation.staggerMs;
+
+    clip.text_shadow = payload.effects.shadow
+      ? { ...payload.effects.shadow, opacity: payload.effects.shadow.opacity / 100 }
+      : null;
+    clip.text_glow = payload.effects.glow
+      ? { ...payload.effects.glow, opacity: payload.effects.glow.opacity / 100 }
+      : null;
+    clip.text_stroke = payload.effects.stroke ?? null;
+    clip.text_opacity = payload.effects.opacity / 100;
+    clip.text_plate = payload.plate ?? null;
 
     this._dirty = true;
     this._refreshAll();
     this.canvas.redraw();
     this.timeline.redraw();
+    if (this._selectionPrimaryId === clip.id) this.props.showClip(clip);
     this._commit(this._advTextBefore);
     this._closeAdvancedTextModal();
   }

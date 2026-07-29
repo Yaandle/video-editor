@@ -116,20 +116,16 @@ def draw_narration_text(draw_target, text, font, x, y, color, params=None, alpha
 
     a = int(max(0.0, min(1.0, alpha)) * 255)
 
-    shadow_color = params.get("text_shadow_color")
-    if shadow_color:
-        sx = x + params.get("text_shadow_offset_x", 0)
-        sy = y + params.get("text_shadow_offset_y", 0)
-        draw_target.text(
-            (sx, sy),
-            text,
-            font=font,
-            fill=(*shadow_color, a),
-            anchor="la"
-        )
+    shadow = params.get("text_shadow")
+    if shadow and shadow.get("color"):
+        sx = x + shadow.get("x", 0)
+        sy = y + shadow.get("y", 0)
+        shadow_alpha = int(a * shadow.get("opacity", 1.0))
+        draw_target.text((sx, sy), text, font=font, fill=(*shadow["color"], shadow_alpha), anchor="la")
 
-    stroke_color = params.get("text_stroke_color")
-    stroke_width = params.get("text_stroke_width", 0)
+    stroke = params.get("text_stroke")
+    stroke_color = stroke.get("color") if stroke else None
+    stroke_width = stroke.get("width", 0) if stroke else 0
 
     if stroke_color and stroke_width > 0:
         draw_target.text(
@@ -190,22 +186,22 @@ def _draw_text_transformed(
 
     a = int(max(0.0, min(1.0, alpha)) * 255)
 
-    # Same shadow -> stroke -> fill order as draw_narration_text, applied to
-    # the glyph before it's scaled/blurred and composited.
-    shadow_color = params.get("text_shadow_color")
-    if shadow_color:
-        sx = pad + params.get("text_shadow_offset_x", 0)
-        sy = pad + params.get("text_shadow_offset_y", 0)
+    shadow = params.get("text_shadow")
+    if shadow and shadow.get("color"):
+        sx = pad + shadow.get("x", 0)
+        sy = pad + shadow.get("y", 0)
+        shadow_alpha = int(a * shadow.get("opacity", 1.0))
         gd.text(
             (sx, sy),
             text,
             font=draw_font,
-            fill=(*shadow_color, a),
+            fill=(*shadow["color"], shadow_alpha),
             anchor="la"
         )
 
-    stroke_color = params.get("text_stroke_color")
-    stroke_width = params.get("text_stroke_width", 0)
+    stroke = params.get("text_stroke")
+    stroke_color = stroke.get("color") if stroke else None
+    stroke_width = stroke.get("width", 0) if stroke else 0
 
     if stroke_color and stroke_width > 0:
         gd.text(

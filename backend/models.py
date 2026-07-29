@@ -64,6 +64,18 @@ class Clip:
 
     motion_keyframes: list = field(default_factory=list)
 
+    text_font_family: str = "Arial"
+    text_letter_spacing: float = 0.0
+    text_line_height: float = 1.4
+    text_align: str = "center"
+    text_uppercase: bool = False
+    text_underline: bool = False
+    text_strike: bool = False
+    text_opacity: float = 1.0
+    text_shadow: Optional[dict] = None
+    text_glow: Optional[dict] = None
+    text_stroke: Optional[dict] = None
+    text_plate: Optional[dict] = None
 
     def end(self):
         return self.start + self.duration

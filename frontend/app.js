@@ -731,6 +731,23 @@ class App {
         this._pendingPropsBefore = null;
       }
     });
+    document.getElementById('props-inner').addEventListener('props:advancedtext', (e) => {
+      this._openAdvancedTextModal(e.detail.clip);
+    });
+
+    document.getElementById('advtext-modal-overlay').addEventListener('click', (e) => {
+      if (e.target.id === 'advtext-modal-overlay') this._closeAdvancedTextModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' &&
+          document.getElementById('advtext-modal-overlay').classList.contains('open')) {
+        this._closeAdvancedTextModal();
+      }
+    });
+    window.addEventListener('message', (e) => {
+      if (e.data?.type === 'vidkit:closeAdvancedText') this._closeAdvancedTextModal();
+      if (e.data?.type === 'vidkit:applyAdvancedText') this._applyAdvancedTextToClip(e.data.payload);
+    });
 
     document.getElementById('canvas-widget').addEventListener('canvas:committed', (e) => {
       this._commit(e.detail.before);
@@ -1307,6 +1324,54 @@ class App {
     });
     document.getElementById('snap-modal-overlay').classList.add('open');
   }
+
+  _openAdvancedTextModal(clip) {
+    this._advTextClipId = clip.id;
+    this._advTextBefore = JSON.stringify(this.project.toDict());
+    const iframe = document.getElementById('advtext-iframe');
+
+    const onReady = (e) => {
+      if (e.data?.type !== 'vidkit:iframeReady') return;
+      iframe.contentWindow.postMessage(
+        { type: 'vidkit:loadClip', payload: this._clipToAdvancedState(clip) }, '*'
+      );
+      window.removeEventListener('message', onReady);
+    };
+    window.addEventListener('message', onReady);
+
+    document.getElementById('advtext-modal-overlay').classList.add('open');
+  }
+
+  _closeAdvancedTextModal() {
+    document.getElementById('advtext-modal-overlay').classList.remove('open');
+    this._advTextClipId = null;
+  }
+  
+  _clipToAdvancedState(clip) {
+    // TODO: verify field names against Clip / canvas.js narration schema
+    return {
+      text: clip.text ?? '',
+      animType: clip.text_anim_style ?? 'none',
+    };
+  }
+
+  _applyAdvancedTextToClip(payload) {
+    const clip = this._findClip(this._advTextClipId);
+    if (!clip) return;
+    // TODO: verify field names against Clip / canvas.js narration schema
+    clip.text = payload.content;
+    clip.text_anim_style = payload.animation.type === 'none' ? null : payload.animation.type;
+
+    this._dirty = true;
+    this._refreshAll();
+    this.canvas.redraw();
+    this.timeline.redraw();
+    this._commit(this._advTextBefore);
+    this._closeAdvancedTextModal();
+  }
+
+
+
 
   _openCanvasResizeModal() {
     const PRESETS = [

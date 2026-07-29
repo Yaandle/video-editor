@@ -255,6 +255,21 @@ export class PropertiesPanel {
       ));
     }
 
+    if (c.clip_type === 'narration') {
+      const advancedBtn = document.createElement('button');
+      advancedBtn.className = 'props-btn';
+      advancedBtn.textContent = 'Advanced Text Options';
+      advancedBtn.addEventListener('click', () =>
+        this._container.dispatchEvent(
+          new CustomEvent('props:advancedtext', { 
+            bubbles: true,
+            detail: { clip: c }
+          })
+        )
+      );
+      this._container.appendChild(advancedBtn);
+    }
+
     const spacer = document.createElement('div');
     spacer.style.flex = '1';
     this._container.appendChild(spacer);

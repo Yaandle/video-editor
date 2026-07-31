@@ -47,7 +47,6 @@ body{
   position:absolute; width:1px; height:1px; padding:0; margin:-1px;
   overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
 }
-.hidden{ display:none !important; }
 
 /* ---------- fake editor backdrop (decorative only) ---------- */
 .editor-backdrop{
@@ -75,14 +74,6 @@ body{
   backdrop-filter:blur(14px) saturate(1.1);
   -webkit-backdrop-filter:blur(14px) saturate(1.1);
 }
-.reopen-btn{
-  font-family:var(--font-display); text-transform:uppercase; letter-spacing:.06em;
-  font-size:1rem; padding:16px 28px; border-radius:10px;
-  background:var(--tally); color:var(--paper); border:2px solid var(--charcoal);
-  box-shadow:5px 5px 0 var(--charcoal); cursor:pointer;
-}
-.reopen-btn:hover{ transform:translate(1px,1px); box-shadow:4px 4px 0 var(--charcoal); }
-.reopen-btn:focus-visible{ outline:3px solid var(--paper); outline-offset:4px; }
 
 /* ---------- the instrument window ---------- */
 .app-modal{
@@ -244,6 +235,10 @@ body{
 }
 .tab-btn:focus-visible{ outline:3px solid var(--charcoal); outline-offset:2px; }
 .tab-panel{ display:flex; flex-direction:column; }
+/* #66 — `display:flex` overrides the UA's default [hidden] → display:none,
+   which left all three panels permanently visible (stacked under "Text").
+   Same fix .fx-body[hidden] already has. */
+.tab-panel[hidden]{ display:none; }
 
 /* ---------- fields ---------- */
 .field{ display:flex; flex-direction:column; gap:7px; margin-bottom:18px; }
@@ -470,10 +465,11 @@ input[type="color"]:focus-visible{ outline:3px solid var(--charcoal); outline-of
 
       <!-- ============ CONTROLS ============ -->
       <section class="controls-panel" aria-label="Text and animation controls">
+        <!-- #66 UI cleanup: "Style" merged away — colour lives under Text,
+             background plate under Effects. Three focused groups. -->
         <div class="tabs" role="tablist" aria-label="Control categories">
           <button type="button" role="tab" id="tab-text" aria-controls="panel-text" aria-selected="true" class="tab-btn" tabindex="0">Text</button>
           <button type="button" role="tab" id="tab-animate" aria-controls="panel-animate" aria-selected="false" class="tab-btn" tabindex="-1">Animate</button>
-          <button type="button" role="tab" id="tab-style" aria-controls="panel-style" aria-selected="false" class="tab-btn" tabindex="-1">Style</button>
           <button type="button" role="tab" id="tab-effects" aria-controls="panel-effects" aria-selected="false" class="tab-btn" tabindex="-1">Effects</button>
         </div>
 
@@ -547,6 +543,12 @@ input[type="color"]:focus-visible{ outline:3px solid var(--charcoal); outline-of
               <button type="button" class="toggle-btn" id="btnUppercase" data-style="uppercase" aria-pressed="false" aria-label="Uppercase">Aa</button>
             </div>
           </fieldset>
+
+          <div class="field">
+            <label for="textColor">Text colour</label>
+            <input type="color" id="textColor" value="#f5f4f0">
+            <div class="swatch-row" id="colorSwatches" role="group" aria-label="Colour presets"></div>
+          </div>
         </section>
 
         <!-- ANIMATE TAB -->
@@ -607,40 +609,31 @@ input[type="color"]:focus-visible{ outline:3px solid var(--charcoal); outline-of
           </label>
         </section>
 
-        <!-- STYLE TAB -->
-        <section id="panel-style" role="tabpanel" aria-labelledby="tab-style" class="tab-panel" hidden>
-          <div class="field">
-            <label for="textColor">Text colour</label>
-            <input type="color" id="textColor" value="#f5f4f0">
-            <div class="swatch-row" id="colorSwatches" role="group" aria-label="Colour presets"></div>
-          </div>
-
-          <label class="switch" style="margin-bottom:14px;">
-            <input type="checkbox" id="plateToggle">
-            <span class="switch-track"><span class="switch-thumb"></span></span>
-            <span class="switch-label">Background plate</span>
-          </label>
-
-          <div class="fx-body" id="plateBody" hidden>
-            <div class="field-row">
-              <div class="field">
-                <label for="plateColor">Plate colour</label>
-                <input type="color" id="plateColor" value="#111111">
-              </div>
-              <div class="field">
-                <label for="plateRadius">Corner radius <span id="plateRadiusOut">0px</span></label>
-                <input type="range" id="plateRadius" min="0" max="32" step="1" value="0">
-              </div>
-            </div>
-            <div class="field">
-              <label for="platePadding">Padding <span id="platePaddingOut">24px</span></label>
-              <input type="range" id="platePadding" min="0" max="60" step="2" value="24">
-            </div>
-          </div>
-        </section>
-
         <!-- EFFECTS TAB -->
         <section id="panel-effects" role="tabpanel" aria-labelledby="tab-effects" class="tab-panel" hidden>
+          <div class="fx-block">
+            <div class="fx-block-head">
+              <span>Background plate</span>
+              <label class="switch"><input type="checkbox" id="plateToggle"><span class="switch-track"><span class="switch-thumb"></span></span></label>
+            </div>
+            <div class="fx-body" id="plateBody" hidden>
+              <div class="field-row">
+                <div class="field">
+                  <label for="plateColor">Plate colour</label>
+                  <input type="color" id="plateColor" value="#111111">
+                </div>
+                <div class="field">
+                  <label for="plateRadius">Corner radius <span id="plateRadiusOut">0px</span></label>
+                  <input type="range" id="plateRadius" min="0" max="32" step="1" value="0">
+                </div>
+              </div>
+              <div class="field">
+                <label for="platePadding">Padding <span id="platePaddingOut">24px</span></label>
+                <input type="range" id="platePadding" min="0" max="60" step="2" value="24">
+              </div>
+            </div>
+          </div>
+
           <div class="fx-block">
             <div class="fx-block-head">
               <span>Drop shadow</span>

@@ -17,8 +17,6 @@ export class MediaBin {
     this._renderGrid();
   }
 
-  setItems(items) { this._items = items; this._renderGrid(); }
-
   _build() {
     this._el.innerHTML = '';
 
@@ -39,12 +37,41 @@ export class MediaBin {
     zone.appendChild(uploadBtn);
     this._el.appendChild(zone);
 
-    zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
-    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-    zone.addEventListener('drop', (e) => {
+    // #67b — accept drops from the OS file explorer anywhere on the media
+    // panel, not just the small dropzone. Without the document-level
+    // preventDefault the browser navigates to the dropped file instead.
+    if (!MediaBin._pageDropGuarded) {
+      MediaBin._pageDropGuarded = true;
+      document.addEventListener('dragover', (e) => e.preventDefault());
+      document.addEventListener('drop', (e) => e.preventDefault());
+    }
+
+    let dragDepth = 0;
+    const setDragOver = (on) => {
+      zone.classList.toggle('drag-over', on);
+      this._el.classList.toggle('drag-over', on);
+    };
+    this._el.addEventListener('dragenter', (e) => {
+      if (!e.dataTransfer?.types?.includes('Files')) return;
       e.preventDefault();
-      zone.classList.remove('drag-over');
-      [...e.dataTransfer.files].forEach(f => this._uploadFile(f));
+      dragDepth++;
+      setDragOver(true);
+    });
+    this._el.addEventListener('dragover', (e) => {
+      if (!e.dataTransfer?.types?.includes('Files')) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    });
+    this._el.addEventListener('dragleave', () => {
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) setDragOver(false);
+    });
+    this._el.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dragDepth = 0;
+      setDragOver(false);
+      const files = [...(e.dataTransfer?.files ?? [])];
+      if (files.length) files.forEach(f => this._uploadFile(f));
     });
 
     this._grid = document.createElement('div');
@@ -145,12 +172,18 @@ export class MediaBin {
   async _uploadFile(file) {
     const form = new FormData();
     form.append('file', file);
+    const zone = this._el.querySelector('#mediabin-dropzone');
+    const hint = zone?.querySelector('span');
+    const prevText = hint?.textContent;
+    if (hint) hint.textContent = `Uploading ${file.name.slice(0, 18)}…`;
     try {
       const res = await fetch('/upload', { method: 'POST', body: form });
       if (!res.ok) { console.error('Upload failed:', await res.text()); return; }
       this.addItem(await res.json());
     } catch (err) {
       console.error('Upload error:', err);
+    } finally {
+      if (hint) hint.textContent = prevText;
     }
   }
 }

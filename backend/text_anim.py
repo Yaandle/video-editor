@@ -24,16 +24,55 @@ class Easing:
         return 1 + c3 * x ** 3 + c1 * x ** 2
 
 
+_FONT_WARNED = False
+
 def load_narration_font(size):
-    for path in ("consola.ttf", "C:/Windows/Fonts/consola.ttf", "DejaVuSansMono.ttf"):
+    """
+    Load a monospace font at `size`, trying Windows/Linux/macOS locations.
+    PIL's bitmap default font IGNORES the size argument, so falling back to it
+    produces tiny unreadable text in rendered frames — warn loudly if we must.
+    """
+    global _FONT_WARNED
+    candidates = (
+        "consola.ttf",
+        "C:/Windows/Fonts/consola.ttf",
+        "C:/Windows/Fonts/cour.ttf",
+        "DejaVuSansMono.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+        "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
+        "/System/Library/Fonts/Menlo.ttc",
+        "/System/Library/Fonts/Monaco.ttf",
+        "/Library/Fonts/Courier New.ttf",
+    )
+    for path in candidates:
         try:
             return ImageFont.truetype(path, size)
         except Exception:
             continue
+    # Pillow >= 9.2 can scale its packaged default font.
+    try:
+        return ImageFont.load_default(size=size)
+    except TypeError:
+        pass
+    if not _FONT_WARNED:
+        _FONT_WARNED = True
+        import sys
+        print(
+            "[text_anim] WARNING: no scalable monospace font found — falling "
+            "back to PIL's bitmap default, which ignores font size. Rendered "
+            "text will be tiny. Install DejaVu Sans Mono (or Consolas).",
+            file=sys.stderr,
+        )
     return ImageFont.load_default()
 
 
 # ── Layout (ported 1:1 from canvas.js `_layoutNarrationText`) ──────────────
+# ⚠ SYNC CONTRACT: this function MUST stay behaviourally identical to
+# `_layoutNarrationText` in frontend/canvas.js. If either side changes, port
+# the change to the other. Parameters that must match: word-wrap threshold
+# (space + word > max_width), per-char x offsets, global word/char indices,
+# and line y = index * line_height. The wrap width itself is derived in
+# render_narration_frame as canvas_w * 0.88 * scale_x (canvas.js: baseMaxW*sx).
 def layout_narration_text(font, text, max_width, line_height):
     # Split on paragraphs (hard line breaks) first, then wrap words within each
     paragraphs = text.split('\n')
@@ -102,6 +141,19 @@ def _font_scaled_variant(font, scale):
         return None
 
 
+def _to_rgb(color):
+    """Accept '#rrggbb' strings or (r,g,b) tuples; return an (r,g,b) tuple."""
+    if isinstance(color, str):
+        c = color.lstrip('#')
+        if len(c) == 3:
+            c = ''.join(ch * 2 for ch in c)
+        try:
+            return tuple(int(c[i:i + 2], 16) for i in (0, 2, 4))
+        except ValueError:
+            return (255, 255, 255)
+    return tuple(color)
+
+
 def draw_narration_text(draw_target, text, font, x, y, color, params=None, alpha=1.0):
     """
     Single source of truth for narration text drawing: shadow -> stroke -> fill.
@@ -115,21 +167,18 @@ def draw_narration_text(draw_target, text, font, x, y, color, params=None, alpha
         return
 
     a = int(max(0.0, min(1.0, alpha)) * 255)
+    color = _to_rgb(color)
 
-    shadow_color = params.get("text_shadow_color")
-    if shadow_color:
-        sx = x + params.get("text_shadow_offset_x", 0)
-        sy = y + params.get("text_shadow_offset_y", 0)
-        draw_target.text(
-            (sx, sy),
-            text,
-            font=font,
-            fill=(*shadow_color, a),
-            anchor="la"
-        )
+    shadow = params.get("text_shadow")
+    if shadow and shadow.get("color"):
+        sx = x + shadow.get("x", 0)
+        sy = y + shadow.get("y", 0)
+        shadow_alpha = int(a * shadow.get("opacity", 1.0))
+        draw_target.text((sx, sy), text, font=font, fill=(*_to_rgb(shadow["color"]), shadow_alpha), anchor="la")
 
-    stroke_color = params.get("text_stroke_color")
-    stroke_width = params.get("text_stroke_width", 0)
+    stroke = params.get("text_stroke")
+    stroke_color = stroke.get("color") if stroke else None
+    stroke_width = stroke.get("width", 0) if stroke else 0
 
     if stroke_color and stroke_width > 0:
         draw_target.text(
@@ -138,8 +187,8 @@ def draw_narration_text(draw_target, text, font, x, y, color, params=None, alpha
             font=font,
             fill=(*color, a),
             anchor="la",
-            stroke_width=stroke_width,
-            stroke_fill=(*stroke_color, a)
+            stroke_width=int(stroke_width),
+            stroke_fill=(*_to_rgb(stroke_color), a)
         )
     else:
         draw_target.text(
@@ -189,23 +238,24 @@ def _draw_text_transformed(
     gd = ImageDraw.Draw(glyph)
 
     a = int(max(0.0, min(1.0, alpha)) * 255)
+    color = _to_rgb(color)
 
-    # Same shadow -> stroke -> fill order as draw_narration_text, applied to
-    # the glyph before it's scaled/blurred and composited.
-    shadow_color = params.get("text_shadow_color")
-    if shadow_color:
-        sx = pad + params.get("text_shadow_offset_x", 0)
-        sy = pad + params.get("text_shadow_offset_y", 0)
+    shadow = params.get("text_shadow")
+    if shadow and shadow.get("color"):
+        sx = pad + shadow.get("x", 0)
+        sy = pad + shadow.get("y", 0)
+        shadow_alpha = int(a * shadow.get("opacity", 1.0))
         gd.text(
             (sx, sy),
             text,
             font=draw_font,
-            fill=(*shadow_color, a),
+            fill=(*_to_rgb(shadow["color"]), shadow_alpha),
             anchor="la"
         )
 
-    stroke_color = params.get("text_stroke_color")
-    stroke_width = params.get("text_stroke_width", 0)
+    stroke = params.get("text_stroke")
+    stroke_color = stroke.get("color") if stroke else None
+    stroke_width = stroke.get("width", 0) if stroke else 0
 
     if stroke_color and stroke_width > 0:
         gd.text(
@@ -214,8 +264,8 @@ def _draw_text_transformed(
             font=draw_font,
             fill=(*color, a),
             anchor="la",
-            stroke_width=stroke_width,
-            stroke_fill=(*stroke_color, a)
+            stroke_width=int(stroke_width),
+            stroke_fill=(*_to_rgb(stroke_color), a)
         )
     else:
         gd.text(
@@ -393,10 +443,115 @@ def render_narration_linescan(base_img, layout, ox, oy, elapsed_ms, params, font
             base_img.alpha_composite(highlight, (round(line_x), round(oy + line["y"])))
 
 
+def _render_static_alpha(base_img, layout, ox, oy, font, color, params, alpha):
+    """Static layout drawn at a uniform alpha (helper for fade/slideup/glitch)."""
+    draw = ImageDraw.Draw(base_img)
+    for line in layout["lines"]:
+        line_ox = ox - line["line_width"] / 2
+        for word in line["words"]:
+            draw_narration_text(
+                draw, word["text"], font,
+                line_ox + word["x"], oy + line["y"],
+                color, params, alpha,
+            )
+
+
+def render_narration_fade(base_img, layout, ox, oy, elapsed_ms, params, font, color):
+    # canvas.js _renderNarrationFadeIn
+    dur = params.get("text_duration_ms", 550)
+    t = max(0.0, min(1.0, elapsed_ms / dur))
+    _render_static_alpha(base_img, layout, ox, oy, font, color, params,
+                         Easing.ease_out_cubic(t))
+
+
+def render_narration_slideup(base_img, layout, ox, oy, elapsed_ms, params, font, color):
+    # canvas.js _renderNarrationSlideUp
+    dur = params.get("text_duration_ms", 550)
+    rise = params.get("text_rise_distance", 36)
+    t = max(0.0, min(1.0, elapsed_ms / dur))
+    eased = Easing.ease_out_cubic(t)
+    _render_static_alpha(
+        base_img, layout, ox, oy - rise * (1 - eased),
+        font, color, params, min(1.0, t * 1.6),
+    )
+
+
+def render_narration_scalepop(base_img, layout, ox, oy, elapsed_ms, params, font, color):
+    # canvas.js _renderNarrationScalePop — uniform scale about (ox, oy).
+    dur = params.get("text_duration_ms", 550)
+    t = max(0.0, min(1.0, elapsed_ms / dur))
+    scale = 0.6 + 0.4 * max(0.0, Easing.ease_out_back(t, 1.7))
+    alpha = min(1.0, t * 2)
+    for line in layout["lines"]:
+        line_ox = ox - line["line_width"] / 2
+        for word in line["words"]:
+            # word centre in unscaled space, then scaled about the anchor
+            wx = line_ox + word["x"] + word["width"] / 2
+            wy = oy + line["y"]
+            sx = ox + (wx - ox) * scale
+            sy = oy + (wy - oy) * scale
+            _draw_text_transformed(
+                base_img, word["text"], font, sx, sy,
+                scale, alpha, color, params=params,
+            )
+
+
+def render_narration_charstagger(base_img, layout, ox, oy, elapsed_ms, params, font, color):
+    # canvas.js _renderNarrationCharStagger
+    stagger = params.get("text_stagger_ms", 25)
+    dur = params.get("text_duration_ms", 300)
+    rise = params.get("text_rise_distance", 14)
+    for line in layout["lines"]:
+        line_ox = ox - line["line_width"] / 2
+        for word in line["words"]:
+            for ch in word["chars"]:
+                local_t = elapsed_ms - ch["global_index"] * stagger
+                if local_t <= 0:
+                    continue
+                t = max(0.0, min(1.0, local_t / dur))
+                y_offset = rise * (1 - Easing.ease_out_back(t, 1.5))
+                cx = line_ox + word["x"] + ch["x"] + ch["width"] / 2
+                cy = oy + line["y"] + y_offset
+                _draw_text_transformed(
+                    base_img, ch["char"], font, cx, cy,
+                    1.0, min(1.0, t * 2.2), color, params=params,
+                )
+
+
+def render_narration_glitch(base_img, layout, ox, oy, elapsed_ms, params, font, color):
+    # canvas.js _renderNarrationGlitch — same pseudo-random jitter/flicker.
+    dur = params.get("text_duration_ms", 500)
+    t = max(0.0, min(1.0, elapsed_ms / dur))
+    if t >= 1.0:
+        render_narration_static(base_img, layout, ox, oy, font, color, params)
+        return
+    decay = 1 - Easing.ease_out_cubic(t)
+    seed = int(elapsed_ms // 60)
+
+    def jitter(n):
+        x = math.sin(n * 12.9898 + seed * 78.233) * 43758.5453
+        return (x - math.floor(x)) * 2 - 1
+
+    max_offset = 6 * decay
+    flicker = 0.3 if jitter(9) > 0.6 else 1.0
+    _render_static_alpha(
+        base_img, layout,
+        ox + max_offset * jitter(1),
+        oy + max_offset * jitter(2) * 0.4,
+        font, color, params, flicker,
+    )
+
+
 ANIM_RENDERERS = {
     "typewriter": render_narration_typewriter,
     "wordblurin": render_narration_wordblurin,
+    "wordblur": render_narration_wordblurin,  # alias — Advanced Text modal id (#66)
     "linescan": render_narration_linescan,
+    "fade": render_narration_fade,
+    "slideup": render_narration_slideup,
+    "scalepop": render_narration_scalepop,
+    "charstagger": render_narration_charstagger,
+    "glitch": render_narration_glitch,
 }
 
 
@@ -407,6 +562,7 @@ def render_narration_frame(text, style, elapsed_ms, params, canvas_w, x_norm, fo
     image. Returns the PIL Image; caller positions it at (0, y*CANVAS_H - padding_top).
     """
     font = load_narration_font(font_size)
+    color = _to_rgb(color)  # accept '#rrggbb' from clip dicts as well as tuples
 
     # wrap width now respects scale_x, mirroring canvas.js's baseMaxW * sx.
     # ratio corrected from 0.85 -> 0.88 to match canvas.js exactly — this was

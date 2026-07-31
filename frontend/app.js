@@ -71,11 +71,17 @@ const CLIP_DEFAULTS = {
   scale_x: 1.0,
   scale_y: 1.0,
   animation: 'typewriter', theme: 'dark',
+  font_size: null,      // null = fall back to canvas.js's computed default
+  font_color: null,
+  font_bold: false,
+  font_italic: false,
   code_file: '',
   terminal_prompt: '', terminal_title: '',
   graph_type: 'bar', graph_data: '',
   voice_id: '', source_start: 0.0,
   text_anim_style: null,
+  text_delay_ms: 0,
+  text_anim_easing: 'easeInOut',
   text_chars_per_second: 26,
   text_pop_duration_ms: 90,
   text_stagger_ms: 60,
@@ -85,6 +91,20 @@ const CLIP_DEFAULTS = {
   text_line_stagger_ms: 140,
   text_slide_distance: 90,
   text_sweep_width: 140,
+
+  text_font_family: 'Consolas, monospace',
+  text_letter_spacing: 0,
+  text_line_height: 1.4,
+  text_align: 'center',
+  text_uppercase: false,
+  text_underline: false,
+  text_strike: false,
+  text_opacity: 1.0,
+  text_shadow: null,   // {x,y,blur,color,opacity}
+  text_glow: null,     // {blur,color,opacity}
+  text_stroke: null,   // {width,color}
+  text_plate: null,    // {color,padding,radius}
+
   layer: 0,
   // shape (#22)
   shape_kind: 'rectangle',
@@ -99,6 +119,12 @@ const CLIP_DEFAULTS = {
   opacity: 1.0,
 
   motion_keyframes: null, // or [{t: 0, x: 0.3, y: 0.5}, {t: 1, x: 0.7, y: 0.2}]
+
+  // transitions (#63) — apply to any clip type on any track
+  transition_in: null,      // null|'fade'|'slide_up'|'slide_down'|'slide_left'|'slide_right'|'scale_pop'
+  transition_in_ms: 500,
+  transition_out: null,     // null|'fade'|'slide_up'|'slide_down'|'slide_left'|'slide_right'|'scale_pop'
+  transition_out_ms: 500,
 };
 const CLIP_FIELDS = Object.keys(CLIP_DEFAULTS);
 
@@ -222,7 +248,9 @@ class App {
     this._projectPath = null;
     this._dirty       = false;
     this._clipboard   = null;
-    this._selectedId  = null;
+    // Selection model: _selectedIds is the single source of truth for what's
+    // selected; _selectionPrimaryId is the "active" clip (properties panel,
+    // copy/duplicate target). Always mutate via _setSelection().
     this._selectedIds = new Set();
     this._selectionPrimaryId = null;
     this._undoStack   = [];
@@ -248,6 +276,11 @@ class App {
     this.canvas   = new CanvasWidget(document.getElementById('canvas-widget'), this.project, this._selectedIds);
     this.timeline = new TimelineWidget(document.getElementById('timeline-canvas'), this.project);
     this.props    = new PropertiesPanel(document.getElementById('props-inner'));
+    // #67c — let the properties panel read/write on-screen dimensions
+    this.props.setSizeHooks(
+      (clip) => this.canvas.getClipProjectSize(clip),
+      (clip, w, h) => this.canvas.setClipProjectSize(clip, w, h),
+    );
 
     this._bgColorDragBefore = null;
     this._bgColorPicker = createColorPicker(document.getElementById('bg-color-picker'), {
@@ -274,7 +307,6 @@ class App {
     });
 
     this._wireTimelineResize();
-    this._wireTimelinePan();
 
     this.playback = new PlaybackController(this.project, (t) => this._onPlaybackTick(t));
 
@@ -346,10 +378,10 @@ class App {
     }
   }
 
-  async _addMediaClip(item) {
+  async _addMediaClip(item, startAt = null) {
     const clip_type = item.kind === 'video' ? 'video' : item.kind === 'audio' ? 'audio' : 'image';
     // Prefer metadata from the backend if provided
-    const meta = item.metadata ?? item.metadata ?? null;
+    const meta = item.metadata ?? null;
     let dur = meta && meta.duration ? meta.duration : null;
 
     // If audio and no duration provided, probe via HTMLAudioElement
@@ -365,8 +397,13 @@ class App {
     // For other media types, fall back to 5s if unknown
     if (dur == null) dur = 5.0;
 
+    const before = JSON.stringify(this.project.toDict());
     const track = CLIP_TYPE_TRACK[clip_type] ?? 'visual';
-    const start = Math.max(this.playback.playhead, this._nextStartForTrack(track));
+    // startAt: explicit drop position (timeline drag-drop, #67b follow-up);
+    // otherwise append after the last clip on the target track.
+    const start = startAt != null
+      ? Math.max(0, startAt)
+      : Math.max(this.playback.playhead, this._nextStartForTrack(track));
     const c = newClip(clip_type, start, dur);
     c.code_file = item.url;
 
@@ -377,17 +414,13 @@ class App {
     // Ensure audio element for audio clips
     if (c.clip_type === 'audio') this._ensureAudioForClip(c);
 
-    this._selectedIds.clear();
-    this._selectedIds.add(c.id);
-    this._selectionPrimaryId = c.id;
-    this.timeline.setSelectedIds(this._selectedIds);
-    this.canvas.setSelectedIds(this._selectedIds, this._selectionPrimaryId);
-    this.props.showClip(c);
-    this.canvas.redraw();
+    this._setSelection([c.id], c.id);
     this._updateStatus(`Added: ${item.original ?? item.name}`);
+    this._commit(before);
   }
 
   _addShapeClip(shape_kind) {
+    const before = JSON.stringify(this.project.toDict());
     const track = 'visual';
     const start = Math.max(this.playback.playhead, this._nextStartForTrack(track));
     const c = newClip('shape', start);
@@ -395,14 +428,9 @@ class App {
     this.project.clips.push(c);
     this._dirty = true;
     this._refreshAll();
-    this._selectedIds.clear();
-    this._selectedIds.add(c.id);
-    this._selectionPrimaryId = c.id;
-    this.timeline.setSelectedIds(this._selectedIds);
-    this.canvas.setSelectedIds(this._selectedIds, this._selectionPrimaryId);
-    this.props.showClip(c);
-    this.canvas.redraw();
+    this._setSelection([c.id], c.id);
     this._updateStatus(`Added: ${c.label()}`);
+    this._commit(before);
   }
 
   _probeAudioDuration(url) {
@@ -675,6 +703,12 @@ class App {
       this.playback.seek(e.detail.t);
     });
 
+    // #67b follow-up — media-bin card dragged onto the timeline: add the
+    // clip at the dropped (snapped) time instead of appending at track end.
+    document.getElementById('timeline-canvas').addEventListener('timeline:mediadropped', (e) => {
+      this._addMediaClip(e.detail.item, e.detail.time);
+    });
+
     document.getElementById('timeline-canvas').addEventListener('timeline:slice', (e) => {
       const before = JSON.stringify(this.project.toDict());
       const { sourceId, rightStart, rightDur, rightSourceStart } = e.detail;
@@ -705,7 +739,13 @@ class App {
 
     document.getElementById('props-inner').addEventListener('props:animatepos', () => {
       this.canvas.setTool('motionA');
-      this._updateStatus('Click canvas to set START position');
+      this._updateStatus('Click canvas to set START position (Ctrl-click = no snapping)');
+    });
+
+    // #63/#64 — preview a clip's transitions/animation from its start
+    document.getElementById('props-inner').addEventListener('props:previewclip', (e) => {
+      const clip = e.detail?.clip;
+      if (clip) this._previewClipAnimation(clip, true);
     });
 
     document.getElementById('canvas-widget').addEventListener('canvas:motioncaptured', (e) => {
@@ -731,6 +771,23 @@ class App {
         this._pendingPropsBefore = null;
       }
     });
+    document.getElementById('props-inner').addEventListener('props:advancedtext', (e) => {
+      this._openAdvancedTextModal(e.detail.clip);
+    });
+
+    document.getElementById('advtext-modal-overlay').addEventListener('click', (e) => {
+      if (e.target.id === 'advtext-modal-overlay') this._closeAdvancedTextModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' &&
+          document.getElementById('advtext-modal-overlay').classList.contains('open')) {
+        this._closeAdvancedTextModal();
+      }
+    });
+    window.addEventListener('message', (e) => {
+      if (e.data?.type === 'vidkit:closeAdvancedText') this._closeAdvancedTextModal();
+      if (e.data?.type === 'vidkit:applyAdvancedText') this._applyAdvancedTextToClip(e.data.payload);
+    });
 
     document.getElementById('canvas-widget').addEventListener('canvas:committed', (e) => {
       this._commit(e.detail.before);
@@ -753,20 +810,6 @@ class App {
         document.getElementById('snap-modal-overlay').classList.remove('open');
     });
 
-    const mediaInput = document.getElementById('media-upload');
-    if (mediaInput) {
-      mediaInput.addEventListener('change', async (e) => {
-        for (const file of [...e.target.files]) {
-          try {
-            const item = await this._uploadFile(file);
-            this.mediaBin.addItem(item);
-          } catch (err) {
-            console.error(err);
-          }
-        }
-        mediaInput.value = '';
-      });
-    }
   }
 
   _wireProjectName() {
@@ -813,16 +856,6 @@ class App {
       dragging = false;
       handle.classList.remove('active');
       document.body.style.cursor = 'default';
-    });
-  }
-
-  _wireTimelinePan() {
-    const slider = document.getElementById('timeline-pan-slider');
-    if (!slider) return;
-    slider.addEventListener('input', () => this.timeline.setPanOffset(parseInt(slider.value, 10)));
-    document.getElementById('timeline-canvas').addEventListener('timeline:panchanged', (e) => {
-      slider.max   = Math.ceil(e.detail.max);
-      slider.value = Math.round(e.detail.offset);
     });
   }
 
@@ -900,18 +933,10 @@ class App {
       });
     }
 
-    const zoomResetBtn = document.getElementById('zoom-reset-btn');
-    if (zoomResetBtn) {
-        zoomResetBtn.addEventListener('click', () => this.timeline.zoomReset());
-    }
-
     const undoBtn = document.getElementById('undo-btn');
     const redoBtn = document.getElementById('redo-btn');
     if (undoBtn) undoBtn.addEventListener('click', () => this._undo());
     if (redoBtn) redoBtn.addEventListener('click', () => this._redo());
-
-    const canvasResizeBtn = document.getElementById('canvas-resize-btn');
-    if (canvasResizeBtn) canvasResizeBtn.addEventListener('click', () => this._openCanvasResizeModal());
 
     const shapeBtn  = document.getElementById('add-shape-btn');
     const shapeMenu = document.getElementById('add-shape-menu');
@@ -955,6 +980,28 @@ class App {
       if (e.key === '0' && !inInput) { e.preventDefault(); this.timeline.zoomReset(); return; }
       if (e.key === 'ArrowLeft' && e.shiftKey && !inInput) { e.preventDefault(); this.playback.stepFrame(-1); return; }
       if (e.key === 'ArrowRight' && e.shiftKey && !inInput) { e.preventDefault(); this.playback.stepFrame(1); return; }
+
+      // #67d — arrow keys nudge selected canvas objects.
+      // Plain arrow = fine step, Ctrl+arrow = coarse step. (Shift+←/→ stays frame stepping.)
+      const ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+      if (ARROWS[e.key] && !inInput && !e.shiftKey && this._selectedIds.size > 0) {
+        const step = e.ctrlKey || e.metaKey ? 0.02 : 0.005;
+        const [dx, dy] = ARROWS[e.key];
+        if (!this._nudgeBefore) this._nudgeBefore = JSON.stringify(this.project.toDict());
+        if (this.canvas.nudgeSelected(dx * step, dy * step)) {
+          e.preventDefault();
+          this._dirty = true;
+          const clip = this._findClip(this._selectionPrimaryId ?? '');
+          if (clip && this._selectedIds.size === 1) this.props.showClip(clip);
+          this._updateStatus('Nudged selection');
+          clearTimeout(this._nudgeCommitTimer);
+          this._nudgeCommitTimer = setTimeout(() => {
+            this._commit(this._nudgeBefore);
+            this._nudgeBefore = null;
+          }, 400);
+        }
+        return;
+      }
       if (e.key === 'Home' && !inInput) { e.preventDefault(); this.playback.seek(0); return; }
       if (e.key === 'End' && !inInput) { e.preventDefault(); this.playback.seek(this.project.duration); return; }
 
@@ -1043,21 +1090,16 @@ class App {
 
 
   _addClip(clip_type) {
+    const before = JSON.stringify(this.project.toDict());
     const track = CLIP_TYPE_TRACK[clip_type] ?? 'visual';
     const start = Math.max(this.playback.playhead, this._nextStartForTrack(track));
     const c = newClip(clip_type, start);
     this.project.clips.push(c);
     this._dirty = true;
     this._refreshAll();
-
-    this._selectedIds.clear();
-    this._selectedIds.add(c.id);
-    this._selectionPrimaryId = c.id;
-    this.timeline.setSelectedIds(this._selectedIds);
-    this.canvas.setSelectedIds(this._selectedIds, this._selectionPrimaryId);
-    this.props.showClip(c);
-    this.canvas.redraw();
+    this._setSelection([c.id], c.id);
     this._updateStatus(`Added: ${clip_type}`);
+    this._commit(before);
   }
 
   _deleteSelected() {
@@ -1308,6 +1350,135 @@ class App {
     document.getElementById('snap-modal-overlay').classList.add('open');
   }
 
+  _openAdvancedTextModal(clip) {
+    this._advTextClipId = clip.id;
+    this._advTextBefore = JSON.stringify(this.project.toDict());
+    const iframe = document.getElementById('advtext-iframe');
+
+    const onReady = (e) => {
+      if (e.data?.type !== 'vidkit:iframeReady') return;
+      iframe.contentWindow.postMessage(
+        { type: 'vidkit:loadClip', payload: this._clipToAdvancedState(clip) }, '*'
+      );
+      window.removeEventListener('message', onReady);
+    };
+    window.addEventListener('message', onReady);
+
+    iframe.src = 'animationwindow.html?t=' + Date.now(); // forces reload every open
+    document.getElementById('advtext-modal-overlay').classList.add('open');
+  }
+
+  _closeAdvancedTextModal() {
+    document.getElementById('advtext-modal-overlay').classList.remove('open');
+    this._advTextClipId = null;
+  }
+  
+  _clipToAdvancedState(clip) {
+    return {
+      text: clip.content ?? '',
+      fontFamily: clip.text_font_family ?? "'Space Grotesk', sans-serif",
+      fontSize: clip.font_size ?? 64,
+      fontWeight: clip.font_bold ? 700 : 600,
+      letterSpacing: clip.text_letter_spacing ?? 0,
+      lineHeight: clip.text_line_height ?? 1.15,
+      textAlign: clip.text_align ?? 'center',
+      bold: !!clip.font_bold,
+      italic: !!clip.font_italic,
+      underline: !!clip.text_underline,
+      strike: !!clip.text_strike,
+      uppercase: !!clip.text_uppercase,
+
+      animType: clip.text_anim_style === 'wordblurin' ? 'wordblur' : (clip.text_anim_style ?? 'none'),
+      animDuration: clip.text_duration_ms ?? 700,
+      animDelay: clip.text_delay_ms ?? 0,
+      animStagger: clip.text_stagger_ms ?? 40,
+      animEasing: clip.text_anim_easing ?? 'easeInOut',
+      loop: false,
+      loopPause: 900,
+
+      textColor: clip.font_color ?? '#f5f4f0',
+      plate: !!clip.text_plate,
+      plateColor: clip.text_plate?.color ?? '#111111',
+      platePadding: clip.text_plate?.padding ?? 24,
+      plateRadius: clip.text_plate?.radius ?? 0,
+
+      shadow: !!clip.text_shadow,
+      shadowX: clip.text_shadow?.x ?? 4,
+      shadowY: clip.text_shadow?.y ?? 4,
+      shadowBlur: clip.text_shadow?.blur ?? 0,
+      shadowColor: clip.text_shadow?.color ?? '#000000',
+      shadowOpacity: (clip.text_shadow?.opacity ?? 0.6) * 100,
+
+      glow: !!clip.text_glow,
+      glowBlur: clip.text_glow?.blur ?? 20,
+      glowColor: clip.text_glow?.color ?? '#d8341c',
+      glowOpacity: (clip.text_glow?.opacity ?? 0.7) * 100,
+
+      stroke: !!clip.text_stroke,
+      strokeWidth: clip.text_stroke?.width ?? 2,
+      strokeColor: clip.text_stroke?.color ?? '#111111',
+
+      textOpacity: (clip.text_opacity ?? 1.0) * 100,
+    };
+  }
+
+  _applyAdvancedTextToClip(payload) {
+    const clip = this._findClip(this._advTextClipId);
+    if (!clip) return;
+
+    clip.content = payload.content;
+    clip.font_size = payload.typography.fontSize;
+    clip.font_color = payload.typography.color;
+    clip.font_bold = payload.typography.fontWeight >= 700;
+    clip.font_italic = payload.typography.italic;
+    clip.text_font_family = payload.typography.fontFamily;
+    clip.text_letter_spacing = payload.typography.letterSpacing;
+    clip.text_line_height = payload.typography.lineHeight;
+    clip.text_align = payload.typography.align;
+    clip.text_underline = payload.typography.underline;
+    clip.text_strike = payload.typography.strikethrough;
+    clip.text_uppercase = payload.typography.uppercase;
+
+    clip.text_anim_style = payload.animation.type === 'none' ? null : payload.animation.type;
+    clip.text_duration_ms = payload.animation.durationMs;
+    clip.text_stagger_ms = payload.animation.staggerMs;
+    clip.text_delay_ms = payload.animation.delayMs ?? 0;
+    clip.text_anim_easing = payload.animation.easing ?? 'easeInOut';
+
+    clip.text_shadow = payload.effects.shadow
+      ? { ...payload.effects.shadow, opacity: payload.effects.shadow.opacity / 100 }
+      : null;
+    clip.text_glow = payload.effects.glow
+      ? { ...payload.effects.glow, opacity: payload.effects.glow.opacity / 100 }
+      : null;
+    clip.text_stroke = payload.effects.stroke ?? null;
+    clip.text_opacity = payload.effects.opacity / 100;
+    clip.text_plate = payload.plate ?? null;
+
+    this._dirty = true;
+    this._refreshAll();
+    this.canvas.redraw();
+    this.timeline.redraw();
+    if (this._selectionPrimaryId === clip.id) this.props.showClip(clip);
+    this._commit(this._advTextBefore);
+    this._closeAdvancedTextModal();
+    this._previewClipAnimation(clip);
+  }
+
+  // #66 — the canvas animation clock is playhead-driven, so a static redraw
+  // after Apply shows the animation's *finished* state. Seek to the clip's
+  // start and play so the newly applied animation actually runs.
+  _previewClipAnimation(clip, force = false) {
+    if (!force && !clip.text_anim_style && !clip.transition_in && !clip.transition_out
+        && !(clip.motion_keyframes?.length >= 2)) return;
+    if (this.playback.playing) this._togglePlay();  // pause + audio stop
+    this.playback.seek(Math.max(0, clip.start));
+    this._togglePlay();                             // play from clip start
+  }
+
+
+
+
   _openCanvasResizeModal() {
     const PRESETS = [
       { label: '9:16  — Shorts / Reels  (1080×1920)', w: 1080, h: 1920 },
@@ -1398,7 +1569,7 @@ class App {
 
   _findClip(id) { return this.project.clips.find(c => c.id === id) ?? null; }
 
-  _setSelection(ids, primaryId = null, options = { broadcast: true }) {
+  _setSelection(ids, primaryId = null) {
     const incoming = ids instanceof Set ? Array.from(ids) : Array.isArray(ids) ? ids : [];
     this._selectedIds.clear();
     for (const id of incoming) this._selectedIds.add(id);
@@ -1415,12 +1586,6 @@ class App {
       this.props.clear();
     }
     this._updateStatus();
-    if (options.broadcast) this._sendSelectionUpdate();
-  }
-
-  _sendSelectionUpdate() {
-    if (!this._ws) return;
-    this._ws.send({ type: 'selection', data: [...this._selectedIds] });
   }
 
   _commit(beforeJSON) {
@@ -1454,10 +1619,7 @@ class App {
 
   _applySnapshot(json) {
     this.project = Project.fromDict(JSON.parse(json));
-    this._selectionPrimaryId = null;
-    this.timeline.setSelectedId(null);
-    this.canvas.setSelectedId(null);
-    this.props.clear();
+    this._setSelection([], null);
     this._syncProjectToWidgets();
     this._initAudioForProject();
     this._dirty = true;

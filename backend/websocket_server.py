@@ -8,7 +8,7 @@ from PIL import Image as _PILImage
 if not hasattr(_PILImage, "ANTIALIAS"):
     _PILImage.ANTIALIAS = _PILImage.LANCZOS
 
-from models import Project, new_clip
+from models import Project
 from project_store import ProjectStore
 
 _BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -17,12 +17,74 @@ PROJECTS_DIR = os.path.join(_BACKEND_DIR, "projects")
 os.makedirs(PROJECTS_DIR, exist_ok=True)
 
 
-def _place(natW, natH, x, y, scale, canvas_w, canvas_h):
-    """Fit media into canvas (max 88% w / 80% h), return (dw, dh, dx, dy)."""
+def _place(natW, natH, x, y, scale_x, scale_y, canvas_w, canvas_h):
+    """Fit media into canvas (max 88% w / 80% h), return (dw, dh, dx, dy).
+    Mirrors canvas.js _drawMedia: independent scale_x/scale_y on top of fit."""
     fit_scale = min(canvas_w * 0.88 / natW, canvas_h * 0.80 / natH, 1.0)
-    dw, dh = natW * fit_scale * scale, natH * fit_scale * scale
+    dw, dh = natW * fit_scale * scale_x, natH * fit_scale * scale_y
     dx, dy = x * canvas_w - dw / 2, y * canvas_h - dh / 2
     return dw, dh, dx, dy
+
+
+_SLIDE_OFFSETS = {
+    # #63 — direction the clip travels FROM when sliding in (canvas fractions)
+    "slide_up": (0, 1), "slide_down": (0, -1),
+    "slide_left": (1, 0), "slide_right": (-1, 0),
+}
+
+
+def _apply_transitions(mclip, clip, base_pos, canvas_w, canvas_h):
+    """
+    #63 — mirror canvas.js's _transitionState at render time.
+    Fades map to crossfadein/out; slides animate position with the same
+    ease-out-cubic decay as the preview; scale_pop falls back to fade
+    (moviepy 1.x has no cheap per-frame scale about a point).
+    """
+    t_in = clip.get("transition_in")
+    t_out = clip.get("transition_out")
+    if not t_in and not t_out:
+        return mclip
+
+    dur = mclip.duration or float(clip.get("duration", 5))
+    in_d = min(max(0.01, float(clip.get("transition_in_ms") or 500) / 1000.0), dur)
+    out_d = min(max(0.01, float(clip.get("transition_out_ms") or 500) / 1000.0), dur)
+    bx, by = base_pos
+
+    if "scale_pop" in (t_in, t_out):
+        # Intentional: moviepy 1.x has no cheap per-frame scale about a point,
+        # so scale_pop renders as a plain crossfade. The canvas preview still
+        # shows the real pop — this note flags the mismatch for developers.
+        print("[render] note: scale_pop transition falls back to crossfade at render time", file=sys.stderr)
+
+    if t_in in ("fade", "scale_pop"):
+        mclip = mclip.crossfadein(in_d)
+    if t_out in ("fade", "scale_pop"):
+        mclip = mclip.crossfadeout(out_d)
+
+    if t_in in _SLIDE_OFFSETS or t_out in _SLIDE_OFFSETS:
+        inx, iny = _SLIDE_OFFSETS.get(t_in, (0, 0))
+        outx, outy = _SLIDE_OFFSETS.get(t_out, (0, 0))
+
+        def pos(t):
+            x_, y_ = bx, by
+            if t_in in _SLIDE_OFFSETS and t < in_d:
+                p = (1 - t / in_d) ** 3  # ease-out cubic, matches canvas.js
+                x_ += inx * canvas_w * 1.1 * p
+                y_ += iny * canvas_h * 1.1 * p
+            remain = dur - t
+            if t_out in _SLIDE_OFFSETS and remain < out_d:
+                p = (1 - remain / out_d) ** 3
+                x_ += outx * canvas_w * 1.1 * p
+                y_ += outy * canvas_h * 1.1 * p
+            return (x_, y_)
+
+        mclip = mclip.set_position(pos)
+        if t_in in _SLIDE_OFFSETS:
+            mclip = mclip.crossfadein(min(in_d * 0.6, dur))
+        if t_out in _SLIDE_OFFSETS:
+            mclip = mclip.crossfadeout(min(out_d * 0.6, dur))
+
+    return mclip
 
 
 class VideoEditorServer:
@@ -46,18 +108,7 @@ class VideoEditorServer:
         msg = json.loads(raw)
         action = msg.get("action") or msg.get("type")
 
-        if action == "add_clip":
-            from models import CLIP_TYPE_TRACK
-            clip_type = msg["clip_type"]
-            track = CLIP_TYPE_TRACK.get(clip_type, "visual")
-            start = msg.get("start")
-            if start is None:
-                track_clips = [c for c in self.project.clips if c.track == track]
-                start = max((c.end() for c in track_clips), default=0.0)
-            self.project.clips.append(new_clip(clip_type, start))
-            await self.broadcast({"type": "project", "data": self.project.to_dict()})
-
-        elif action == "save_project":
+        if action == "save_project":
             self.project = Project.from_dict(msg.get("data", {}))
             filename = os.path.basename(msg.get("filename") or f"{self.project.name}.vkit")
             if not filename.endswith(".vkit"):
@@ -124,6 +175,7 @@ class VideoEditorServer:
                 rel = rel[len("media/"):]
             return os.path.join(UPLOAD_DIR, rel)
 
+        stage = "compose"  # compose → encode; reported in render_status errors
         try:
             video_layers = [ColorClip(size=(CANVAS_W, CANVAS_H), color=(0, 0, 0)).set_duration(DURATION)]
             audio_tracks = []
@@ -154,7 +206,9 @@ class VideoEditorServer:
                         import numpy as np
 
                         anim_style = clip.get("text_anim_style")
-                        font_size = int(60 * scale)
+                        anim_delay_s = float(clip.get("text_delay_ms", 0) or 0) / 1000.0  # #66
+                        font_color = clip.get("font_color") or (255, 255, 255)  # parity with canvas preview
+                        font_size = int(clip.get("font_size") or (60 * scale))
                         rise = clip.get("text_rise_distance", 22)
                         pad_top = pad_bottom = int(rise + 30)
                         x_norm = x
@@ -163,9 +217,11 @@ class VideoEditorServer:
 
                         def _get_frame(t, _cache=_cache):
                             if _cache["t"] != t:
+                                # #66 — animation clock starts after text_delay_ms
                                 _cache["img"] = render_narration_frame(
-                                    text, anim_style, max(0.0, t) * 1000.0, clip,
+                                    text, anim_style, (max(0.0, t) - anim_delay_s) * 1000.0, clip,
                                     CANVAS_W, x_norm, font_size, pad_top, pad_bottom,
+                                    color=font_color, scale_x=scale_x,
                                 )
                                 _cache["t"] = t
                             return _cache["img"]
@@ -173,13 +229,14 @@ class VideoEditorServer:
                         def make_frame(t): return np.array(_get_frame(t).convert("RGB"))
                         def make_mask(t): return np.array(_get_frame(t).split()[-1]) / 255.0
 
-                        probe_img = render_narration_frame(text, anim_style, 0, clip, CANVAS_W, x_norm, font_size, pad_top, pad_bottom)
+                        probe_img = render_narration_frame(text, anim_style, 0, clip, CANVAS_W, x_norm, font_size, pad_top, pad_bottom, color=font_color, scale_x=scale_x)
 
                         tc = VideoClip(make_frame, duration=duration)
                         mc = VideoClip(make_mask, duration=duration, ismask=True)
                         tc = tc.set_mask(mc).set_start(start)
                         dy = y * CANVAS_H - pad_top
                         tc = tc.set_position((0, int(round(dy))))
+                        tc = _apply_transitions(tc, clip, (0, int(round(dy))), CANVAS_W, CANVAS_H)
                         video_layers.append(tc)
                         print(f"[render] narration OK ({anim_style or 'static'}): {probe_img.height}px block at y={dy:.0f}", file=sys.stderr)
                     except Exception as exc:
@@ -267,7 +324,9 @@ class VideoEditorServer:
                         arr = np.array(img)
                         sc = ImageClip(arr, duration=duration).set_start(start)
                         fw, fh = img.size
-                        sc = sc.set_position((x * CANVAS_W - fw / 2, y * CANVAS_H - fh / 2))
+                        base = (x * CANVAS_W - fw / 2, y * CANVAS_H - fh / 2)
+                        sc = sc.set_position(base)
+                        sc = _apply_transitions(sc, clip, base, CANVAS_W, CANVAS_H)
                         video_layers.append(sc)
                     except Exception as exc:
                         import traceback
@@ -298,11 +357,18 @@ class VideoEditorServer:
                         vc = VideoFileClip(fpath, audio=True)
                         end_in_source = min(source_start + duration, vc.duration)
                         vc = vc.subclip(source_start, end_in_source)
-                        dw, dh, dx, dy = _place(*vc.size, x, y, scale, CANVAS_W, CANVAS_H)
-                        vc = vc.resize((int(round(dw)), int(round(dh)))).set_position((dx, dy)).set_start(start)
+                        dw, dh, dx, dy = _place(*vc.size, x, y, scale_x, scale_y, CANVAS_W, CANVAS_H)
+                        vc = vc.resize((int(round(dw)), int(round(dh))))
+                        rotation = float(clip.get("rotation", 0) or 0)
+                        if rotation:
+                            vc = vc.rotate(-rotation, expand=True)
+                            rw, rh = vc.size
+                            dx, dy = x * CANVAS_W - rw / 2, y * CANVAS_H - rh / 2
+                        vc = vc.set_position((dx, dy)).set_start(start)
                         if vc.audio is not None:
                             audio_tracks.append(vc.audio.set_start(start))
                             vc = vc.without_audio()
+                        vc = _apply_transitions(vc, clip, (dx, dy), CANVAS_W, CANVAS_H)
                         video_layers.append(vc)
                     except Exception as exc:
                         print(f"[render] WARNING: video load failed ({src}): {exc}", file=sys.stderr)
@@ -312,8 +378,15 @@ class VideoEditorServer:
                 if ctype == "image":
                     try:
                         ic = ImageClip(fpath, duration=duration)
-                        dw, dh, dx, dy = _place(*ic.size, x, y, scale, CANVAS_W, CANVAS_H)
-                        ic = ic.resize((int(round(dw)), int(round(dh)))).set_position((dx, dy)).set_start(start)
+                        dw, dh, dx, dy = _place(*ic.size, x, y, scale_x, scale_y, CANVAS_W, CANVAS_H)
+                        ic = ic.resize((int(round(dw)), int(round(dh))))
+                        rotation = float(clip.get("rotation", 0) or 0)
+                        if rotation:
+                            ic = ic.rotate(-rotation, expand=True)
+                            rw, rh = ic.size
+                            dx, dy = x * CANVAS_W - rw / 2, y * CANVAS_H - rh / 2
+                        ic = ic.set_position((dx, dy)).set_start(start)
+                        ic = _apply_transitions(ic, clip, (dx, dy), CANVAS_W, CANVAS_H)
                         video_layers.append(ic)
                     except Exception as exc:
                         print(f"[render] WARNING: image load failed ({src}): {exc}", file=sys.stderr)
@@ -323,6 +396,7 @@ class VideoEditorServer:
             if audio_tracks:
                 final_video = final_video.set_audio(CompositeAudioClip(audio_tracks))
 
+            stage = "encode"
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, lambda: final_video.write_videofile(
                 out_path, fps=FPS, codec="libx264", audio_codec="aac", preset="slow",
@@ -339,9 +413,25 @@ class VideoEditorServer:
             }))
         except Exception as exc:
             import traceback
+            # Classify so the frontend can show something better than
+            # "render error". `code` is stable; `message` is human-readable.
+            if isinstance(exc, ImportError):
+                code, hint = "dependency_missing", "A required render dependency (moviepy/numpy/Pillow) failed to import."
+            elif isinstance(exc, FileNotFoundError):
+                code, hint = "missing_media", "A media file referenced by the project could not be found."
+            elif isinstance(exc, MemoryError):
+                code, hint = "out_of_memory", "The project is too large to render in memory."
+            elif stage == "encode":
+                code, hint = "encode_failed", "ffmpeg failed while writing the output file."
+            else:
+                code, hint = "compose_failed", "Building the composite video failed."
+            print(f"[render] ERROR ({code}, stage={stage}): {exc}", file=sys.stderr)
+            print(traceback.format_exc(), file=sys.stderr)
             await websocket.send_text(json.dumps({
                 "type": "render_status", "status": "error",
-                "message": str(exc), "detail": traceback.format_exc()[-800:],
+                "code": code, "stage": stage,
+                "message": f"{hint} ({exc})",
+                "detail": traceback.format_exc()[-800:],
             }))
 
             

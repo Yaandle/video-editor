@@ -12,8 +12,22 @@ export class PropertiesPanel {
   }
 
   showClip(clip) { this._clip = clip; this._clips = clip ? [clip] : []; this._rebuild(); }
-  showMultiple(clips) { this._clips = clips ?? []; this._clip = this._clips[0] ?? null; this._rebuild(); } 
+  showMultiple(clips) { this._clips = clips ?? []; this._clip = this._clips[0] ?? null; this._rebuild(); }
   clear() { this._clip = null; this._clips = []; this._rebuild(); }
+
+  // #67c — hooks provided by app.js so the panel can read/write a clip's
+  // on-screen size (in project pixels) without knowing about the canvas.
+  setSizeHooks(getSize, setSize) { this._getSize = getSize; this._setSize = setSize; }
+
+  // Route a non-_set mutation through the same editstart/changed/commit flow
+  _applyExternal(fn) {
+    if (!this._dirtySinceCommit) {
+      this._dirtySinceCommit = true;
+      this._container.dispatchEvent(new CustomEvent('props:editstart', { bubbles: true }));
+    }
+    fn();
+    this._container.dispatchEvent(new CustomEvent('props:changed', { bubbles: true }));
+  }
 
   _commitNow() {
     if (this._dirtySinceCommit) {
@@ -37,9 +51,6 @@ export class PropertiesPanel {
 
     const c = this._clip;
 
-    this._addLabelRow('type', c.clip_type);
-    this._addLabelRow('track', c.track);
-
     const multi = this._clips.length > 1;
     if (multi) {
       this._addLabelRow('selected', `${this._clips.length} clips`);
@@ -55,14 +66,6 @@ export class PropertiesPanel {
       const startSpin = this._addSpin('Start (s)', c.start, 0, 3600, 0.1, 2);
       this._onInputAndChange(startSpin, v => this._set('start', v));
     }
-
-
-    const sameType = this._clips.every(cl => cl.clip_type === c.clip_type);
-    if (!multi || sameType) {
-      switch (c.clip_type) { /* unchanged */ }
-    }
-    
-
 
     if (c.track === 'text' || c.track === 'visual') {
       this._addSection('Canvas position');
@@ -80,6 +83,23 @@ export class PropertiesPanel {
       this._container.appendChild(snapBtn);
     }
 
+    // #67c — editable dimensions for visuals/shapes (project pixels).
+    // Available whenever the clip is visible on the canvas at the playhead.
+    if (!multi && ['image', 'video', 'shape'].includes(c.clip_type) && this._getSize) {
+      const size = this._getSize(c);
+      this._addSection('Dimensions (px)');
+      if (size) {
+        const wSpin = this._addSpin('Width', size.w, 1, 8192, 1, 0);
+        const hSpin = this._addSpin('Height', size.h, 1, 8192, 1, 0);
+        this._onInputAndChange(wSpin, v =>
+          this._applyExternal(() => this._setSize?.(c, Math.round(v), null)));
+        this._onInputAndChange(hSpin, v =>
+          this._applyExternal(() => this._setSize?.(c, null, Math.round(v))));
+      } else {
+        this._addInlineLabel('Move the playhead over this clip to edit its size.');
+      }
+    }
+
     const animateBtn = document.createElement('button');
     animateBtn.className = 'props-btn';
     animateBtn.textContent = 'Animate Position';
@@ -87,6 +107,78 @@ export class PropertiesPanel {
       this._container.dispatchEvent(new CustomEvent('props:animatepos', { bubbles: true }))
     );
     this._container.appendChild(animateBtn);
+
+    // #64 — motion path editing: exact start/end points + timing within the
+    // clip. t values are fractions of the clip (0 = clip start, 1 = clip end),
+    // so the movement can occupy just part of the clip's duration.
+    const kf = c.motion_keyframes;
+    if (!multi && Array.isArray(kf) && kf.length >= 2) {
+      this._addSection('Motion path');
+      const mkSpin = (label, val, cb, min = 0, max = 1, step = 0.01, dec = 2) => {
+        const spin = this._addSpin(label, val, min, max, step, dec);
+        this._onInputAndChange(spin, v => this._applyExternal(() => cb(Math.max(min, Math.min(max, v)))));
+      };
+      mkSpin('Start X (0–1)', kf[0].x, v => { kf[0].x = v; });
+      mkSpin('Start Y (0–1)', kf[0].y, v => { kf[0].y = v; });
+      mkSpin('End X (0–1)',   kf[1].x, v => { kf[1].x = v; });
+      mkSpin('End Y (0–1)',   kf[1].y, v => { kf[1].y = v; });
+      mkSpin('Move from (0–1 of clip)', kf[0].t ?? 0, v => { kf[0].t = Math.min(v, (kf[1].t ?? 1) - 0.01); });
+      mkSpin('Move until (0–1 of clip)', kf[1].t ?? 1, v => { kf[1].t = Math.max(v, (kf[0].t ?? 0) + 0.01); });
+
+      const clearBtn = document.createElement('button');
+      clearBtn.className = 'props-btn';
+      clearBtn.textContent = 'Clear motion path';
+      clearBtn.addEventListener('click', () => {
+        this._applyExternal(() => { c.motion_keyframes = null; });
+        this._commitNow();
+        this._rebuild();
+      });
+      this._container.appendChild(clearBtn);
+    } else if (!multi && c.track !== 'audio') {
+      // #64 follow-up — let a motion path be started from the panel alone:
+      // seed both keyframes at the clip's current position, then the spinners
+      // (or the canvas Animate Position tool) refine it.
+      const addBtn = document.createElement('button');
+      addBtn.className = 'props-btn';
+      addBtn.textContent = 'Add motion path';
+      addBtn.addEventListener('click', () => {
+        this._applyExternal(() => {
+          c.motion_keyframes = [
+            { t: 0, x: c.x ?? 0.5, y: c.y ?? 0.5 },
+            { t: 1, x: c.x ?? 0.5, y: c.y ?? 0.5 },
+          ];
+        });
+        this._commitNow();
+        this._rebuild();
+      });
+      this._container.appendChild(addBtn);
+    }
+
+    // #63 — Canva-style transitions, available on every clip type
+    if (c.track !== 'audio') {
+      const TRANSITIONS = ['none', 'fade', 'slide_up', 'slide_down', 'slide_left', 'slide_right', 'scale_pop'];
+      this._addSection('Transitions');
+
+      const inCombo = this._addCombo('In', TRANSITIONS, c.transition_in ?? 'none');
+      inCombo.addEventListener('change', () =>
+        this._set('transition_in', inCombo.value === 'none' ? null : inCombo.value));
+      const inMs = this._addSpin('In duration (ms)', c.transition_in_ms ?? 500, 50, 5000, 50, 0);
+      this._onInputAndChange(inMs, v => this._set('transition_in_ms', Math.round(v)));
+
+      const outCombo = this._addCombo('Out', TRANSITIONS, c.transition_out ?? 'none');
+      outCombo.addEventListener('change', () =>
+        this._set('transition_out', outCombo.value === 'none' ? null : outCombo.value));
+      const outMs = this._addSpin('Out duration (ms)', c.transition_out_ms ?? 500, 50, 5000, 50, 0);
+      this._onInputAndChange(outMs, v => this._set('transition_out_ms', Math.round(v)));
+
+      const previewBtn = document.createElement('button');
+      previewBtn.className = 'props-btn';
+      previewBtn.textContent = '▶ Preview clip';
+      previewBtn.addEventListener('click', () =>
+        this._container.dispatchEvent(new CustomEvent('props:previewclip', { bubbles: true, detail: { clip: c } }))
+      );
+      this._container.appendChild(previewBtn);
+    }
 
     
     switch (c.clip_type) {
@@ -229,30 +321,43 @@ export class PropertiesPanel {
         this._onInputAndChange(opacitySpin, v => this._set('opacity', v));
         const rotationSpin = this._addSpin('Rotation (°)', c.rotation, -180, 180, 1, 0);
         this._onInputAndChange(rotationSpin, v => this._set('rotation', v));
-        const scaleSpin = this._addSpin('Scale', c.scale ?? 1.0, 0.05, 4.0, 0.05, 2);
-        this._onInputAndChange(scaleSpin, v => this._set('scale', v));
+        // ("Scale" spinner removed — it wrote clip.scale, which both canvas
+        // and render resolve as scale_x ?? scale, and scale_x always exists,
+        // so the control was a no-op. Use W/H or the corner handles.)
         break;
       }
     }
 
     if (c.clip_type === 'code') {
-        this._addSection('Style');
-        const themeCombo = this._addCombo('Theme', Object.keys(THEMES), c.theme);
-        themeCombo.addEventListener('change', () => this._set('theme', themeCombo.value));
-    }
-
-    if (c.clip_type === 'code') {
+      this._addSection('Style');
+      const themeCombo = this._addCombo('Theme', Object.keys(THEMES), c.theme);
+      themeCombo.addEventListener('change', () => this._set('theme', themeCombo.value));
       const animCombo = this._addCombo('Animation', ['typewriter', 'static'], c.animation);
       animCombo.addEventListener('change', () => this._set('animation', animCombo.value));
     }
 
     if (c.clip_type === 'narration') {
       const animCombo = this._addCombo(
-        'Animation', ['static', 'typewriter', 'wordblurin', 'linescan'], c.text_anim_style ?? 'static'
+        'Animation',
+        ['static', 'typewriter', 'fade', 'slideup', 'scalepop', 'wordblur', 'charstagger', 'linescan', 'glitch'],
+        c.text_anim_style === 'wordblurin' ? 'wordblur' : (c.text_anim_style ?? 'static')
       );
       animCombo.addEventListener('change', () => this._set(
         'text_anim_style', animCombo.value === 'static' ? null : animCombo.value
       ));
+
+      const advancedBtn = document.createElement('button');
+      advancedBtn.className = 'props-btn';
+      advancedBtn.textContent = 'Advanced Text Options';
+      advancedBtn.addEventListener('click', () =>
+        this._container.dispatchEvent(
+          new CustomEvent('props:advancedtext', { 
+            bubbles: true,
+            detail: { clip: c }
+          })
+        )
+      );
+      this._container.appendChild(advancedBtn);
     }
 
     const spacer = document.createElement('div');

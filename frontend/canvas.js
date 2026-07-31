@@ -158,14 +158,20 @@ export class CanvasWidget {
       badge.classList.add('hidden');
     }
   }
-  setProject(p) { this.project = p; this.redraw(); }
-  setPlayhead(t) { this.playhead = t; this.redraw(); }
-  setSelectedId(id) {
-    this._selectedIds.clear();
-    if (id) this._selectedIds.add(id);
+  setProject(p) {
+    this.project = p;
+    // Drop per-clip caches so a new project with reused clip ids can't hit
+    // stale rects, and abandon any in-flight drag/resize on the old project.
+    this._drawnRects.clear();
+    this._dragClip = null;
+    this._resizeHandle = null;
+    this._resizeOrigin = null;
+    this._groupDragOrigins = null;
+    this._snapTarget = null;
     this.redraw();
   }
-  setSelectedIds(selectedIds, primaryId = null) { 
+  setPlayhead(t) { this.playhead = t; this.redraw(); }
+  setSelectedIds(selectedIds, primaryId = null) {
   this._selectedIds = selectedIds;
   this._selectionPrimaryId = primaryId ?? (
     this._selectedIds.size === 1 
@@ -278,7 +284,7 @@ export class CanvasWidget {
       }
     }
 
-    for (const clip of this._activeClips()) this._drawClip(ctx, clip, r);
+    for (const clip of this._activeClips()) this._drawClipWithTransition(ctx, clip, r);
 
     if (this._selectedIds && this._selectedIds.size > 0) {
       if (this._selectedIds.size === 1) {
@@ -368,6 +374,66 @@ export class CanvasWidget {
     ctx.fill();
   }
 
+  // ── Transitions (#63) ──────────────────────────────────────────────────
+  // Canva-style in/out transitions for ANY clip type (narration, image,
+  // video, shape, code, graph). Returns null when no transition is active
+  // at the current playhead, else { alpha, dx, dy, scale } in canvas px.
+  _transitionState(clip, r) {
+    const tIn = clip.transition_in, tOut = clip.transition_out;
+    if (!tIn && !tOut) return null;
+
+    const local = this.playhead - clip.start;                 // sec since clip start
+    const remain = clip.start + clip.duration - this.playhead; // sec until clip end
+    const inDur = Math.max(0.01, (clip.transition_in_ms ?? 500) / 1000);
+    const outDur = Math.max(0.01, (clip.transition_out_ms ?? 500) / 1000);
+
+    let alpha = 1, dx = 0, dy = 0, scale = 1, active = false;
+
+    const applyKind = (kind, p) => {
+      // p: 1 → fully off/hidden, 0 → settled in place
+      const slide = 1.1 * p; // slide from just outside the frame
+      switch (kind) {
+        case 'fade':        alpha *= (1 - p); break;
+        case 'slide_up':    dy += r.h * slide;  alpha *= Math.min(1, (1 - p) * 1.6); break;
+        case 'slide_down':  dy -= r.h * slide;  alpha *= Math.min(1, (1 - p) * 1.6); break;
+        case 'slide_left':  dx += r.w * slide;  alpha *= Math.min(1, (1 - p) * 1.6); break;
+        case 'slide_right': dx -= r.w * slide;  alpha *= Math.min(1, (1 - p) * 1.6); break;
+        case 'scale_pop':   scale *= Math.max(0.001, 1 - 0.6 * p); alpha *= (1 - p); break;
+      }
+    };
+
+    if (tIn && local < inDur) {
+      const t = Math.max(0, Math.min(1, local / inDur));
+      applyKind(tIn, 1 - Easing.easeOutCubic(t));
+      active = true;
+    }
+    if (tOut && remain < outDur) {
+      const t = Math.max(0, Math.min(1, remain / outDur));
+      applyKind(tOut, 1 - Easing.easeOutCubic(t));
+      active = true;
+    }
+    return active ? { alpha, dx, dy, scale } : null;
+  }
+
+  _drawClipWithTransition(ctx, clip, r) {
+    const trans = this._transitionState(clip, r);
+    if (!trans) { this._drawClip(ctx, clip, r); return; }
+
+    const { x, y } = resolvePos(clip, this.playhead);
+    const pt = this._normToPx(x, y);
+
+    ctx.save();
+    ctx.globalAlpha *= Math.max(0, Math.min(1, trans.alpha));
+    ctx.translate(trans.dx, trans.dy);
+    if (trans.scale !== 1) {
+      ctx.translate(pt.x, pt.y);
+      ctx.scale(trans.scale, trans.scale);
+      ctx.translate(-pt.x, -pt.y);
+    }
+    this._drawClip(ctx, clip, r);
+    ctx.restore();
+  }
+
   _drawClip(ctx, clip, r) {
     const theme = THEMES[clip.theme] ?? THEMES.dark;
     if (clip.track === 'audio') return;
@@ -398,10 +464,22 @@ export class CanvasWidget {
           : clip.content;
 
         const layout = this._layoutNarrationText(ctx, displayContent, maxW, lineHeight);
-        const elapsedMs = Math.max(0, this.playhead - clip.start) * 1000;
+        // #66: honour the Advanced Text modal's delay — animation clock starts
+        // after text_delay_ms. While the delay is pending the text stays hidden.
+        const delayMs = clip.text_delay_ms ?? 0;
+        const rawElapsedMs = Math.max(0, this.playhead - clip.start) * 1000;
+        const elapsedMs = rawElapsedMs - delayMs;
+        const animActive = clip.text_anim_style && clip.text_anim_style !== 'static';
+        if (animActive && elapsedMs < 0) {
+          this._drawnRects.set(clip.id, {
+            x: pt.x - (maxW >> 1), y: pt.y, w: maxW,
+            h: layout.lines.length * lineHeight,
+          });
+          return;
+        }
 
         ctx.save();
-        ctx.globalAlpha = clip.text_opacity ?? 1.0;
+        ctx.globalAlpha *= clip.text_opacity ?? 1.0; // *= so transition fades compose (#63)
 
         if (clip.text_plate) {
           const p = clip.text_plate;
@@ -415,7 +493,7 @@ export class CanvasWidget {
           const g = clip.text_glow;
           ctx.shadowColor = g.color;
           ctx.shadowBlur = g.blur;
-          ctx.globalAlpha = (clip.text_opacity ?? 1.0) * (g.opacity ?? 1.0);
+          ctx.globalAlpha *= (g.opacity ?? 1.0);
         } else if (clip.text_shadow) {
           const s = clip.text_shadow;
           ctx.shadowOffsetX = s.x;
@@ -697,12 +775,23 @@ export class CanvasWidget {
   }
 
   _renderNarrationAnimated(ctx, layout, ox, oy, elapsedMs, clip) {
-    if (clip.text_anim_style === 'typewriter') {
+    const style = clip.text_anim_style === 'wordblurin' ? 'wordblur' : clip.text_anim_style;
+    if (style === 'typewriter') {
       this._renderNarrationTypewriter(ctx, layout, ox, oy, elapsedMs, clip);
-    } else if (clip.text_anim_style === 'wordblurin') {
+    } else if (style === 'wordblur') {
       this._renderNarrationWordBlurIn(ctx, layout, ox, oy, elapsedMs, clip);
-    } else if (clip.text_anim_style === 'linescan') {
+    } else if (style === 'linescan') {
       this._renderNarrationLineScan(ctx, layout, ox, oy, elapsedMs, clip);
+    } else if (style === 'fade') {
+      this._renderNarrationFadeIn(ctx, layout, ox, oy, elapsedMs, clip);
+    } else if (style === 'slideup') {
+      this._renderNarrationSlideUp(ctx, layout, ox, oy, elapsedMs, clip);
+    } else if (style === 'scalepop') {
+      this._renderNarrationScalePop(ctx, layout, ox, oy, elapsedMs, clip);
+    } else if (style === 'charstagger') {
+      this._renderNarrationCharStagger(ctx, layout, ox, oy, elapsedMs, clip);
+    } else if (style === 'glitch') {
+      this._renderNarrationGlitch(ctx, layout, ox, oy, elapsedMs, clip);
     } else {
       this._renderNarrationStatic(ctx, layout, ox, oy, clip);
     }
@@ -859,12 +948,87 @@ export class CanvasWidget {
         octx.fillRect(0, 0, off.width, off.height);
 
         ctx.save();
-        ctx.globalAlpha = alpha;
+        ctx.globalAlpha *= alpha;
         ctx.drawImage(off, lineX, oy + line.y - off.height * 0.7);
         ctx.restore();
       }
     }
 
+    ctx.restore();
+  }
+
+  _renderNarrationFadeIn(ctx, layout, ox, oy, elapsedMs, clip) {
+    const dur = clip.text_duration_ms ?? 550;
+    const t = Math.max(0, Math.min(1, elapsedMs / dur));
+    ctx.save();
+    ctx.globalAlpha *= Easing.easeOutCubic(t);
+    this._renderNarrationStatic(ctx, layout, ox, oy, clip);
+    ctx.restore();
+  }
+
+  _renderNarrationSlideUp(ctx, layout, ox, oy, elapsedMs, clip) {
+    const dur = clip.text_duration_ms ?? 550;
+    const rise = clip.text_rise_distance ?? 36;
+    const t = Math.max(0, Math.min(1, elapsedMs / dur));
+    const eased = Easing.easeOutCubic(t);
+    ctx.save();
+    ctx.globalAlpha *= Math.min(1, t * 1.6);
+    this._renderNarrationStatic(ctx, layout, ox, oy - rise * (1 - eased), clip);
+    ctx.restore();
+  }
+
+  _renderNarrationScalePop(ctx, layout, ox, oy, elapsedMs, clip) {
+    const dur = clip.text_duration_ms ?? 550;
+    const t = Math.max(0, Math.min(1, elapsedMs / dur));
+    const scale = 0.6 + 0.4 * Math.max(0, Easing.easeOutBack(t, 1.7));
+    ctx.save();
+    ctx.globalAlpha *= Math.min(1, t * 2);
+    ctx.translate(ox, oy);
+    ctx.scale(scale, scale);
+    ctx.translate(-ox, -oy);
+    this._renderNarrationStatic(ctx, layout, ox, oy, clip);
+    ctx.restore();
+  }
+
+  _renderNarrationCharStagger(ctx, layout, ox, oy, elapsedMs, clip) {
+    const stagger = clip.text_stagger_ms ?? 25;
+    const dur = clip.text_duration_ms ?? 300;
+    const rise = clip.text_rise_distance ?? 14;
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    for (const line of layout.lines) {
+      const lineOx = ox - line.lineWidth / 2;
+      for (const word of line.words) {
+        for (const ch of word.chars) {
+          const localT = elapsedMs - ch.globalIndex * stagger;
+          if (localT <= 0) continue;
+          const t = Math.max(0, Math.min(1, localT / dur));
+          const yOffset = rise * (1 - Easing.easeOutBack(t, 1.5));
+          const cx = lineOx + word.x + ch.x;
+          const cy = oy + line.y + yOffset;
+          this._drawNarrationText(ctx, ch.char, cx, cy, clip, Math.min(1, t * 2.2));
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  _renderNarrationGlitch(ctx, layout, ox, oy, elapsedMs, clip) {
+    const dur = clip.text_duration_ms ?? 500;
+    const t = Math.max(0, Math.min(1, elapsedMs / dur));
+    if (t >= 1) { this._renderNarrationStatic(ctx, layout, ox, oy, clip); return; }
+    const decay = 1 - Easing.easeOutCubic(t);
+    const seed = Math.floor(elapsedMs / 60);
+    const jitter = n => {
+      const x = Math.sin(n * 12.9898 + seed * 78.233) * 43758.5453;
+      return (x - Math.floor(x)) * 2 - 1;
+    };
+    const maxOffset = 6 * decay;
+    const flicker = jitter(9) > 0.6 ? 0.3 : 1;
+    ctx.save();
+    ctx.globalAlpha *= flicker;
+    this._renderNarrationStatic(ctx, layout, ox + maxOffset * jitter(1), oy + maxOffset * jitter(2) * 0.4, clip);
     ctx.restore();
   }
 
@@ -909,8 +1073,20 @@ export class CanvasWidget {
     const fitScale = Math.min(maxW / natW, maxH / natH, 1);
     const dw = (natW * fitScale * scaleX) | 0, dh = (natH * fitScale * scaleY) | 0;
     const dx = pt.x - (dw >> 1), dy = pt.y - (dh >> 1);
-    
-    ctx.drawImage(el, dx, dy, dw, dh);
+
+    // Honour clip.rotation for media, mirroring the shape branch and the
+    // backend's PIL rotate. Hit-test/handles keep the unrotated rect.
+    const rotation = clip.rotation ?? 0;
+    if (rotation) {
+      ctx.save();
+      ctx.translate(pt.x, pt.y);
+      ctx.rotate(rotation * Math.PI / 180);
+      ctx.translate(-pt.x, -pt.y);
+      ctx.drawImage(el, dx, dy, dw, dh);
+      ctx.restore();
+    } else {
+      ctx.drawImage(el, dx, dy, dw, dh);
+    }
     this._drawnRects.set(clip.id, { x: dx, y: dy, w: dw, h: dh });
   }
 
@@ -930,7 +1106,7 @@ export class CanvasWidget {
     const cx = pt.x, cy = pt.y;
 
     ctx.save();
-    ctx.globalAlpha = clip.opacity ?? 1.0;
+    ctx.globalAlpha *= clip.opacity ?? 1.0; // *= so transition fades compose (#63)
     ctx.translate(cx, cy);
     ctx.rotate((clip.rotation ?? 0) * Math.PI / 180);
     ctx.translate(-cx, -cy);
@@ -1046,25 +1222,6 @@ export class CanvasWidget {
     ctx.textBaseline = 'middle';
     ctx.font = `${Math.max(6, r.w / 28 | 0)}px Consolas, monospace`;
     ctx.fillText(text, pt.x, pt.y);
-  }
-
-  _drawWrappedText(ctx, text, cx, y, maxW, lineH) {
-    const words = text.split(' ');
-    let line = '', curY = y;
-    const startY = y;
-    for (const word of words) {
-      const test = line ? line + ' ' + word : word;
-      if (ctx.measureText(test).width > maxW && line) {
-        ctx.fillText(line, cx, curY);
-        line = word;
-        curY += lineH;
-      } else {
-        line = test;
-      }
-    }
-    if (line) ctx.fillText(line, cx, curY);
-    const endY = curY + lineH;
-    return { startY, endY, height: endY - startY };
   }
 
   _drawNarrationText(ctx, text, x, y, clip, alpha = 1) {
@@ -1196,7 +1353,13 @@ export class CanvasWidget {
     if (this._tool === 'motionA' || this._tool === 'motionB') {
       const clip = this.project.clips.find(c => c.id === this._selectionPrimaryId);
       if (clip) {
-        const { nx, ny } = this._pxToNorm(pos.x, pos.y);
+        let { nx, ny } = this._pxToNorm(pos.x, pos.y);
+        // #64: snap motion start/end points to the alignment axes
+        // (hold Ctrl to place freely without snapping)
+        if (!e.ctrlKey) {
+          for (const sx of SNAP_X) { if (Math.abs(nx - sx) < SNAP_THRESHOLD) { nx = sx; break; } }
+          for (const sy of SNAP_Y) { if (Math.abs(ny - sy) < SNAP_THRESHOLD) { ny = sy; break; } }
+        }
 
         if (!Array.isArray(clip.motion_keyframes))
           clip.motion_keyframes = [];
@@ -1519,5 +1682,49 @@ export class CanvasWidget {
     img.onload = () => { entry.loaded = true; this.redraw(); };
     img.src = url;
     return entry;
+  }
+
+  // ── Dimensions (#67c) ──────────────────────────────────────────────────
+  // Report / set a clip's on-screen size in PROJECT pixels (canvas_w space).
+  // Uses the last drawn rect, so it works for image, video, shape, code and
+  // narration clips that are visible at the current playhead.
+  getClipProjectSize(clip) {
+    const drawn = this._drawnRects.get(clip.id);
+    const r = this._canvasRect();
+    if (!drawn || !r.w || drawn.w <= 0 || drawn.h <= 0) return null;
+    const k = (this.project.canvas_w ?? 1080) / r.w;
+    return { w: drawn.w * k, h: drawn.h * k };
+  }
+
+  setClipProjectSize(clip, w, h) {
+    const cur = this.getClipProjectSize(clip);
+    if (!cur) return false;
+    if (w != null && w > 0) {
+      clip.scale_x = Math.max(MIN_SCALE, Math.min(MAX_SCALE,
+        (clip.scale_x ?? clip.scale ?? 1.0) * (w / cur.w)));
+    }
+    if (h != null && h > 0) {
+      clip.scale_y = Math.max(MIN_SCALE, Math.min(MAX_SCALE,
+        (clip.scale_y ?? clip.scale ?? 1.0) * (h / cur.h)));
+    }
+    this.redraw();
+    return true;
+  }
+
+  // ── Keyboard nudging (#67d) ────────────────────────────────────────────
+  // Move every selected canvas object by a normalized step. Returns true if
+  // anything moved (used by app.js to decide preventDefault / commit).
+  nudgeSelected(dxNorm, dyNorm) {
+    if (!this._selectedIds || this._selectedIds.size === 0) return false;
+    let moved = false;
+    for (const id of this._selectedIds) {
+      const clip = this.project.clips.find(c => c.id === id);
+      if (!clip || clip.track === 'audio') continue;
+      clip.x = Math.max(0, Math.min(1, (clip.x ?? 0.5) + dxNorm));
+      clip.y = Math.max(0, Math.min(1, (clip.y ?? 0.5) + dyNorm));
+      moved = true;
+    }
+    if (moved) this.redraw();
+    return moved;
   }
 }

@@ -100,17 +100,8 @@
 <!-- ── Workspace ─────────────────────────────────────────────────────────── -->
 <div id="workspace">
 
-  <!-- Media bin -->
-  <div id="media-bin">
-    <div id="mediabin-header">
-      <span>Media</span>
-      <button id="mediabin-upload-btn" title="Add media files">+</button>
-    </div>
-    <div id="mediabin-dropzone">Drop files here</div>
-    <div id="mediabin-grid"></div>
-    <input type="file" id="media-upload" multiple accept="video/*,audio/*,image/*"
-      title="Upload media files" aria-label="Upload media files">
-  </div>
+  <!-- Media bin (contents built by mediaBin.js) -->
+  <div id="media-bin" role="region" aria-label="Media bin — drop files here to upload"></div>
 
   <!-- Canvas -->
   <div id="canvas-frame">
@@ -133,8 +124,8 @@
 
 <div id="timeline-resize-handle"></div>
 <div id="timeline-container">
-  <canvas id="timeline-canvas"></canvas>
-
+  <canvas id="timeline-canvas" role="application"
+    aria-label="Timeline — drag to marquee-select, Shift or Ctrl-click to multi-select, Alt-drag to pan"></canvas>
 </div>
 
 
@@ -142,7 +133,6 @@
 <!-- ── Status bar ────────────────────────────────────────────────────────── -->
 <div id="status-bar">
   <span id="status-text">&nbsp;</span>
-  <span id="ws-dot-status"></span>
 </div>
 
 <!-- ── Render toast ──────────────────────────────────────────────────────── -->
@@ -174,13 +164,6 @@
     </div>
   </div>
 </div>
-
-<script>
-  // Wire mediabin upload button → hidden file input
-  document.getElementById('mediabin-upload-btn')
-    .addEventListener('click', () => document.getElementById('media-upload').click());
-</script>
-
 
 <script>
   (function() {

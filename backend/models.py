@@ -28,6 +28,12 @@ class Clip:
     scale_y: float = 1.0
     animation: str = "typewriter"
     theme: str = "dark"
+    
+    font_size: Optional[int] = None
+    font_color: Optional[str] = None
+    font_bold: bool = False
+    font_italic: bool = False
+
     code_file: str = ""
 
     terminal_prompt: str = "user@vidkit:~$"
@@ -40,6 +46,8 @@ class Clip:
     source_start: float = 0.0
 
     text_anim_style: Optional[str] = None  # None = static wrapped text
+    text_delay_ms: int = 0                 # #66 — delay before text animation starts
+    text_anim_easing: str = "easeInOut"    # #66 — easing selected in Advanced Text modal
     text_chars_per_second: int = 26
     text_pop_duration_ms: int = 90
     text_stagger_ms: int = 60
@@ -76,6 +84,13 @@ class Clip:
     text_glow: Optional[dict] = None
     text_stroke: Optional[dict] = None
     text_plate: Optional[dict] = None
+
+    # #63 — Canva-style in/out transitions, valid on any clip type
+    # kinds: fade | slide_up | slide_down | slide_left | slide_right | scale_pop
+    transition_in: Optional[str] = None
+    transition_in_ms: int = 500
+    transition_out: Optional[str] = None
+    transition_out_ms: int = 500
 
     def end(self):
         return self.start + self.duration

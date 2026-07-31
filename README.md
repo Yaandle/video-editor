@@ -78,6 +78,7 @@ Saved as `.vkit` (JSON):
 | `frontend/mediaBin.js` | Media upload browser, add media to project clips |
 | `frontend/colourPicker.js` | Color picker component for clip properties |
 | `frontend/styles.css` | Editor styling, panel layout, theme |
+| `frontend/animationwindow.html` | **Add in description for animationwindow.html |
 | `frontend/static/` | Static assets served alongside the editor UI |
 | `backend/main.py` | FastAPI entrypoint, static serving, `/upload`, `/media-list`, WS route |
 | `backend/models.py` | Project/clip data models, serialization, defaults |

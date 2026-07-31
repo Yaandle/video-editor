@@ -21,7 +21,6 @@ export class TimelineWidget {
     this._panOffsetPx = 0;
     this._selectedIds = new Set();
     this._selectionPrimaryId = null;
-    this._selectedId = null;
     this._dragClip = null;
     this._dragMode = '';
     this._dragOriginX = 0;
@@ -34,6 +33,7 @@ export class TimelineWidget {
     this._panning = false;
     this._panOriginX = 0;
     this._panOriginOff = 0;
+    this._marquee = null; // {x0,y0,x1,y1,additive} — drag-select on empty area (#67a)
     this._bindEvents();
     this.resize();
     this._insertedTopLayer = false;
@@ -44,7 +44,6 @@ export class TimelineWidget {
 
   setProject(p) { this.project = p; this._reflowLayers(); this.redraw(); }
   setPlayhead(t) { this.playhead = t; this.redraw(); }
-  setSelectedId(id) { this.setSelectedIds(id ? [id] : []); }
   setSelectedIds(ids) { this._selectedIds = ids instanceof Set ? ids : new Set(ids); this.redraw(); }
   setTool(name) { this.tool = name; this._updateCursor(null); }
   redraw() { this._paint(); }
@@ -168,6 +167,34 @@ export class TimelineWidget {
     ctx.restore();
 
     this._drawPlayhead(ctx, H);
+
+    if (this._dropIndicatorT != null) {
+      const x = this._secToPx(this._dropIndicatorT);
+      if (x >= LABEL_W) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(59,130,246,0.9)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 4]);
+        ctx.beginPath(); ctx.moveTo(x + 0.5, HEADER_H); ctx.lineTo(x + 0.5, H); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
+
+    if (this._marquee) {
+      const m = this._marquee;
+      const x = Math.min(m.x0, m.x1), y = Math.min(m.y0, m.y1);
+      const w = Math.abs(m.x1 - m.x0), h = Math.abs(m.y1 - m.y0);
+      ctx.save();
+      ctx.fillStyle = 'rgba(59,130,246,0.12)';
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = 'rgba(59,130,246,0.9)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
   }
 
   _drawRuler(ctx, W) {
@@ -328,6 +355,35 @@ export class TimelineWidget {
     el.addEventListener('mouseleave', e => this._onMouseUp(e));
     el.addEventListener('dblclick', e => this._onDblClick(e));
     el.addEventListener('wheel', e => this._onWheel(e), { passive: false });
+
+    // #67b follow-up — accept drags from the media bin and add the clip at
+    // the dropped time. mediaBin.js sets 'application/vidkit-media' on
+    // dragstart; a snapped drop indicator previews the insert point.
+    el.addEventListener('dragover', e => {
+      if (!e.dataTransfer?.types?.includes('application/vidkit-media')) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      this._dropIndicatorT = this._snapPoint(this._pxToSec(this._getPos(e).x));
+      this.redraw();
+    });
+    el.addEventListener('dragleave', () => {
+      if (this._dropIndicatorT == null) return;
+      this._dropIndicatorT = null;
+      this.redraw();
+    });
+    el.addEventListener('drop', e => {
+      this._dropIndicatorT = null;
+      const data = e.dataTransfer?.getData('application/vidkit-media');
+      if (!data) { this.redraw(); return; }
+      e.preventDefault();
+      let item;
+      try { item = JSON.parse(data); } catch { this.redraw(); return; }
+      const t = this._snapPoint(this._pxToSec(this._getPos(e).x));
+      this._el.dispatchEvent(new CustomEvent('timeline:mediadropped', {
+        bubbles: true, detail: { item, time: Math.round(t * 1000) / 1000 }
+      }));
+      this.redraw();
+    });
   }
 
   _getPos(e) { const rect = this._el.getBoundingClientRect(); return { x: (e.clientX - rect.left) | 0, y: (e.clientY - rect.top) | 0 }; }
@@ -347,34 +403,49 @@ export class TimelineWidget {
     }
     const clip = this._clipAt(pos.x, pos.y);
     if (clip) {
-      if (e.shiftKey) {
+      const additive = e.shiftKey || e.ctrlKey || e.metaKey; // #67a: ctrl/cmd-click also toggles
+      if (additive) {
         this._selectedIds.has(clip.id) ? this._selectedIds.delete(clip.id) : this._selectedIds.add(clip.id);
       } else if (!this._selectedIds.has(clip.id)) {
         this._selectedIds.clear();
         this._selectedIds.add(clip.id);
       }
-      this._selectionPrimaryId = clip.id;
-      this._dragClip = clip;
-      this._dragOriginX = pos.x;
-      this._dragOriginStart = clip.start;
-      this._dragOriginDur = clip.duration;
-      this._dragMode = this._hitResizeRight(clip, pos.x) ? 'resize-right' : this._hitResizeLeft(clip, pos.x) ? 'resize-left' : 'move';
-      this._dragBeforeSnapshot = JSON.stringify(this.project.toDict());
-      this._groupDragOrigins = new Map();
-      if (this._selectedIds.size > 1 && this._selectedIds.has(clip.id)) {
-        for (const id of this._selectedIds) {
-          const c = this.project.clips.find(item => item.id === id);
-          if (c) this._groupDragOrigins.set(id, { start: c.start, layer: c.layer });
+      this._selectionPrimaryId = this._selectedIds.has(clip.id)
+        ? clip.id
+        : (this._selectedIds.values().next().value ?? null);
+      // Don't start a drag from a toggle-off click
+      if (additive && !this._selectedIds.has(clip.id)) {
+        this._dragClip = null;
+      } else {
+        this._dragClip = clip;
+        this._dragOriginX = pos.x;
+        this._dragOriginStart = clip.start;
+        this._dragOriginDur = clip.duration;
+        this._dragMode = this._hitResizeRight(clip, pos.x) ? 'resize-right' : this._hitResizeLeft(clip, pos.x) ? 'resize-left' : 'move';
+        this._dragBeforeSnapshot = JSON.stringify(this.project.toDict());
+        this._groupDragOrigins = new Map();
+        if (this._selectedIds.size > 1 && this._selectedIds.has(clip.id)) {
+          for (const id of this._selectedIds) {
+            const c = this.project.clips.find(item => item.id === id);
+            if (c) this._groupDragOrigins.set(id, { start: c.start, layer: c.layer ?? 0 });
+          }
         }
       }
       this._el.dispatchEvent(new CustomEvent('timeline:selectionchanged', {
-        bubbles: true, detail: { selectedIds: Array.from(this._selectedIds), primaryId: clip.id }
+        bubbles: true, detail: { selectedIds: Array.from(this._selectedIds), primaryId: this._selectionPrimaryId }
       }));
     } else {
-      this._selectedIds.clear();
-      this._selectionPrimaryId = null;
-      this._selectedId = null; this._dragClip = null; this._panning = true; this._panOriginX = e.clientX; this._panOriginOff = this._panOffsetPx;
-      this._el.style.cursor = 'grabbing'; this._el.dispatchEvent(new CustomEvent('timeline:deselect', { bubbles: true }));
+      // #67a: drag on empty track area = marquee multi-select.
+      // Panning stays available via Alt+drag / middle mouse / wheel / slider.
+      this._dragClip = null;
+      const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+      if (!additive) {
+        this._selectedIds.clear();
+        this._selectionPrimaryId = null;
+        this._el.dispatchEvent(new CustomEvent('timeline:deselect', { bubbles: true }));
+      }
+      this._marquee = { x0: pos.x, y0: pos.y, x1: pos.x, y1: pos.y, additive };
+      this._el.style.cursor = 'crosshair';
     }
     this.redraw();
   }
@@ -385,10 +456,15 @@ export class TimelineWidget {
       const dx = e.clientX - this._panOriginX;
       this._panOffsetPx = Math.max(0, Math.min(this._maxPan(), this._panOriginOff - dx));
       this.redraw();
-      this._el.dispatchEvent(new CustomEvent('timeline:panchanged', { bubbles: true, detail: this.getPanRange() }));
       return;
     }
     if (this._scrubPlayhead && (e.buttons & 1)) { this._emitSeek(Math.max(0, Math.min(this._pxToSec(pos.x), this.project.duration))); return; }
+    if (this._marquee && (e.buttons & 1)) {
+      this._marquee.x1 = pos.x;
+      this._marquee.y1 = pos.y;
+      this.redraw();
+      return;
+    }
     if (!(e.buttons & 1)) { this._updateCursor(pos); return; }
     if (!this._dragClip) return;
 
@@ -424,14 +500,18 @@ export class TimelineWidget {
 
       const maxLayer = this._trackLayerCount(this._dragClip.track); // recompute — shift changed it
       const newLayer = Math.max(0, Math.min(maxLayer, rawLayer));
-      const layerDelta = newLayer - this._dragClip.layer;
+      const layerDelta = newLayer - (this._dragClip.layer ?? 0);
 
       if (this._groupDragOrigins && this._groupDragOrigins.size > 1) {
         for (const [id, origin] of this._groupDragOrigins.entries()) {
           const clip = this.project.clips.find(c => c.id === id);
           if (!clip) continue;
           clip.start = Math.max(0, Math.round((origin.start + offset) * 1000) / 1000);
-          clip.layer = Math.max(0, Math.min(this._trackLayerCount(clip.track), origin.layer + layerDelta));
+          // Only shift layers within the dragged clip's own track — clips on
+          // other tracks keep their lane so a cross-track selection doesn't scatter.
+          if (clip.track === this._dragClip.track) {
+            clip.layer = Math.max(0, Math.min(this._trackLayerCount(clip.track), (origin.layer ?? 0) + layerDelta));
+          }
         }
       } else {
         this._dragClip.start = roundedStart;
@@ -473,6 +553,29 @@ export class TimelineWidget {
   _onMouseUp(_e) {
     if (this._panning) { this._panning = false; this._el.style.cursor = 'default'; return; }
     if (this._scrubPlayhead) { this._scrubPlayhead = false; return; }
+    if (this._marquee) {
+      const m = this._marquee;
+      this._marquee = null;
+      this._el.style.cursor = 'default';
+      const mx0 = Math.min(m.x0, m.x1), mx1 = Math.max(m.x0, m.x1);
+      const my0 = this._toContentY(Math.min(m.y0, m.y1)), my1 = this._toContentY(Math.max(m.y0, m.y1));
+      if (mx1 - mx0 > 3 || my1 - my0 > 3) {
+        for (const clip of this.project.clips) {
+          const cr = this._clipRect(clip);
+          const hit = cr.x < mx1 && cr.x + cr.w > mx0 && cr.y < my1 && cr.y + cr.h > my0;
+          if (!hit) continue;
+          if (m.additive && this._selectedIds.has(clip.id)) this._selectedIds.delete(clip.id);
+          else this._selectedIds.add(clip.id);
+        }
+        this._selectionPrimaryId = this._selectedIds.values().next().value ?? null;
+        this._el.dispatchEvent(new CustomEvent('timeline:selectionchanged', {
+          bubbles: true,
+          detail: { selectedIds: Array.from(this._selectedIds), primaryId: this._selectionPrimaryId }
+        }));
+      }
+      this.redraw();
+      return;
+    }
     if (this._dragClip) {
       this._reflowLayers();
       if (this._dragBeforeSnapshot) {
@@ -515,9 +618,6 @@ export class TimelineWidget {
     this._clampPan();
     this.redraw();
   }
-
-  setPanOffset(px) { this._panOffsetPx = Math.max(0, Math.min(this._maxPan(), px)); this.redraw(); }
-  getPanRange() { return { offset: this._panOffsetPx, max: this._maxPan() }; }
 
   _sliceClip(clip, px) {
     const sliceT = this._pxToSec(px);

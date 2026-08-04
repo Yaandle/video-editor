@@ -44,6 +44,7 @@ class Clip:
 
     voice_id: str = ""
     source_start: float = 0.0
+    speed: float = 1.0
 
     text_anim_style: Optional[str] = None  # None = static wrapped text
     text_delay_ms: int = 0                 # #66 — delay before text animation starts

@@ -100,9 +100,10 @@ const HANDLE_HIT_SIZE = 16;
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 4.0;
 
-const SNAP_X = [0.25, 0.5, 0.75];  // left / centre / right
-const SNAP_Y = [0.12, 0.5, 0.85];  // top / centre / bottom
+const SNAP_X = [0, 0.25, 0.5, 0.75, 1];  // left edge / left third / centre / right third / right edge
+const SNAP_Y = [0, 0.12, 0.5, 0.85, 1];  // top edge / top / centre / bottom / bottom edge
 const SNAP_THRESHOLD = 0.04;
+const SNAP_PX = 10; // #61 — constant on-screen px catch radius for object/edge snapping (zoom-corrected at use)
 
 export class CanvasWidget {
   
@@ -117,6 +118,7 @@ export class CanvasWidget {
     this._dragOffsetX = 0;
     this._dragOffsetY = 0;
     this._snapTarget = null;
+    this._marginGuides = []; // #61 — equal-spacing guides shown while dragging
     this._mediaCache = new Map();
     this._groupDragOrigins = null;
     this._marqueeActive = false;
@@ -168,6 +170,7 @@ export class CanvasWidget {
     this._resizeOrigin = null;
     this._groupDragOrigins = null;
     this._snapTarget = null;
+    this._marginGuides = [];
     this.redraw();
   }
   setPlayhead(t) { this.playhead = t; this.redraw(); }
@@ -282,6 +285,34 @@ export class CanvasWidget {
         const py = this._normToPx(0, sy).y;
         ctx.beginPath(); ctx.moveTo(r.x, py); ctx.lineTo(r.x + r.w, py); ctx.stroke();
       }
+    }
+
+    // #61 — equal-margin guides: two matching gap segments plus the shared
+    // px distance, shown while a drag lands on an equal-spacing position.
+    if (this._marginGuides && this._marginGuides.length) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(245,158,11,0.9)';
+      ctx.fillStyle = 'rgba(245,158,11,0.95)';
+      ctx.lineWidth = 1.5;
+      ctx.font = '10px Consolas, monospace';
+      for (const g of this._marginGuides) {
+        if (g.axis === 'x') {
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          for (const seg of [g.seg1, g.seg2]) {
+            ctx.beginPath(); ctx.moveTo(seg.x1, seg.y); ctx.lineTo(seg.x2, seg.y); ctx.stroke();
+            ctx.fillText(`${Math.round(g.gap)}`, (seg.x1 + seg.x2) / 2, seg.y - 4);
+          }
+        } else {
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          for (const seg of [g.seg1, g.seg2]) {
+            ctx.beginPath(); ctx.moveTo(seg.x, seg.y1); ctx.lineTo(seg.x, seg.y2); ctx.stroke();
+            ctx.fillText(`${Math.round(g.gap)}`, seg.x + 4, (seg.y1 + seg.y2) / 2);
+          }
+        }
+      }
+      ctx.restore();
     }
 
     for (const clip of this._activeClips()) this._drawClipWithTransition(ctx, clip, r);
@@ -1063,7 +1094,8 @@ export class CanvasWidget {
     const natH = el.naturalHeight || el.videoHeight || 1;
 
     if (clip.clip_type === 'video') {
-      const target = Math.max(0, this.playhead - clip.start);
+      const speed = clip.speed ?? 1.0;
+      const target = Math.max(0, this.playhead - clip.start) * speed;
       if (Math.abs(el.currentTime - target) > 0.15) el.currentTime = target;
     }
 
@@ -1501,8 +1533,30 @@ export class CanvasWidget {
       const clip = this._dragClip;
       if (clip) {
         const o = this._resizeOrigin;
-        const cornerX = pos.x - o.grabOffsetX;   
-        const cornerY = pos.y - o.grabOffsetY;
+        let cornerX = pos.x - o.grabOffsetX;
+        let cornerY = pos.y - o.grabOffsetY;
+
+        // #61 follow-up — snap the dragged corner to the canvas edges/centre
+        // so a clip can be resized flush to the frame (e.g. full-bleed
+        // video). Hold Ctrl to resize freely without snapping.
+        this._snapTarget = null;
+        if (!e.ctrlKey) {
+          const r = this._canvasRect();
+          const edgeThreshold = SNAP_PX / this._zoom;
+          const xCandidates = [r.x, r.x + r.w / 2, r.x + r.w];
+          const yCandidates = [r.y, r.y + r.h / 2, r.y + r.h];
+          let snappedX = false, snappedY = false;
+          for (const cx of xCandidates) {
+            if (Math.abs(cornerX - cx) < edgeThreshold) { cornerX = cx; snappedX = true; break; }
+          }
+          for (const cy of yCandidates) {
+            if (Math.abs(cornerY - cy) < edgeThreshold) { cornerY = cy; snappedY = true; break; }
+          }
+          if (snappedX || snappedY) {
+            const n = this._pxToNorm(cornerX, cornerY);
+            this._snapTarget = { x: snappedX ? n.nx : null, y: snappedY ? n.ny : null };
+          }
+        }
 
         let newW = Math.abs(cornerX - o.anchorX);
         let newH = Math.abs(cornerY - o.anchorY);
@@ -1548,13 +1602,106 @@ export class CanvasWidget {
 
     if (this._dragClip && (e.buttons & 1)) {
       const rawX = pos.x - this._dragOffsetX, rawY = pos.y - this._dragOffsetY;
-      let { nx, ny } = this._pxToNorm(rawX, rawY);
+
+      // #61 — snap against the clip's true rendered centre (not its stored
+      // x/y anchor, which for top-anchored narration text sits at the top
+      // of the bounding box rather than its middle), against canvas
+      // edges/thirds, against every other visible clip's centre, and
+      // against "equal margin" positions between two flanking neighbours.
+      const r = this._canvasRect();
+      const draggedRect = this._drawnRects.get(this._dragClip.id);
+      const anchorPt = this._normToPx(this._dragClip.x, this._dragClip.y);
+      const centreOffX = draggedRect ? anchorPt.x - (draggedRect.x + draggedRect.w / 2) : 0;
+      const centreOffY = draggedRect ? anchorPt.y - (draggedRect.y + draggedRect.h / 2) : 0;
+      const w = draggedRect ? draggedRect.w : 0;
+      const h = draggedRect ? draggedRect.h : 0;
+
+      let centreX = rawX + centreOffX;
+      let centreY = rawY + centreOffY;
 
       this._snapTarget = null;
-      let snappedX = false, snappedY = false;
-      for (const sx of SNAP_X) { if (Math.abs(nx - sx) < SNAP_THRESHOLD) { nx = sx; snappedX = true; break; } }
-      for (const sy of SNAP_Y) { if (Math.abs(ny - sy) < SNAP_THRESHOLD) { ny = sy; snappedY = true; break; } }
-      if (snappedX || snappedY) this._snapTarget = { x: snappedX ? nx : null, y: snappedY ? ny : null };
+      this._marginGuides = [];
+
+      if (!e.ctrlKey) {
+        const threshold = SNAP_PX / this._zoom;
+        const excluded = new Set([this._dragClip.id, ...this._selectedIds]);
+        const others = [];
+        for (const otherClip of this._activeClips()) {
+          if (excluded.has(otherClip.id)) continue;
+          const rect = this._drawnRects.get(otherClip.id);
+          if (rect) others.push(rect);
+        }
+
+        const xLines = [...SNAP_X.map(f => r.x + f * r.w), ...others.map(o => o.x + o.w / 2)];
+        const yLines = [...SNAP_Y.map(f => r.y + f * r.h), ...others.map(o => o.y + o.h / 2)];
+
+        let snappedX = false, snappedY = false;
+        for (const lx of xLines) { if (Math.abs(centreX - lx) < threshold) { centreX = lx; snappedX = true; break; } }
+        for (const ly of yLines) { if (Math.abs(centreY - ly) < threshold) { centreY = ly; snappedY = true; break; } }
+
+        // Equal-margin snapping: if the clip sits between two neighbours
+        // (roughly the same row/column), snap so the gap on both sides
+        // matches — and show the matching margins as guides.
+        if (w > 0) {
+          const rowMates = others.filter(o => Math.abs((o.y + o.h / 2) - centreY) < (o.h / 2 + h / 2));
+          const leftMates = rowMates
+            .filter(o => o.x + o.w <= centreX - w / 2 + threshold * 2)
+            .sort((a, b) => (b.x + b.w) - (a.x + a.w));
+          const rightMates = rowMates
+            .filter(o => o.x >= centreX + w / 2 - threshold * 2)
+            .sort((a, b) => a.x - b.x);
+          if (leftMates.length && rightMates.length) {
+            const L = leftMates[0], R = rightMates[0];
+            const span = R.x - (L.x + L.w);
+            const gap = (span - w) / 2;
+            const idealCentreX = L.x + L.w + gap + w / 2;
+            if (gap > 0 && Math.abs(centreX - idealCentreX) < threshold * 1.5) {
+              centreX = idealCentreX;
+              snappedX = true;
+              const rowY = (L.y + L.h / 2 + R.y + R.h / 2) / 2;
+              this._marginGuides.push({
+                axis: 'x', gap,
+                seg1: { x1: L.x + L.w, x2: centreX - w / 2, y: rowY },
+                seg2: { x1: centreX + w / 2, x2: R.x, y: rowY },
+              });
+            }
+          }
+        }
+        if (h > 0) {
+          const colMates = others.filter(o => Math.abs((o.x + o.w / 2) - centreX) < (o.w / 2 + w / 2));
+          const aboveMates = colMates
+            .filter(o => o.y + o.h <= centreY - h / 2 + threshold * 2)
+            .sort((a, b) => (b.y + b.h) - (a.y + a.h));
+          const belowMates = colMates
+            .filter(o => o.y >= centreY + h / 2 - threshold * 2)
+            .sort((a, b) => a.y - b.y);
+          if (aboveMates.length && belowMates.length) {
+            const A = aboveMates[0], B = belowMates[0];
+            const span = B.y - (A.y + A.h);
+            const gap = (span - h) / 2;
+            const idealCentreY = A.y + A.h + gap + h / 2;
+            if (gap > 0 && Math.abs(centreY - idealCentreY) < threshold * 1.5) {
+              centreY = idealCentreY;
+              snappedY = true;
+              const colX = (A.x + A.w / 2 + B.x + B.w / 2) / 2;
+              this._marginGuides.push({
+                axis: 'y', gap,
+                seg1: { y1: A.y + A.h, y2: centreY - h / 2, x: colX },
+                seg2: { y1: centreY + h / 2, y2: B.y, x: colX },
+              });
+            }
+          }
+        }
+
+        if (snappedX || snappedY) {
+          this._snapTarget = {
+            x: snappedX ? (centreX - r.x) / r.w : null,
+            y: snappedY ? (centreY - r.y) / r.h : null,
+          };
+        }
+      }
+
+      const { nx, ny } = this._pxToNorm(centreX - centreOffX, centreY - centreOffY);
 
       if (this._groupDragOrigins && this._selectedIds.has(this._dragClip.id)) {
         const origin = this._groupDragOrigins.get(this._dragClip.id);
@@ -1649,6 +1796,7 @@ export class CanvasWidget {
     this._dragClip = null;
     this._groupDragOrigins = null;
     this._snapTarget = null;
+    this._marginGuides = [];
     this._isPanning = false;
     this._panDragOrigin = null;
     this._el.style.cursor = 'default';

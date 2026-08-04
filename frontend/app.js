@@ -78,7 +78,7 @@ const CLIP_DEFAULTS = {
   code_file: '',
   terminal_prompt: '', terminal_title: '',
   graph_type: 'bar', graph_data: '',
-  voice_id: '', source_start: 0.0,
+  voice_id: '', source_start: 0.0, speed: 1.0,
   text_anim_style: null,
   text_delay_ms: 0,
   text_anim_easing: 'easeInOut',

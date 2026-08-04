@@ -161,6 +161,7 @@ class VideoEditorServer:
             VideoFileClip, ImageClip, ColorClip,
             CompositeVideoClip, AudioFileClip, CompositeAudioClip,
         )
+        from moviepy.video.fx.all import speedx
 
         CANVAS_W = project_data.get("canvas_w", 1080)
         CANVAS_H = project_data.get("canvas_h", 1920)
@@ -354,9 +355,17 @@ class VideoEditorServer:
                 if ctype == "video":
                     try:
                         source_start = float(clip.get("source_start", 0))
+                        speed = float(clip.get("speed", 1.0) or 1.0)
+                        speed = max(0.1, min(8.0, speed))
                         vc = VideoFileClip(fpath, audio=True)
-                        end_in_source = min(source_start + duration, vc.duration)
+                        # Speed maps timeline duration -> a larger/smaller span of
+                        # source footage: 1s of timeline consumes `speed` seconds
+                        # of source, so the clip appears to play faster/slower
+                        # while keeping the authored timeline duration.
+                        end_in_source = min(source_start + duration * speed, vc.duration)
                         vc = vc.subclip(source_start, end_in_source)
+                        if speed != 1.0:
+                            vc = vc.fx(speedx, speed)
                         dw, dh, dx, dy = _place(*vc.size, x, y, scale_x, scale_y, CANVAS_W, CANVAS_H)
                         vc = vc.resize((int(round(dw)), int(round(dh))))
                         rotation = float(clip.get("rotation", 0) or 0)

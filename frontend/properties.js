@@ -276,6 +276,28 @@ export class PropertiesPanel {
         this._addSection('Video file');
         this._addInlineLabel('URL / path:');
         this._boundTextInput('code_file', 'https:// or /static/…');
+
+        this._addSection('Speed');
+        const speedSpin = this._addSpin('Speed (×)', c.speed ?? 1.0, 0.1, 8, 0.1, 2);
+        this._onInputAndChange(speedSpin, v => {
+          const newSpeed = Math.max(0.1, Math.min(8, v));
+          // Speeding a clip up/down should shorten/lengthen it on the timeline
+          // too, not just change how fast it plays within the same slot.
+          // Keep the span of source footage the clip covers constant
+          // (duration * speed) and solve for the new duration.
+          this._applyExternal(() => {
+            for (const clip of this._clips) {
+              const oldSpeed = clip.speed ?? 1.0;
+              const sourceSpan = clip.duration * oldSpeed;
+              clip.speed = newSpeed;
+              clip.duration = Math.max(0.05, Math.round((sourceSpan / newSpeed) * 1000) / 1000);
+            }
+          });
+          // Reflect the recalculated duration in the Duration spinner above
+          // without tearing down/rebuilding this panel (which would drop
+          // focus mid-type on the speed field itself).
+          durSpin.value = c.duration.toFixed(2);
+        });
         break;
       }
 

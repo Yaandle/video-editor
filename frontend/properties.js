@@ -102,28 +102,66 @@ export class PropertiesPanel {
 
     const animateBtn = document.createElement('button');
     animateBtn.className = 'props-btn';
-    animateBtn.textContent = 'Animate Position';
+    animateBtn.textContent = 'Animate Position / Zoom';
     animateBtn.addEventListener('click', () =>
       this._container.dispatchEvent(new CustomEvent('props:animatepos', { bubbles: true }))
     );
     this._container.appendChild(animateBtn);
 
-    // #64 — motion path editing: exact start/end points + timing within the
-    // clip. t values are fractions of the clip (0 = clip start, 1 = clip end),
-    // so the movement can occupy just part of the clip's duration.
+    // #64 / zoom follow-up — motion path editing: any number of stops, each
+    // with its own timing (fraction of the clip), position, and zoom level.
+    // Two stops reproduce a straight pan; three or more let a clip zoom into
+    // a feature, pan to another, and zoom back out. Points can be placed by
+    // clicking the canvas (Animate Position/Zoom tool, scroll to set zoom)
+    // or added/tuned numerically here.
     const kf = c.motion_keyframes;
     if (!multi && Array.isArray(kf) && kf.length >= 2) {
       this._addSection('Motion path');
-      const mkSpin = (label, val, cb, min = 0, max = 1, step = 0.01, dec = 2) => {
-        const spin = this._addSpin(label, val, min, max, step, dec);
-        this._onInputAndChange(spin, v => this._applyExternal(() => cb(Math.max(min, Math.min(max, v)))));
-      };
-      mkSpin('Start X (0–1)', kf[0].x, v => { kf[0].x = v; });
-      mkSpin('Start Y (0–1)', kf[0].y, v => { kf[0].y = v; });
-      mkSpin('End X (0–1)',   kf[1].x, v => { kf[1].x = v; });
-      mkSpin('End Y (0–1)',   kf[1].y, v => { kf[1].y = v; });
-      mkSpin('Move from (0–1 of clip)', kf[0].t ?? 0, v => { kf[0].t = Math.min(v, (kf[1].t ?? 1) - 0.01); });
-      mkSpin('Move until (0–1 of clip)', kf[1].t ?? 1, v => { kf[1].t = Math.max(v, (kf[0].t ?? 0) + 0.01); });
+      const baseScale = c.scale_x ?? c.scale ?? 1.0;
+      const sorted = [...kf].sort((a, b) => (a.t ?? 0) - (b.t ?? 0));
+      const dur = c.duration || 1;
+
+      sorted.forEach((k, i) => {
+        this._addSection(`Stop ${i + 1}`);
+
+        const tSpin = this._addSpin('Time (s)', (k.t ?? 0) * dur, 0, dur, 0.05, 2);
+        let lastT = tSpin.value;
+        const commitReorder = () => {
+          this._applyExternal(() => {
+            c.motion_keyframes.sort((a, b) => (a.t ?? 0) - (b.t ?? 0));
+          });
+          this._commitNow();
+          this._rebuild();
+        };
+        tSpin.addEventListener('input', () => {
+          if (tSpin.value === lastT) return;
+          lastT = tSpin.value;
+          const v = parseFloat(tSpin.value);
+          if (isNaN(v)) return;
+          this._applyExternal(() => { k.t = Math.max(0, Math.min(1, v / dur)); });
+        });
+        tSpin.addEventListener('change', commitReorder);
+
+        const xSpin = this._addSpin('X (0–1)', k.x, 0, 1, 0.01, 3);
+        this._onInputAndChange(xSpin, v => this._applyExternal(() => { k.x = v; }));
+        const ySpin = this._addSpin('Y (0–1)', k.y, 0, 1, 0.01, 3);
+        this._onInputAndChange(ySpin, v => this._applyExternal(() => { k.y = v; }));
+        const zoomSpin = this._addSpin('Zoom (×)', k.scale ?? baseScale, 0.2, 4, 0.05, 2);
+        this._onInputAndChange(zoomSpin, v => this._applyExternal(() => { k.scale = Math.max(0.2, Math.min(4, v)); }));
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'props-btn';
+        delBtn.textContent = 'Remove stop';
+        delBtn.addEventListener('click', () => {
+          this._applyExternal(() => {
+            c.motion_keyframes = c.motion_keyframes.filter(other => other !== k);
+            if (c.motion_keyframes.length < 2) c.motion_keyframes = null;
+          });
+          this._commitNow();
+          this._rebuild();
+        });
+        this._container.appendChild(delBtn);
+      });
 
       const clearBtn = document.createElement('button');
       clearBtn.className = 'props-btn';
@@ -135,17 +173,18 @@ export class PropertiesPanel {
       });
       this._container.appendChild(clearBtn);
     } else if (!multi && c.track !== 'audio') {
-      // #64 follow-up — let a motion path be started from the panel alone:
-      // seed both keyframes at the clip's current position, then the spinners
-      // (or the canvas Animate Position tool) refine it.
+      // Let a motion path be started from the panel alone: seed both
+      // keyframes at the clip's current position/zoom, then the canvas
+      // tool or the list above refines/extends it.
       const addBtn = document.createElement('button');
       addBtn.className = 'props-btn';
       addBtn.textContent = 'Add motion path';
       addBtn.addEventListener('click', () => {
+        const baseScale = c.scale_x ?? c.scale ?? 1.0;
         this._applyExternal(() => {
           c.motion_keyframes = [
-            { t: 0, x: c.x ?? 0.5, y: c.y ?? 0.5 },
-            { t: 1, x: c.x ?? 0.5, y: c.y ?? 0.5 },
+            { t: 0, x: c.x ?? 0.5, y: c.y ?? 0.5, scale: baseScale },
+            { t: 1, x: c.x ?? 0.5, y: c.y ?? 0.5, scale: baseScale },
           ];
         });
         this._commitNow();

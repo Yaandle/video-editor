@@ -886,7 +886,7 @@ class App {
     document.getElementById('add-code-btn').addEventListener('click', () => this._addClip('code'));
     document.getElementById('add-graph-btn').addEventListener('click', () => this._addClip('graph'));
     document.getElementById('add-audio-btn').addEventListener('click', () => this._addClip('audio'));
-    document.getElementById('render-btn').addEventListener('click', () => this._render());
+    document.getElementById('render-btn').addEventListener('click', () => this._openRenderModal());
       const themeToggleBtn = document.getElementById('theme-toggle');
       const setThemeIcon = (theme) => {
         themeToggleBtn.textContent = theme === 'light' ? '☀' : '☾';
@@ -1013,7 +1013,7 @@ class App {
             e.preventDefault();
             this._dispatchAction(e.shiftKey ? 'save-as' : 'save');
             break;
-          case 'r': e.preventDefault(); this._render(); break;
+          case 'r': e.preventDefault(); this._openRenderModal(); break;
           case 'q': e.preventDefault(); window.close(); break;
           case 'd': if (!inInput) { e.preventDefault(); this._duplicateSelected(); } break;
           case 'x': if (!inInput) { e.preventDefault(); this._cutSelected(); } break;
@@ -1035,7 +1035,7 @@ class App {
       case 'save':          this._saveProject(); break;
       case 'save-as':       this._saveAs(); break;
       case 'canvas-resize': this._openCanvasResizeModal(); break;
-      case 'render':        this._render(); break;
+      case 'render':        this._openRenderModal(); break;
       case 'quit':          window.close(); break;
       case 'add-narration': this._addClip('narration'); break;
       case 'add-code':      this._addClip('code'); break;
@@ -1550,6 +1550,78 @@ class App {
 
     overlay.querySelector('#canvas-w-input').value = this.project.canvas_w;
     overlay.querySelector('#canvas-h-input').value = this.project.canvas_h;
+    overlay.classList.add('open');
+  }
+
+  // Tight-fit output length: end of the last clip + a small trailing buffer.
+  // This is what project.duration *should* be, but nothing currently keeps
+  // it in sync when a clip shrinks (e.g. speeding a video clip up shortens
+  // its duration but leaves the old, longer project length in place —
+  // rendering several extra seconds/minutes of empty black at the end).
+  _fitDuration() {
+    if (!this.project.clips.length) return 30.0;
+    return Math.max(...this.project.clips.map(c => c.end())) + 2.0;
+  }
+
+  _openRenderModal() {
+    let overlay = document.getElementById('render-confirm-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id        = 'render-confirm-overlay';
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal-box" style="min-width:300px">
+          <h3 style="color:#ccc;font-size:12px;margin-bottom:10px">Render video</h3>
+          <div id="render-confirm-info" style="color:#888;font-size:11px;margin-bottom:12px;line-height:1.5"></div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <label style="color:#aaa;font-size:11px;width:88px">Length (s)</label>
+            <input id="render-duration-input" type="number" min="0.1" max="36000" step="0.1"
+              style="width:88px;background:#1a1a1a;color:#d4d4d4;border:1px solid #333;
+                    font-size:11px;padding:3px 4px;border-radius:2px;font-family:Consolas,monospace">
+            <button id="render-duration-fit" class="snap-option" style="width:auto;padding:4px 8px">Fit to clips</button>
+          </div>
+          <div style="margin-top:16px;display:flex;gap:10px;align-items:center;justify-content:flex-end">
+            <span id="render-confirm-cancel" style="color:#555;font-size:10px;font-weight:700;cursor:pointer">Cancel</span>
+            <button id="render-confirm-go" class="btn">Render</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+
+      overlay.querySelector('#render-duration-fit').addEventListener('click', () => {
+        overlay.querySelector('#render-duration-input').value = this._fitDuration().toFixed(1);
+      });
+      overlay.querySelector('#render-confirm-cancel').addEventListener('click', () => {
+        overlay.classList.remove('open');
+      });
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.classList.remove('open');
+      });
+      overlay.querySelector('#render-confirm-go').addEventListener('click', () => {
+        const v = parseFloat(overlay.querySelector('#render-duration-input').value);
+        if (!isNaN(v) && v > 0 && v !== this.project.duration) {
+          const before = JSON.stringify(this.project.toDict());
+          this.project.duration = Math.round(v * 100) / 100;
+          this._dirty = true;
+          this._syncProjectToWidgets();
+          this._updateStatus();
+          this._commit(before);
+        }
+        overlay.classList.remove('open');
+        this._render();
+      });
+    }
+
+    const fit = this._fitDuration();
+    const slack = this.project.duration - fit;
+    overlay.querySelector('#render-duration-input').value = fit.toFixed(1);
+
+    const n = this.project.clips.length;
+    const tracks = [...new Set(this.project.clips.map(c => c.track))].sort().join(', ') || 'no clips';
+    let info = `${n} clip${n !== 1 ? 's' : ''} · ${tracks} · ${this.project.canvas_w}×${this.project.canvas_h} @ ${this.project.fps}fps`;
+    if (slack > 0.5) {
+      info += `<br><span style="color:#e0a030">Current length is ${this.project.duration.toFixed(1)}s — trimmed to ${fit.toFixed(1)}s below to drop ${slack.toFixed(1)}s of empty tail.</span>`;
+    }
+    overlay.querySelector('#render-confirm-info').innerHTML = info;
     overlay.classList.add('open');
   }
 

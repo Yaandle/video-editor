@@ -71,24 +71,41 @@ const Easing = {
   }
 };
 
+// Animate Position/Zoom — piecewise-linear interpolation across any number
+// of {t, x, y, scale} keyframes (t normalized 0-1 of the clip's own
+// duration). Two keyframes reproduce the original straight-line move;
+// three or more let a clip pan through several stops (e.g. zoom into a
+// feature, pan to another, zoom back out). `scale` is optional per
+// keyframe — when omitted it falls back to the clip's own static scale,
+// so older 2-point position-only paths render exactly as before.
 function resolvePos(clip, playhead) {
+  const kf = clip.motion_keyframes;
+  const baseScale = clip.scale_x ?? clip.scale ?? 1.0;
 
-  if (!clip.motion_keyframes || clip.motion_keyframes.length < 2) {
-    return { x: clip.x, y: clip.y };
+  if (!Array.isArray(kf) || kf.length < 2) {
+    return { x: clip.x, y: clip.y, scale: null };
   }
-  const [a, b] = clip.motion_keyframes; // {t, x, y} pairs, t normalized 0-1
+
+  const sorted = [...kf].sort((a, b) => (a.t ?? 0) - (b.t ?? 0));
   let localT = clip.duration > 0 ? (playhead - clip.start) / clip.duration : 0;
   localT = Math.max(0, Math.min(1, localT));
-  const span = (b.t - a.t) || 1;
-  const p = Math.max(0, Math.min(1, (localT - a.t) / span));
-  const result = {
-  x: a.x + (b.x - a.x) * p,
-  y: a.y + (b.y - a.y) * p,
+
+  let a = sorted[0], b = sorted[sorted.length - 1];
+  for (let i = 0; i < sorted.length - 1; i++) {
+    if (localT >= (sorted[i].t ?? 0) && localT <= (sorted[i + 1].t ?? 1)) {
+      a = sorted[i]; b = sorted[i + 1];
+      break;
+    }
+  }
+  const span = ((b.t ?? 1) - (a.t ?? 0)) || 1;
+  const p = Math.max(0, Math.min(1, (localT - (a.t ?? 0)) / span));
+  const scaleA = a.scale ?? baseScale, scaleB = b.scale ?? baseScale;
+
+  return {
+    x: a.x + (b.x - a.x) * p,
+    y: a.y + (b.y - a.y) * p,
+    scale: scaleA + (scaleB - scaleA) * p,
   };
-
-
-
-  return result;
 }
 
 
@@ -119,6 +136,7 @@ export class CanvasWidget {
     this._dragOffsetY = 0;
     this._snapTarget = null;
     this._marginGuides = []; // #61 — equal-spacing guides shown while dragging
+    this._pendingZoom = 1.0; // Animate Position/Zoom — level for the next placed stop
     this._mediaCache = new Map();
     this._groupDragOrigins = null;
     this._marqueeActive = false;
@@ -147,18 +165,28 @@ export class CanvasWidget {
     this._tool = tool;
     this._el.style.cursor =
       tool === 'move' ? 'grab' :
-      (tool === 'motionA' || tool === 'motionB') ? 'crosshair' : '';
+      tool === 'motion' ? 'crosshair' : '';
 
     const badge = document.getElementById('motion-mode-badge');
-    if (tool === 'motionA') {
-      badge.textContent = 'SET START';
-      badge.classList.remove('hidden');
-    } else if (tool === 'motionB') {
-      badge.textContent = 'SET END';
+    if (tool === 'motion') {
+      if (this._pendingZoom == null) this._pendingZoom = 1.0;
+      this._updateMotionBadge();
       badge.classList.remove('hidden');
     } else {
       badge.classList.add('hidden');
     }
+  }
+
+  // Animate Position/Zoom — the badge doubles as a live readout of the
+  // pending zoom level (adjust with the scroll wheel before clicking) and
+  // how many stops the path has so far.
+  _updateMotionBadge() {
+    const badge = document.getElementById('motion-mode-badge');
+    if (!badge) return;
+    const clip = this.project.clips.find(c => c.id === this._selectionPrimaryId);
+    const n = clip && Array.isArray(clip.motion_keyframes) ? clip.motion_keyframes.length : 0;
+    badge.textContent =
+      `ZOOM ${this._pendingZoom.toFixed(2)}× — scroll to adjust, click to add point ${n ? `(${n} set)` : ''} · Esc to finish`;
   }
   setProject(p) {
     this.project = p;
@@ -468,13 +496,13 @@ export class CanvasWidget {
   _drawClip(ctx, clip, r) {
     const theme = THEMES[clip.theme] ?? THEMES.dark;
     if (clip.track === 'audio') return;
-    
-    const { x, y } = resolvePos(clip, this.playhead);
-    
+
+    const { x, y, scale: animScale } = resolvePos(clip, this.playhead);
+
     const pt = this._normToPx(x, y);
 
     if (clip.clip_type === 'narration') {
-        const sx = clip.scale_x ?? clip.scale ?? 1.0;
+        const sx = animScale ?? clip.scale_x ?? clip.scale ?? 1.0;
 
         const fontSize = clip.font_size ?? Math.max(7, (r.w / 18) | 0);
         const fontStyle = clip.font_italic ? 'italic ' : '';
@@ -588,10 +616,10 @@ export class CanvasWidget {
       this._drawGraphPreview(ctx, clip, bx, by, blockW, blockH, theme, r);
     }
     else if (clip.clip_type === 'image' || clip.clip_type === 'video') {
-      this._drawMedia(ctx, clip, r, pt);
+      this._drawMedia(ctx, clip, r, pt, animScale);
     }
     else if (clip.clip_type === 'shape') {
-      this._drawShape(ctx, clip, r, pt, theme);
+      this._drawShape(ctx, clip, r, pt, theme, animScale);
     }
   }
 
@@ -1072,7 +1100,7 @@ export class CanvasWidget {
     return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
   }
 
-  _drawMedia(ctx, clip, r, pt) {
+  _drawMedia(ctx, clip, r, pt, animScale = null) {
     const theme = THEMES[clip.theme] ?? THEMES.dark;
     const url = clip.code_file;
 
@@ -1099,8 +1127,11 @@ export class CanvasWidget {
       if (Math.abs(el.currentTime - target) > 0.15) el.currentTime = target;
     }
 
-    const scaleX = clip.scale_x ?? clip.scale ?? 1.0;
-    const scaleY = clip.scale_y ?? clip.scale ?? 1.0;
+    // A live Animate Position/Zoom path drives the render scale for the
+    // duration of the clip, overriding the static scale_x/scale_y — same
+    // relationship position keyframes already have with clip.x/clip.y.
+    const scaleX = animScale ?? clip.scale_x ?? clip.scale ?? 1.0;
+    const scaleY = animScale ?? clip.scale_y ?? clip.scale ?? 1.0;
     const maxW = (r.w * 0.88) | 0, maxH = (r.h * 0.80) | 0;
     const fitScale = Math.min(maxW / natW, maxH / natH, 1);
     const dw = (natW * fitScale * scaleX) | 0, dh = (natH * fitScale * scaleY) | 0;
@@ -1122,14 +1153,14 @@ export class CanvasWidget {
     this._drawnRects.set(clip.id, { x: dx, y: dy, w: dw, h: dh });
   }
 
-  _drawShape(ctx, clip, r, pt, theme) {
+  _drawShape(ctx, clip, r, pt, theme, animScale = null) {
     const BASE_W = 200, BASE_H = 200;
     const maxW = (r.w * 0.88) | 0;
     const maxH = (r.h * 0.80) | 0;
     const fitScale = Math.min(maxW / BASE_W, maxH / BASE_H, 1);
 
-    const sx = clip.scale_x ?? clip.scale ?? 1.0;
-    const sy = clip.scale_y ?? clip.scale ?? 1.0;
+    const sx = animScale ?? clip.scale_x ?? clip.scale ?? 1.0;
+    const sy = animScale ?? clip.scale_y ?? clip.scale ?? 1.0;
     const dw = BASE_W * fitScale * sx;
     const dh = BASE_H * fitScale * sy;
 
@@ -1362,6 +1393,17 @@ export class CanvasWidget {
 
   _onWheel(e) {
     e.preventDefault();
+
+    // While placing an Animate Position/Zoom stop, the wheel sets the zoom
+    // level for the *next* click instead of zooming the editor viewport.
+    if (this._tool === 'motion') {
+      const factor = e.deltaY < 0 ? 1.08 : 1 / 1.08;
+      this._pendingZoom = Math.max(0.2, Math.min(4.0, (this._pendingZoom ?? 1.0) * factor));
+      this._updateMotionBadge();
+      this.redraw();
+      return;
+    }
+
     const raw = this._getPos(e);
     const oldZoom = this._zoom;
     const factor = e.deltaY < 0 ? 1.1 : 0.9;
@@ -1382,42 +1424,39 @@ export class CanvasWidget {
     const raw = this._getPos(e);
     const pos = this._toLogical(raw.x, raw.y);
 
-    if (this._tool === 'motionA' || this._tool === 'motionB') {
+    if (this._tool === 'motion') {
       const clip = this.project.clips.find(c => c.id === this._selectionPrimaryId);
       if (clip) {
         let { nx, ny } = this._pxToNorm(pos.x, pos.y);
-        // #64: snap motion start/end points to the alignment axes
-        // (hold Ctrl to place freely without snapping)
+        // Snap the new stop to the alignment axes (hold Ctrl to place freely).
         if (!e.ctrlKey) {
           for (const sx of SNAP_X) { if (Math.abs(nx - sx) < SNAP_THRESHOLD) { nx = sx; break; } }
           for (const sy of SNAP_Y) { if (Math.abs(ny - sy) < SNAP_THRESHOLD) { ny = sy; break; } }
         }
 
-        if (!Array.isArray(clip.motion_keyframes))
-          clip.motion_keyframes = [];
+        if (!Array.isArray(clip.motion_keyframes)) clip.motion_keyframes = [];
 
+        // Each stop lands wherever the playhead currently sits within the
+        // clip — scrub, click, scrub further, click again — so a path can
+        // have any number of stops (zoom in, pan, zoom back out, …), not
+        // just a fixed start/end.
+        let t = clip.duration > 0 ? (this.playhead - clip.start) / clip.duration : 0;
+        t = Math.round(Math.max(0, Math.min(1, t)) * 1000) / 1000;
+        const scale = this._pendingZoom ?? (clip.scale_x ?? clip.scale ?? 1.0);
 
         const before = JSON.stringify(this.project.toDict());
 
-        if (this._tool === 'motionA') {
-          clip.motion_keyframes[0] = { t: 0, x: nx, y: ny };
-          
-        } 
-        
-        else {
-          clip.motion_keyframes[1] = { t: 1, x: nx, y: ny };
-
-    
+        const existing = clip.motion_keyframes.find(k => Math.abs((k.t ?? 0) - t) < 0.005);
+        if (existing) {
+          existing.x = nx; existing.y = ny; existing.scale = scale;
+        } else {
+          clip.motion_keyframes.push({ t, x: nx, y: ny, scale });
+          clip.motion_keyframes.sort((a, b) => (a.t ?? 0) - (b.t ?? 0));
         }
 
         this._el.dispatchEvent(new CustomEvent('canvas:motioncaptured', {
           bubbles: true,
-          detail: {
-            id: clip.id,
-            point: this._tool === 'motionA' ? 'A' : 'B',
-            nx,
-            ny
-          }
+          detail: { id: clip.id, t, nx, ny, scale, count: clip.motion_keyframes.length }
         }));
 
         this._el.dispatchEvent(new CustomEvent('canvas:committed', {
@@ -1425,6 +1464,7 @@ export class CanvasWidget {
           detail: { before }
         }));
 
+        this._updateMotionBadge();
         this.redraw();
       }
 
@@ -1518,7 +1558,7 @@ export class CanvasWidget {
     const raw = this._getPos(e);
     const pos = this._toLogical(raw.x, raw.y);
 
-    if (this._tool === 'motionA' || this._tool === 'motionB') {
+    if (this._tool === 'motion') {
       this._el.style.cursor = 'crosshair';
       return;
     }

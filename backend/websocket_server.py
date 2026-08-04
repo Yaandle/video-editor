@@ -26,6 +26,72 @@ def _place(natW, natH, x, y, scale_x, scale_y, canvas_w, canvas_h):
     return dw, dh, dx, dy
 
 
+def _sorted_keyframes(raw):
+    """Normalize + sort clip.motion_keyframes for interpolation. Returns
+    None when there's nothing to animate (mirrors canvas.js resolvePos)."""
+    if not raw or len(raw) < 2:
+        return None
+    try:
+        kfs = sorted(
+            (
+                {
+                    "t": float(k.get("t", 0)),
+                    "x": float(k.get("x", 0.5)),
+                    "y": float(k.get("y", 0.5)),
+                    "scale": k.get("scale"),
+                }
+                for k in raw
+            ),
+            key=lambda k: k["t"],
+        )
+        return kfs
+    except Exception:
+        return None
+
+
+def _kf_interp(kfs, frac, key, default):
+    """Piecewise-linear interpolation across sorted keyframes at `frac`
+    (0-1 of the clip's own duration). Mirrors canvas.js resolvePos()."""
+    frac = max(0.0, min(1.0, frac))
+    a, b = kfs[0], kfs[-1]
+    for i in range(len(kfs) - 1):
+        if kfs[i]["t"] <= frac <= kfs[i + 1]["t"]:
+            a, b = kfs[i], kfs[i + 1]
+            break
+    span = (b["t"] - a["t"]) or 1.0
+    p = max(0.0, min(1.0, (frac - a["t"]) / span))
+    va = a.get(key)
+    vb = b.get(key)
+    va = default if va is None else va
+    vb = default if vb is None else vb
+    return va + (vb - va) * p
+
+
+def _apply_motion_keyframes(mclip, kfs, nat_w, nat_h, base_scale, canvas_w, canvas_h, duration):
+    """
+    Ken Burns style pan/zoom for export: drives a dynamic resize+position
+    across clip.motion_keyframes instead of the static _place() call, so a
+    clip can zoom into a feature, pan to another, and zoom back out in the
+    rendered file too — not just the live canvas preview.
+    """
+    fit_scale = min(canvas_w * 0.88 / nat_w, canvas_h * 0.80 / nat_h, 1.0)
+
+    def factor(t):
+        frac = (t / duration) if duration > 0 else 0.0
+        s = _kf_interp(kfs, frac, "scale", base_scale)
+        return max(0.001, fit_scale * s)
+
+    def pos(t):
+        frac = (t / duration) if duration > 0 else 0.0
+        ix = _kf_interp(kfs, frac, "x", 0.5)
+        iy = _kf_interp(kfs, frac, "y", 0.5)
+        s = _kf_interp(kfs, frac, "scale", base_scale)
+        dw, dh = nat_w * fit_scale * s, nat_h * fit_scale * s
+        return (ix * canvas_w - dw / 2, iy * canvas_h - dh / 2)
+
+    return mclip.resize(factor).set_position(pos)
+
+
 _SLIDE_OFFSETS = {
     # #63 — direction the clip travels FROM when sliding in (canvas fractions)
     "slide_up": (0, 1), "slide_down": (0, -1),
@@ -366,14 +432,28 @@ class VideoEditorServer:
                         vc = vc.subclip(source_start, end_in_source)
                         if speed != 1.0:
                             vc = vc.fx(speedx, speed)
-                        dw, dh, dx, dy = _place(*vc.size, x, y, scale_x, scale_y, CANVAS_W, CANVAS_H)
-                        vc = vc.resize((int(round(dw)), int(round(dh))))
+
                         rotation = float(clip.get("rotation", 0) or 0)
-                        if rotation:
-                            vc = vc.rotate(-rotation, expand=True)
-                            rw, rh = vc.size
-                            dx, dy = x * CANVAS_W - rw / 2, y * CANVAS_H - rh / 2
-                        vc = vc.set_position((dx, dy)).set_start(start)
+                        kfs = _sorted_keyframes(clip.get("motion_keyframes"))
+
+                        if kfs and not rotation:
+                            # Animate Position/Zoom — Ken Burns pan/zoom driven by
+                            # the clip's own keyframes, mirrors canvas.js resolvePos.
+                            nat_w, nat_h = vc.size
+                            vc = _apply_motion_keyframes(vc, kfs, nat_w, nat_h, scale_x, CANVAS_W, CANVAS_H, duration)
+                            dx, dy = x * CANVAS_W - nat_w / 2, y * CANVAS_H - nat_h / 2  # transitions fallback
+                        else:
+                            dw, dh, dx, dy = _place(*vc.size, x, y, scale_x, scale_y, CANVAS_W, CANVAS_H)
+                            vc = vc.resize((int(round(dw)), int(round(dh))))
+                            if rotation:
+                                vc = vc.rotate(-rotation, expand=True)
+                                rw, rh = vc.size
+                                dx, dy = x * CANVAS_W - rw / 2, y * CANVAS_H - rh / 2
+                            vc = vc.set_position((dx, dy))
+                            if kfs:
+                                print("[render] note: Animate Position/Zoom + rotation isn't supported together at render time — using the static position instead", file=sys.stderr)
+
+                        vc = vc.set_start(start)
                         if vc.audio is not None:
                             audio_tracks.append(vc.audio.set_start(start))
                             vc = vc.without_audio()
@@ -387,14 +467,25 @@ class VideoEditorServer:
                 if ctype == "image":
                     try:
                         ic = ImageClip(fpath, duration=duration)
-                        dw, dh, dx, dy = _place(*ic.size, x, y, scale_x, scale_y, CANVAS_W, CANVAS_H)
-                        ic = ic.resize((int(round(dw)), int(round(dh))))
                         rotation = float(clip.get("rotation", 0) or 0)
-                        if rotation:
-                            ic = ic.rotate(-rotation, expand=True)
-                            rw, rh = ic.size
-                            dx, dy = x * CANVAS_W - rw / 2, y * CANVAS_H - rh / 2
-                        ic = ic.set_position((dx, dy)).set_start(start)
+                        kfs = _sorted_keyframes(clip.get("motion_keyframes"))
+
+                        if kfs and not rotation:
+                            nat_w, nat_h = ic.size
+                            ic = _apply_motion_keyframes(ic, kfs, nat_w, nat_h, scale_x, CANVAS_W, CANVAS_H, duration)
+                            dx, dy = x * CANVAS_W - nat_w / 2, y * CANVAS_H - nat_h / 2  # transitions fallback
+                        else:
+                            dw, dh, dx, dy = _place(*ic.size, x, y, scale_x, scale_y, CANVAS_W, CANVAS_H)
+                            ic = ic.resize((int(round(dw)), int(round(dh))))
+                            if rotation:
+                                ic = ic.rotate(-rotation, expand=True)
+                                rw, rh = ic.size
+                                dx, dy = x * CANVAS_W - rw / 2, y * CANVAS_H - rh / 2
+                            ic = ic.set_position((dx, dy))
+                            if kfs:
+                                print("[render] note: Animate Position/Zoom + rotation isn't supported together at render time — using the static position instead", file=sys.stderr)
+
+                        ic = ic.set_start(start)
                         ic = _apply_transitions(ic, clip, (dx, dy), CANVAS_W, CANVAS_H)
                         video_layers.append(ic)
                     except Exception as exc:

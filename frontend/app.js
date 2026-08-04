@@ -118,7 +118,7 @@ const CLIP_DEFAULTS = {
   inner_radius_ratio: 0.5,
   opacity: 1.0,
 
-  motion_keyframes: null, // or [{t: 0, x: 0.3, y: 0.5}, {t: 1, x: 0.7, y: 0.2}]
+  motion_keyframes: null, // or [{t, x, y, scale}, …] — any number of stops, t in 0-1 of the clip
 
   // transitions (#63) — apply to any clip type on any track
   transition_in: null,      // null|'fade'|'slide_up'|'slide_down'|'slide_left'|'slide_right'|'scale_pop'
@@ -738,8 +738,8 @@ class App {
     );
 
     document.getElementById('props-inner').addEventListener('props:animatepos', () => {
-      this.canvas.setTool('motionA');
-      this._updateStatus('Click canvas to set START position (Ctrl-click = no snapping)');
+      this.canvas.setTool('motion');
+      this._updateStatus('Animate Position/Zoom — scroll to set zoom level, click canvas to add a stop at the playhead, Esc when done');
     });
 
     // #63/#64 — preview a clip's transitions/animation from its start
@@ -748,17 +748,17 @@ class App {
       if (clip) this._previewClipAnimation(clip, true);
     });
 
+    // Position/Zoom path — every click while the tool is armed adds (or
+    // updates, if one already sits at this playhead) one stop; the tool
+    // stays armed so a clip can pick up several stops in one go (zoom
+    // into a feature, pan to another, zoom back out). Esc finishes.
     document.getElementById('canvas-widget').addEventListener('canvas:motioncaptured', (e) => {
-      if (e.detail.point === 'A') {
-        this.canvas.setTool('motionB');
-        this._updateStatus('Click canvas to set END position');
-      } else {
-        this.canvas.setTool('select');
-        this._dirty = true;
-        this.canvas.redraw();
-        this.timeline.redraw();
-        this._updateStatus('Motion path set');
-      }
+      this._dirty = true;
+      this.canvas.redraw();
+      this.timeline.redraw();
+      const clip = this._findClip(e.detail.id);
+      if (clip && this._selectionPrimaryId === clip.id) this.props.showClip(clip);
+      this._updateStatus(`Zoom stop ${e.detail.count} set (${Math.round(e.detail.scale * 100)}%) — click to add another, Esc when done`);
     });
     document.getElementById('props-inner').addEventListener('props:editstart', () => {
       if (!this._pendingPropsBefore) {
@@ -963,6 +963,13 @@ class App {
     document.addEventListener('keydown', (e) => {
       const tag = document.activeElement.tagName;
       const inInput = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT');
+
+      if (e.key === 'Escape' && this.canvas._tool === 'motion') {
+        e.preventDefault();
+        this.canvas.setTool('select');
+        this._updateStatus('Motion path set');
+        return;
+      }
 
       if (e.code === 'Space' && !inInput) { e.preventDefault(); this._togglePlay(); return; }
       if ((e.key === 'Delete' || e.key === 'Backspace') && !inInput) { e.preventDefault(); this._deleteSelected(); return; }

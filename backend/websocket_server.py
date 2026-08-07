@@ -13,6 +13,7 @@ from project_store import ProjectStore
 
 _BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(_BACKEND_DIR, "uploads")
+SFX_DIR = os.path.join(_BACKEND_DIR, "sfx")  # #72 — built-in sound effects
 PROJECTS_DIR = os.path.join(_BACKEND_DIR, "projects")
 os.makedirs(PROJECTS_DIR, exist_ok=True)
 
@@ -90,6 +91,30 @@ def _apply_motion_keyframes(mclip, kfs, nat_w, nat_h, base_scale, canvas_w, canv
         return (ix * canvas_w - dw / 2, iy * canvas_h - dh / 2)
 
     return mclip.resize(factor).set_position(pos)
+
+
+def _apply_crop(mclip, clip):
+    """
+    #28 — crop an image/video source to clip.crop_x/y/w/h (normalized 0-1
+    rect in the source's natural pixels) before any resize/position math
+    runs, so downstream fit-to-canvas sizing is based on the cropped
+    dimensions — mirrors canvas.js _drawMedia's 9-arg drawImage crop.
+    """
+    crop_x = float(clip.get("crop_x", 0) or 0)
+    crop_y = float(clip.get("crop_y", 0) or 0)
+    crop_w = float(clip.get("crop_w", 1) or 1)
+    crop_h = float(clip.get("crop_h", 1) or 1)
+    if crop_x <= 0.001 and crop_y <= 0.001 and crop_w >= 0.999 and crop_h >= 0.999:
+        return mclip  # full frame — nothing to do
+
+    nat_w, nat_h = mclip.size
+    x1 = max(0, min(nat_w - 1, crop_x * nat_w))
+    y1 = max(0, min(nat_h - 1, crop_y * nat_h))
+    x2 = max(x1 + 1, min(nat_w, (crop_x + crop_w) * nat_w))
+    y2 = max(y1 + 1, min(nat_h, (crop_y + crop_h) * nat_h))
+
+    from moviepy.video.fx.all import crop as _crop_fx
+    return mclip.fx(_crop_fx, x1=x1, y1=y1, x2=x2, y2=y2)
 
 
 _SLIDE_OFFSETS = {
@@ -235,11 +260,18 @@ class VideoEditorServer:
         DURATION = project_data.get("duration", 5.0)
         proj_name = project_data.get("name", "output").replace(" ", "_")
         out_path = os.path.join(UPLOAD_DIR, f"{proj_name}_output.mp4")
+        # #71 — hidden layers (eye icon off in the timeline) are muted from
+        # the rendered output too, same as the live preview.
+        hidden_layers = set(project_data.get("hidden_layers", []))
 
         def _resolve(code_file):
             rel = code_file.lstrip("/")
             if rel.startswith("media/"):
-                rel = rel[len("media/"):]
+                return os.path.join(UPLOAD_DIR, rel[len("media/"):])
+            if rel.startswith("sfx/"):
+                # #72 — sound-effect clips reference /sfx/<file>, generated
+                # into backend/sfx/ rather than the uploads folder.
+                return os.path.join(SFX_DIR, rel[len("sfx/"):])
             return os.path.join(UPLOAD_DIR, rel)
 
         stage = "compose"  # compose → encode; reported in render_status errors
@@ -248,6 +280,8 @@ class VideoEditorServer:
             audio_tracks = []
 
             for clip in sorted(project_data.get("clips", []), key=lambda c: c.get("layer", 0), reverse=True):
+                if clip.get("layer", 0) in hidden_layers:
+                    continue
                 ctype = clip.get("clip_type", "")
                 src = clip.get("code_file") or clip.get("src") or ""
                 start = float(clip.get("start", 0))
@@ -424,6 +458,7 @@ class VideoEditorServer:
                         speed = float(clip.get("speed", 1.0) or 1.0)
                         speed = max(0.1, min(8.0, speed))
                         vc = VideoFileClip(fpath, audio=True)
+                        vc = _apply_crop(vc, clip)  # #28
                         # Speed maps timeline duration -> a larger/smaller span of
                         # source footage: 1s of timeline consumes `speed` seconds
                         # of source, so the clip appears to play faster/slower
@@ -467,6 +502,7 @@ class VideoEditorServer:
                 if ctype == "image":
                     try:
                         ic = ImageClip(fpath, duration=duration)
+                        ic = _apply_crop(ic, clip)  # #28
                         rotation = float(clip.get("rotation", 0) or 0)
                         kfs = _sorted_keyframes(clip.get("motion_keyframes"))
 

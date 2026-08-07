@@ -107,6 +107,13 @@ const CLIP_DEFAULTS = {
 
   layer: 0,
   // shape (#22)
+  // #28 — crop, normalized 0-1 rect within the source media's natural
+  // pixels. Default (0,0,1,1) is the full, uncropped frame.
+  crop_x: 0.0,
+  crop_y: 0.0,
+  crop_w: 1.0,
+  crop_h: 1.0,
+
   shape_kind: 'rectangle',
   fill: '#FFFFFF',
   stroke_color: '#000000',
@@ -178,7 +185,18 @@ export class Project {
     this.duration          = data.duration         ?? 30.0;
     this.background_color  = data.background_color ?? '#000000';
     this.clips             = (data.clips ?? []).map(cd => new Clip(cd));
+    // #71 — consolidated timeline: layers are global rows shared by every
+    // clip type. hidden_layers holds the set of layer indices toggled off
+    // via the eye icon — hidden in the preview, muted in playback, and
+    // skipped at render time.
+    this.hidden_layers      = new Set(data.hidden_layers ?? []);
   }
+  isLayerHidden(layer) { return this.hidden_layers.has(layer ?? 0); }
+  setLayerHidden(layer, hidden) {
+    if (hidden) this.hidden_layers.add(layer);
+    else this.hidden_layers.delete(layer);
+  }
+  toggleLayerHidden(layer) { this.setLayerHidden(layer, !this.isLayerHidden(layer)); return this.isLayerHidden(layer); }
   toDict() {
     return {
       name: this.name,
@@ -188,6 +206,7 @@ export class Project {
       duration: this.duration,
       background_color: this.background_color,
       clips: this.clips.map(c => c.toDict()),
+      hidden_layers: Array.from(this.hidden_layers),
     };
   }
   static fromDict(d) { return new Project(d); }
@@ -346,6 +365,7 @@ class App {
     });
     
     this._loadMediaBin();
+    this._loadSfxBin();
 
     const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     this._ws = new WSClient(`${wsProtocol}//${location.host}/ws`, (msg) => this._onWsMessage(msg));
@@ -359,6 +379,14 @@ class App {
     this._resizeAll();
     this._updateUndoRedoButtons();
     window.addEventListener('resize', () => this._resizeAll());
+
+    // Narration clips can pick a web font (Advanced Text Options). ctx.font
+    // silently falls back to a default until the family has actually
+    // downloaded, and canvas text doesn't auto-repaint the way DOM text
+    // does — so force one redraw once every requested font is ready.
+    if (document.fonts?.ready) {
+      document.fonts.ready.then(() => this.canvas.redraw());
+    }
   }
 
   async _uploadFile(file) {
@@ -378,7 +406,18 @@ class App {
     }
   }
 
-  async _addMediaClip(item, startAt = null) {
+  // #72 — built-in sound effects, synthesized locally by the backend
+  // (backend/sfx_gen.py) and listed the same way uploaded media is.
+  async _loadSfxBin() {
+    try {
+      const items = await fetch('/sfx-list').then(r => r.json());
+      items.forEach(item => this.mediaBin.addSfxItem(item));
+    } catch (err) {
+      console.error('Failed to load sound effects', err);
+    }
+  }
+
+  async _addMediaClip(item, startAt = null, layerAt = null) {
     const clip_type = item.kind === 'video' ? 'video' : item.kind === 'audio' ? 'audio' : 'image';
     // Prefer metadata from the backend if provided
     const meta = item.metadata ?? null;
@@ -398,14 +437,18 @@ class App {
     if (dur == null) dur = 5.0;
 
     const before = JSON.stringify(this.project.toDict());
-    const track = CLIP_TYPE_TRACK[clip_type] ?? 'visual';
     // startAt: explicit drop position (timeline drag-drop, #67b follow-up);
-    // otherwise append after the last clip on the target track.
-    const start = startAt != null
-      ? Math.max(0, startAt)
-      : Math.max(this.playback.playhead, this._nextStartForTrack(track));
+    // otherwise #73 — land on the current playhead, not appended after the
+    // last clip of the same kind.
+    const start = startAt != null ? Math.max(0, startAt) : this.playback.playhead;
     const c = newClip(clip_type, start, dur);
     c.code_file = item.url;
+    // #71 — unified timeline: if it was dropped onto a specific row, honour
+    // that row when free; otherwise (toolbar/media-bin "+") pick the first
+    // free layer so it never silently overlaps something already there.
+    c.layer = (layerAt != null && !this._layerCollides(layerAt, c.start, c.duration))
+      ? layerAt
+      : this._freeLayerAt(c.start, c.duration);
 
     this.project.clips.push(c);
     this._dirty = true;
@@ -421,10 +464,11 @@ class App {
 
   _addShapeClip(shape_kind) {
     const before = JSON.stringify(this.project.toDict());
-    const track = 'visual';
-    const start = Math.max(this.playback.playhead, this._nextStartForTrack(track));
+    // #73 — land on the current playhead, not appended after the last shape.
+    const start = this.playback.playhead;
     const c = newClip('shape', start);
     c.shape_kind = shape_kind;
+    c.layer = this._freeLayerAt(c.start, c.duration);
     this.project.clips.push(c);
     this._dirty = true;
     this._refreshAll();
@@ -520,6 +564,7 @@ class App {
     const playhead = this.playback.playhead;
     for (const clip of this.project.clips) {
       if (clip.clip_type !== 'audio' || !clip.code_file || !clip.duration) continue;
+      if (this.project.isLayerHidden(clip.layer ?? 0)) continue; // #71 — hidden layer = muted
       this._ensureAudioForClip(clip);
       const el = this._audioEls[clip.id];
       const start = clip.start;
@@ -568,10 +613,11 @@ class App {
       if (clip.clip_type !== 'audio' || !clip.code_file || !clip.duration) continue;
       this._ensureAudioForClip(clip);
       const el = this._audioEls[clip.id];
+      const hidden = this.project.isLayerHidden(clip.layer ?? 0); // #71 — hidden layer = muted
       const start = clip.start;
       const end = clip.end();
       const srcStart = clip.source_start ?? 0;
-      if (start <= t && t < end) {
+      if (!hidden && start <= t && t < end) {
         const offset = srcStart + Math.max(0, t - start);
         const maxOffset = srcStart + clip.duration - 0.001;
         try {
@@ -587,7 +633,7 @@ class App {
         } catch (err) {}
       } else {
         try { el.pause(); el.currentTime = srcStart; } catch (err) {}
-        if (playing && start > t) {
+        if (!hidden && playing && start > t) {
           const delay = Math.max(0, (start - t) * 1000);
           this._audioTimers[clip.id] = setTimeout(() => {
             try { const el2 = this._audioEls[clip.id]; if (el2) { el2.currentTime = srcStart; el2.play().catch(() => {}); } } catch (e) {}
@@ -680,6 +726,16 @@ class App {
       this._dirty = true;
       this._updateStatus();
     });
+    // #28 — live crop-drag updates (canvas.js already redraws itself)
+    document.getElementById('canvas-widget').addEventListener('canvas:clipcropped', (e) => {
+      const clip = this._findClip(e.detail.id);
+      if (clip && this._selectionPrimaryId === e.detail.id) this.props.showClip(clip);
+      this._dirty = true;
+      this._updateStatus();
+    });
+    document.getElementById('canvas-widget').addEventListener('canvas:contextmenu', (e) => {
+      this._showCanvasContextMenu(e.detail.clip, e.detail.x, e.detail.y);
+    });
     document.getElementById('canvas-widget').addEventListener('canvas:selectionchanged', (e) => {
       this._setSelection(e.detail.selectedIds ?? e.detail.ids, e.detail.primaryId);
     });
@@ -706,7 +762,20 @@ class App {
     // #67b follow-up — media-bin card dragged onto the timeline: add the
     // clip at the dropped (snapped) time instead of appending at track end.
     document.getElementById('timeline-canvas').addEventListener('timeline:mediadropped', (e) => {
-      this._addMediaClip(e.detail.item, e.detail.time);
+      this._addMediaClip(e.detail.item, e.detail.time, e.detail.layer);
+    });
+
+    // #71 — eye icon in the timeline's layer gutter: toggle that row's
+    // visibility (preview + playback + render all respect it).
+    document.getElementById('timeline-canvas').addEventListener('timeline:layervisibility', (e) => {
+      const before = JSON.stringify(this.project.toDict());
+      const nowHidden = this.project.toggleLayerHidden(e.detail.layer);
+      this._dirty = true;
+      this.canvas.redraw();
+      this.timeline.redraw();
+      this._resyncAudioOnSeek(this.playback.playhead);
+      this._updateStatus(`Layer ${e.detail.layer + 1} ${nowHidden ? 'hidden' : 'shown'}`);
+      this._commit(before);
     });
 
     document.getElementById('timeline-canvas').addEventListener('timeline:slice', (e) => {
@@ -740,6 +809,12 @@ class App {
     document.getElementById('props-inner').addEventListener('props:animatepos', () => {
       this.canvas.setTool('motion');
       this._updateStatus('Animate Position/Zoom — scroll to set zoom level, click canvas to add a stop at the playhead, Esc when done');
+    });
+
+    // #28 — crop: from the properties panel button or the canvas right-click menu
+    document.getElementById('props-inner').addEventListener('props:crop', () => {
+      this.canvas.setTool('crop');
+      this._updateStatus('Crop — drag the corner handles to resize, drag inside to move, Esc when done');
     });
 
     // #63/#64 — preview a clip's transitions/animation from its start
@@ -799,6 +874,10 @@ class App {
     document.addEventListener('click', (e) => {
       if (!e.target.closest('.menu-item')) {
         document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('open'));
+      }
+      // #28 — click anywhere outside the right-click context menu closes it
+      if (!e.target.closest('#canvas-context-menu')) {
+        document.getElementById('canvas-context-menu')?.classList.remove('open');
       }
     });
 
@@ -882,10 +961,6 @@ class App {
   _wireToolbar() {
     document.getElementById('play-btn').addEventListener('click', () => this._togglePlay());
     document.getElementById('stop-btn').addEventListener('click', () => this._stop());
-    document.getElementById('add-narration-btn').addEventListener('click', () => this._addClip('narration'));
-    document.getElementById('add-code-btn').addEventListener('click', () => this._addClip('code'));
-    document.getElementById('add-graph-btn').addEventListener('click', () => this._addClip('graph'));
-    document.getElementById('add-audio-btn').addEventListener('click', () => this._addClip('audio'));
     document.getElementById('render-btn').addEventListener('click', () => this._openRenderModal());
       const themeToggleBtn = document.getElementById('theme-toggle');
       const setThemeIcon = (theme) => {
@@ -938,25 +1013,47 @@ class App {
     if (undoBtn) undoBtn.addEventListener('click', () => this._undo());
     if (redoBtn) redoBtn.addEventListener('click', () => this._redo());
 
-    const shapeBtn  = document.getElementById('add-shape-btn');
-    const shapeMenu = document.getElementById('add-shape-menu');
-    if (shapeBtn && shapeMenu) {
-      shapeBtn.addEventListener('click', (e) => {
+    // #71 — one consolidated "+ Add" menu replaces the five separate
+    // add-narration/code/graph/audio/shape buttons that used to crowd the
+    // toolbar.
+    const addBtn  = document.getElementById('add-clip-btn');
+    const addMenu = document.getElementById('add-clip-menu');
+    if (addBtn && addMenu) {
+      addBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        shapeMenu.classList.toggle('open');
+        addMenu.classList.toggle('open');
       });
-      shapeMenu.querySelectorAll('[data-shape]').forEach(item => {
+      addMenu.querySelectorAll('[data-add]').forEach(item => {
         item.addEventListener('click', () => {
-          shapeMenu.classList.remove('open');
+          addMenu.classList.remove('open');
+          const kind = item.dataset.add;
+          if (kind === 'sfx') this._focusSfxBin();
+          else this._addClip(kind);
+        });
+      });
+      addMenu.querySelectorAll('[data-shape]').forEach(item => {
+        item.addEventListener('click', () => {
+          addMenu.classList.remove('open');
           this._addShapeClip(item.dataset.shape);
         });
       });
       document.addEventListener('click', (e) => {
-        if (!e.target.closest('#add-shape-btn') && !e.target.closest('#add-shape-menu')) {
-          shapeMenu.classList.remove('open');
+        if (!e.target.closest('#add-clip-btn') && !e.target.closest('#add-clip-menu')) {
+          addMenu.classList.remove('open');
         }
       });
     }
+  }
+
+  // #72 — "Sound effect…" in the Add menu jumps straight to the built-in
+  // sfx list in the media bin instead of guessing which one to add.
+  _focusSfxBin() {
+    const list = document.getElementById('sfxbin-list');
+    if (!list) return;
+    list.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    list.classList.add('flash');
+    setTimeout(() => list.classList.remove('flash'), 900);
+    this._updateStatus('Drag a sound effect onto the timeline, or use its + button');
   }
 
   _wireKeyboard() {
@@ -964,10 +1061,27 @@ class App {
       const tag = document.activeElement.tagName;
       const inInput = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT');
 
+      // #28 — Escape closes an open right-click menu first, then falls
+      // through to the tool-exit checks below on a second press.
+      if (e.key === 'Escape') {
+        const ctxMenu = document.getElementById('canvas-context-menu');
+        if (ctxMenu && ctxMenu.classList.contains('open')) {
+          ctxMenu.classList.remove('open');
+          return;
+        }
+      }
+
       if (e.key === 'Escape' && this.canvas._tool === 'motion') {
         e.preventDefault();
         this.canvas.setTool('select');
         this._updateStatus('Motion path set');
+        return;
+      }
+
+      if (e.key === 'Escape' && this.canvas._tool === 'crop') {
+        e.preventDefault();
+        this.canvas.setTool('select');
+        this._updateStatus('Crop applied');
         return;
       }
 
@@ -1088,19 +1202,29 @@ class App {
     if (isSeek || !this.playback.playing) this._resyncAudioOnSeek(t);
   }
 
-  _nextStartForTrack(track) {
-    const onTrack = this.project.clips.filter(c => c.track === track);
-    if (onTrack.length === 0) return 0.0;
-    return Math.max(...onTrack.map(c => c.end()));
+  // #71 — unified timeline: any clip type can sit on any row. These two
+  // helpers find/verify a free row for a new or moved clip so additions
+  // never silently overlap something already there.
+  _layerCollides(layer, start, duration, excludeId = null) {
+    const end = start + duration;
+    return this.project.clips.some(c =>
+      c.id !== excludeId && (c.layer ?? 0) === layer && start < c.end() && end > c.start
+    );
   }
-
-
+  _freeLayerAt(start, duration, excludeId = null) {
+    for (let layer = 0; layer < 4096; layer++) {
+      if (!this._layerCollides(layer, start, duration, excludeId)) return layer;
+    }
+    return 0;
+  }
 
   _addClip(clip_type) {
     const before = JSON.stringify(this.project.toDict());
-    const track = CLIP_TYPE_TRACK[clip_type] ?? 'visual';
-    const start = Math.max(this.playback.playhead, this._nextStartForTrack(track));
+    // #73 — land on the current playhead, not appended after the last clip
+    // of the same kind.
+    const start = this.playback.playhead;
     const c = newClip(clip_type, start);
+    c.layer = this._freeLayerAt(c.start, c.duration);
     this.project.clips.push(c);
     this._dirty = true;
     this._refreshAll();
@@ -1132,6 +1256,7 @@ class App {
     const dup = deepCloneClip(clip);
     dup.id    = genId();
     dup.start = clip.end();
+    dup.layer = this._freeLayerAt(dup.start, dup.duration);
     this.project.clips.push(dup);
     if (dup.clip_type === 'audio') this._ensureAudioForClip(dup);
     this._dirty = true;
@@ -1162,6 +1287,7 @@ class App {
     const pasted = deepCloneClip(this._clipboard);
     pasted.id    = genId();
     pasted.start = this.playback.playhead;
+    pasted.layer = this._freeLayerAt(pasted.start, pasted.duration);
     this.project.clips.push(pasted);
     if (pasted.clip_type === 'audio') this._ensureAudioForClip(pasted);
     this._dirty = true;
@@ -1324,6 +1450,49 @@ class App {
   }
 
   _render() { this._wsSend({ type: 'render', data: this.project.toDict() }); }
+
+  // #28 — right-click a clip on the canvas: a small menu with Crop (image/
+  // video only), Reset crop (when one's applied), Duplicate and Delete.
+  _showCanvasContextMenu(clip, x, y) {
+    const menu = document.getElementById('canvas-context-menu');
+    if (!menu || !clip) return;
+    menu.innerHTML = '';
+
+    const addItem = (label, onClick) => {
+      const item = document.createElement('div');
+      item.className = 'menu-dropdown-item';
+      item.innerHTML = `<span>${label}</span>`;
+      item.addEventListener('click', () => { menu.classList.remove('open'); onClick(); });
+      menu.appendChild(item);
+    };
+
+    if (['image', 'video'].includes(clip.clip_type)) {
+      addItem('Crop image', () => {
+        this._setSelection([clip.id], clip.id);
+        this.canvas.setTool('crop');
+        this._updateStatus('Crop — drag the corner handles to resize, drag inside to move, Esc when done');
+      });
+      const isCropped = (clip.crop_x ?? 0) > 0.001 || (clip.crop_y ?? 0) > 0.001 ||
+        (clip.crop_w ?? 1) < 0.999 || (clip.crop_h ?? 1) < 0.999;
+      if (isCropped) {
+        addItem('Reset crop', () => {
+          const before = JSON.stringify(this.project.toDict());
+          clip.crop_x = 0; clip.crop_y = 0; clip.crop_w = 1; clip.crop_h = 1;
+          this._dirty = true;
+          this._refreshAll();
+          if (this._selectionPrimaryId === clip.id) this.props.showClip(clip);
+          this._commit(before);
+        });
+      }
+      menu.appendChild(document.createElement('div')).className = 'menu-dropdown-item separator';
+    }
+    addItem('Duplicate', () => { this._setSelection([clip.id], clip.id); this._duplicateSelected(); });
+    addItem('Delete', () => { this._setSelection([clip.id], clip.id); this._deleteSelected(); });
+
+    menu.style.left = Math.min(x, window.innerWidth - 160) + 'px';
+    menu.style.top = Math.min(y, window.innerHeight - 100) + 'px';
+    menu.classList.add('open');
+  }
 
   _openSnapModal() {
     const SNAP_POSITIONS = [

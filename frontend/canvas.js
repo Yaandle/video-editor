@@ -154,8 +154,20 @@ export class CanvasWidget {
 
     this._resizeHandle = null;   // 'tl'|'tr'|'bl'|'br' | null
     this._resizeOrigin = null;   // { mouseX, mouseY, scale, rectW, rectH, canvasRectH }
+    this._groupResizeHandle = null;  // #74 — group-resize drag on the multi-select bounding box
+    this._groupResizeOrigin = null;
     this._drawnRects = new Map(); // clipId → {x,y,w,h}
     this._dragBeforeSnapshot = null;
+
+    // #28 — crop tool state. _cropFull/_cropRect are the on-screen rects
+    // (full source image, and the current crop window within it) computed
+    // fresh each _drawCropOverlay() call; _cropHandle/_cropMoving/_cropOrigin
+    // track an in-progress drag.
+    this._cropHandle = null;   // 'tl'|'tr'|'bl'|'br' | null
+    this._cropMoving = false;
+    this._cropOrigin = null;
+    this._cropFull = null;
+    this._cropRect = null;
 
     this._bindEvents();
     this.resize();
@@ -165,16 +177,24 @@ export class CanvasWidget {
     this._tool = tool;
     this._el.style.cursor =
       tool === 'move' ? 'grab' :
-      tool === 'motion' ? 'crosshair' : '';
+      tool === 'motion' ? 'crosshair' :
+      tool === 'crop' ? 'crosshair' : '';
 
     const badge = document.getElementById('motion-mode-badge');
     if (tool === 'motion') {
       if (this._pendingZoom == null) this._pendingZoom = 1.0;
       this._updateMotionBadge();
       badge.classList.remove('hidden');
+    } else if (tool === 'crop') {
+      badge.textContent = 'Crop — drag the corner handles to resize, drag inside to move · Esc when done';
+      badge.classList.remove('hidden');
     } else {
       badge.classList.add('hidden');
     }
+    // #28 — entering/leaving crop mode changes what _paint() draws (full
+    // image + crop window vs. the normal cropped clip), so force a repaint
+    // rather than waiting for the next incidental redraw.
+    this.redraw();
   }
 
   // Animate Position/Zoom — the badge doubles as a live readout of the
@@ -197,8 +217,15 @@ export class CanvasWidget {
     this._resizeHandle = null;
     this._resizeOrigin = null;
     this._groupDragOrigins = null;
+    this._groupResizeHandle = null;
+    this._groupResizeOrigin = null;
     this._snapTarget = null;
     this._marginGuides = [];
+    this._cropHandle = null;
+    this._cropMoving = false;
+    this._cropOrigin = null;
+    this._cropFull = null;
+    this._cropRect = null;
     this.redraw();
   }
   setPlayhead(t) { this.playhead = t; this.redraw(); }
@@ -245,8 +272,10 @@ export class CanvasWidget {
   }
 
   _activeClips() {
+    // #71 — a hidden layer (eye icon off in the timeline) is skipped in the
+    // live preview too, same as it is at render time.
     return this.project.clips
-      .filter(c => c.start <= this.playhead && this.playhead < c.end())
+      .filter(c => c.start <= this.playhead && this.playhead < c.end() && !this.project.isLayerHidden?.(c.layer ?? 0))
       .sort((a, b) => (b.layer ?? 0) - (a.layer ?? 0));
   }
 
@@ -274,6 +303,24 @@ export class CanvasWidget {
       }
     }
     return null;
+  }
+
+  // #74 — bounding box around every currently-selected, resizable clip's
+  // drawn rect, in canvas px. Returns null when fewer than 2 such clips are
+  // selected/visible (nothing meaningful to group-resize).
+  _groupBoundingRect() {
+    const eligible = [...this._selectedIds]
+      .map(id => this.project.clips.find(c => c.id === id))
+      .filter(c => c && ['image', 'video', 'code', 'narration', 'shape'].includes(c.clip_type))
+      .map(c => this._drawnRects.get(c.id))
+      .filter(Boolean);
+    if (eligible.length < 2) return null;
+    let bx = Infinity, by = Infinity, bx2 = -Infinity, by2 = -Infinity;
+    for (const rect of eligible) {
+      bx = Math.min(bx, rect.x); by = Math.min(by, rect.y);
+      bx2 = Math.max(bx2, rect.x + rect.w); by2 = Math.max(by2, rect.y + rect.h);
+    }
+    return { x: bx, y: by, w: bx2 - bx, h: by2 - by };
   }
 
   _paint() {
@@ -345,7 +392,11 @@ export class CanvasWidget {
 
     for (const clip of this._activeClips()) this._drawClipWithTransition(ctx, clip, r);
 
-    if (this._selectedIds && this._selectedIds.size > 0) {
+    if (this._tool === 'crop') {
+      // #28 — while actively cropping, the full-image/selection-window
+      // overlay replaces the normal single-clip resize outline.
+      this._drawCropOverlay(ctx, r);
+    } else if (this._selectedIds && this._selectedIds.size > 0) {
       if (this._selectedIds.size === 1) {
         const selId = this._selectedIds.values().next().value;
         const clip = this.project.clips.find(c => c.id === selId);
@@ -363,19 +414,28 @@ export class CanvasWidget {
           }
         }
       } else {
-        let bx = Infinity, by = Infinity, bx2 = -Infinity, by2 = -Infinity;
-        for (const id of this._selectedIds) {
-          const d = this._drawnRects.get(id);
-          if (!d) continue;
-          bx = Math.min(bx, d.x); by = Math.min(by, d.y);
-          bx2 = Math.max(bx2, d.x + d.w); by2 = Math.max(by2, d.y + d.h);
-        }
-        if (bx !== Infinity) {
-          ctx.strokeStyle = 'rgba(59,130,246,0.9)';
-          ctx.lineWidth = 1;
-          ctx.setLineDash([6, 4]);
-          ctx.strokeRect(bx - 6, by - 6, (bx2 - bx) + 12, (by2 - by) + 12);
-          ctx.setLineDash([]);
+        // #74 — when 2+ selected clips are individually resizable, draw real
+        // corner handles on their combined bounding box so the group can be
+        // dragged bigger/smaller together. Otherwise (e.g. only audio/graph
+        // clips selected) fall back to the old plain dashed outline.
+        const groupRect = this._groupBoundingRect();
+        if (groupRect) {
+          this._drawResizeOverlay(ctx, groupRect);
+        } else {
+          let bx = Infinity, by = Infinity, bx2 = -Infinity, by2 = -Infinity;
+          for (const id of this._selectedIds) {
+            const d = this._drawnRects.get(id);
+            if (!d) continue;
+            bx = Math.min(bx, d.x); by = Math.min(by, d.y);
+            bx2 = Math.max(bx2, d.x + d.w); by2 = Math.max(by2, d.y + d.h);
+          }
+          if (bx !== Infinity) {
+            ctx.strokeStyle = 'rgba(59,130,246,0.9)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([6, 4]);
+            ctx.strokeRect(bx - 6, by - 6, (bx2 - bx) + 12, (by2 - by) + 12);
+            ctx.setLineDash([]);
+          }
         }
       }
     }
@@ -419,6 +479,73 @@ export class CanvasWidget {
       ctx.rect(pt.x - HANDLE_SIZE / 2, pt.y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
       ctx.fill(); ctx.stroke();
     }
+  }
+
+  // #28 — crop tool overlay: shows the full (uncropped) source image dimmed,
+  // with the current crop window drawn at full brightness and draggable
+  // corner handles. Also caches _cropFull/_cropRect (screen-space) for the
+  // mouse handlers below, which hit-test against them directly.
+  _drawCropOverlay(ctx, r) {
+    const clip = this.project.clips.find(c => c.id === this._selectionPrimaryId);
+    if (!clip || !['image', 'video'].includes(clip.clip_type) || !clip.code_file) {
+      this._cropFull = null; this._cropRect = null;
+      return;
+    }
+    const entry = this._loadMedia(clip.code_file);
+    if (!entry.loaded) { this._cropFull = null; this._cropRect = null; return; }
+    const el = entry.el;
+    const natW = el.naturalWidth || el.videoWidth || 1;
+    const natH = el.naturalHeight || el.videoHeight || 1;
+
+    const { x, y, scale: animScale } = resolvePos(clip, this.playhead);
+    const pt = this._normToPx(x, y);
+    const scaleX = animScale ?? clip.scale_x ?? clip.scale ?? 1.0;
+    const scaleY = animScale ?? clip.scale_y ?? clip.scale ?? 1.0;
+    const maxW = (r.w * 0.88) | 0, maxH = (r.h * 0.80) | 0;
+    const fitScale = Math.min(maxW / natW, maxH / natH, 1);
+    const fullW = natW * fitScale * scaleX, fullH = natH * fitScale * scaleY;
+    const fullX = pt.x - fullW / 2, fullY = pt.y - fullH / 2;
+
+    const cropX = clip.crop_x ?? 0, cropY = clip.crop_y ?? 0;
+    const cropW = clip.crop_w ?? 1, cropH = clip.crop_h ?? 1;
+    const cx = fullX + cropX * fullW, cy = fullY + cropY * fullH;
+    const cw = cropW * fullW, ch = cropH * fullH;
+
+    this._cropFull = { x: fullX, y: fullY, w: fullW, h: fullH };
+    this._cropRect = { x: cx, y: cy, w: cw, h: ch };
+
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.drawImage(el, fullX, fullY, fullW, fullH);
+    ctx.globalAlpha = 1;
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(fullX + 0.5, fullY + 0.5, fullW, fullH);
+    ctx.setLineDash([]);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(cx, cy, cw, ch);
+    ctx.clip();
+    ctx.drawImage(el, fullX, fullY, fullW, fullH);
+    ctx.restore();
+
+    ctx.strokeStyle = 'rgba(59,130,246,0.95)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(cx + 0.5, cy + 0.5, cw, ch);
+
+    const handles = this._handlePositions({ x: cx, y: cy, w: cw, h: ch });
+    for (const hp of Object.values(handles)) {
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = 'rgba(59,130,246,0.95)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.rect(hp.x - HANDLE_SIZE / 2, hp.y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+      ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
   }
 
   _roundRect(ctx, x, y, w, h, r) {
@@ -1109,6 +1236,15 @@ export class CanvasWidget {
       return;
     }
 
+    // #28 — while this clip is being actively crop-edited, _drawCropOverlay
+    // (drawn after the main clip loop, in _paint) shows the full image plus
+    // the crop window instead. Skip the normal draw so there's no mismatch
+    // between "editing preview" and "final cropped result" on screen at once.
+    if (this._tool === 'crop' && clip.id === this._selectionPrimaryId) {
+      this._drawnRects.delete(clip.id);
+      return;
+    }
+
     const entry = this._loadMedia(url);
     if (!entry.loaded) {
       this._drawPlaceholder(ctx, '[loading…]', pt, r, theme);
@@ -1123,9 +1259,17 @@ export class CanvasWidget {
 
     if (clip.clip_type === 'video') {
       const speed = clip.speed ?? 1.0;
-      const target = Math.max(0, this.playhead - clip.start) * speed;
+      const target = (clip.source_start ?? 0) + Math.max(0, this.playhead - clip.start) * speed;
       if (Math.abs(el.currentTime - target) > 0.15) el.currentTime = target;
     }
+
+    // #28 — crop: normalized 0-1 rect within the source's natural pixels.
+    // Default (0,0,1,1) is the full frame, so sx/sy/sw/sh degrade to the
+    // whole image when no crop has been applied.
+    const cropX = clip.crop_x ?? 0, cropY = clip.crop_y ?? 0;
+    const cropW = clip.crop_w ?? 1, cropH = clip.crop_h ?? 1;
+    const sx = cropX * natW, sy = cropY * natH;
+    const sw = Math.max(1, cropW * natW), sh = Math.max(1, cropH * natH);
 
     // A live Animate Position/Zoom path drives the render scale for the
     // duration of the clip, overriding the static scale_x/scale_y — same
@@ -1133,8 +1277,11 @@ export class CanvasWidget {
     const scaleX = animScale ?? clip.scale_x ?? clip.scale ?? 1.0;
     const scaleY = animScale ?? clip.scale_y ?? clip.scale ?? 1.0;
     const maxW = (r.w * 0.88) | 0, maxH = (r.h * 0.80) | 0;
-    const fitScale = Math.min(maxW / natW, maxH / natH, 1);
-    const dw = (natW * fitScale * scaleX) | 0, dh = (natH * fitScale * scaleY) | 0;
+    // Fit is based on the CROPPED dimensions, so cropping to a new aspect
+    // ratio re-fills the same on-screen footprint (useful for reframing
+    // landscape media into a 9:16 canvas) rather than just shrinking.
+    const fitScale = Math.min(maxW / sw, maxH / sh, 1);
+    const dw = (sw * fitScale * scaleX) | 0, dh = (sh * fitScale * scaleY) | 0;
     const dx = pt.x - (dw >> 1), dy = pt.y - (dh >> 1);
 
     // Honour clip.rotation for media, mirroring the shape branch and the
@@ -1145,10 +1292,10 @@ export class CanvasWidget {
       ctx.translate(pt.x, pt.y);
       ctx.rotate(rotation * Math.PI / 180);
       ctx.translate(-pt.x, -pt.y);
-      ctx.drawImage(el, dx, dy, dw, dh);
+      ctx.drawImage(el, sx, sy, sw, sh, dx, dy, dw, dh);
       ctx.restore();
     } else {
-      ctx.drawImage(el, dx, dy, dw, dh);
+      ctx.drawImage(el, sx, sy, sw, sh, dx, dy, dw, dh);
     }
     this._drawnRects.set(clip.id, { x: dx, y: dy, w: dw, h: dh });
   }
@@ -1357,6 +1504,28 @@ export class CanvasWidget {
     el.addEventListener('mouseup', e => this._onMouseUp(e));
     el.addEventListener('mouseleave', e => this._onMouseUp(e));
     el.addEventListener('wheel', e => this._onWheel(e), { passive: false });
+    el.addEventListener('contextmenu', e => this._onContextMenu(e)); // #28
+  }
+
+  // #28 — right-click a clip: select it and let app.js show a small context
+  // menu (Crop image, Duplicate, Delete, ...) built from DOM, since canvas.js
+  // only renders — it doesn't own any menu UI itself.
+  _onContextMenu(e) {
+    e.preventDefault();
+    const raw = this._getPos(e);
+    const pos = this._toLogical(raw.x, raw.y);
+    const clip = this._clipAt(pos.x, pos.y);
+    if (!clip) return;
+    this._selectedIds.clear();
+    this._selectedIds.add(clip.id);
+    this._selectionPrimaryId = clip.id;
+    this._el.dispatchEvent(new CustomEvent('canvas:selectionchanged', {
+      bubbles: true, detail: { selectedIds: [...this._selectedIds], primaryId: clip.id }
+    }));
+    this.redraw();
+    this._el.dispatchEvent(new CustomEvent('canvas:contextmenu', {
+      bubbles: true, detail: { clip, x: e.clientX, y: e.clientY }
+    }));
   }
 
   _getPos(e) {
@@ -1471,6 +1640,33 @@ export class CanvasWidget {
       return;
     }
 
+    // #28 — crop tool: grab a corner handle to resize the crop window, or
+    // click inside it to move it around within the full image bounds.
+    if (this._tool === 'crop') {
+      const clip = this.project.clips.find(c => c.id === this._selectionPrimaryId);
+      if (clip && this._cropFull && this._cropRect) {
+        const handle = this._hitHandle(pos.x, pos.y, this._cropRect);
+        const origin = {
+          ...this._cropFull,
+          cropX: clip.crop_x ?? 0, cropY: clip.crop_y ?? 0,
+          cropW: clip.crop_w ?? 1, cropH: clip.crop_h ?? 1,
+        };
+        if (handle) {
+          this._cropHandle = handle;
+          this._cropOrigin = origin;
+          this._dragClip = clip;
+          this._dragBeforeSnapshot = JSON.stringify(this.project.toDict());
+        } else if (pos.x >= this._cropRect.x && pos.x <= this._cropRect.x + this._cropRect.w &&
+                   pos.y >= this._cropRect.y && pos.y <= this._cropRect.y + this._cropRect.h) {
+          this._cropMoving = true;
+          this._cropOrigin = { ...origin, grabX: pos.x, grabY: pos.y };
+          this._dragClip = clip;
+          this._dragBeforeSnapshot = JSON.stringify(this.project.toDict());
+        }
+      }
+      return;
+    }
+
     if (e.button === 1 || (e.button === 0 && e.altKey) || this._tool === 'move') {
       this._isPanning = true;
       this._panDragOrigin = { mouseX: raw.x, mouseY: raw.y, panX: this._panX, panY: this._panY };
@@ -1478,35 +1674,84 @@ export class CanvasWidget {
       return;
     }
 
-    for (const selectedId of this._selectedIds) {
-      const clip = this.project.clips.find(c => c.id === selectedId);
-      if (!clip) continue;
-      if (!['image', 'video', 'code', 'narration', 'shape'].includes(clip.clip_type)) continue;
-      const drawn = this._drawnRects.get(clip.id);
-      if (!drawn) continue;
-      const handle = this._hitHandle(pos.x, pos.y, drawn);
-      if (!handle) continue;
+    // #74 — multiple clips selected: hit-test the GROUP bounding box's own
+    // corner handles first, so dragging one scales every selected clip
+    // together (each keeps its position relative to the group). Skips the
+    // per-clip handles below entirely while multi-selected, so there's no
+    // ambiguity between "resize the group" and "resize just this one."
+    if (this._selectedIds.size > 1) {
+      const eligible = [...this._selectedIds]
+        .map(id => this.project.clips.find(c => c.id === id))
+        .filter(c => c && ['image', 'video', 'code', 'narration', 'shape'].includes(c.clip_type))
+        .map(c => ({ clip: c, rect: this._drawnRects.get(c.id) }))
+        .filter(o => o.rect);
 
-      const handles  = this._handlePositions(drawn);
-      const opposite = { tl: 'br', tr: 'bl', bl: 'tr', br: 'tl' }[handle];
-      const anchor   = handles[opposite];
-      const grabbed  = handles[handle];          // the actual corner you clicked near
-      const scaleX0 = clip.scale_x ?? 1.0;
-      const scaleY0 = clip.scale_y ?? 1.0;
+      if (eligible.length > 1) {
+        let bx = Infinity, by = Infinity, bx2 = -Infinity, by2 = -Infinity;
+        for (const o of eligible) {
+          bx = Math.min(bx, o.rect.x); by = Math.min(by, o.rect.y);
+          bx2 = Math.max(bx2, o.rect.x + o.rect.w); by2 = Math.max(by2, o.rect.y + o.rect.h);
+        }
+        const groupRect = { x: bx, y: by, w: bx2 - bx, h: by2 - by };
+        const handle = this._hitHandle(pos.x, pos.y, groupRect);
+        if (handle) {
+          const handles  = this._handlePositions(groupRect);
+          const opposite = { tl: 'br', tr: 'bl', bl: 'tr', br: 'tl' }[handle];
+          const anchor   = handles[opposite];
+          const grabbed  = handles[handle];
 
-      this._resizeHandle = handle;
-      this._dragClip = clip;
-      this._resizeOrigin = {
-        anchorX: anchor.x,
-        anchorY: anchor.y,
-        grabOffsetX: pos.x - grabbed.x,
-        grabOffsetY: pos.y - grabbed.y,
-        baseW:   drawn.w / scaleX0,
-        baseH:   drawn.h / scaleY0,
-      };
-      this._dragBeforeSnapshot = JSON.stringify(this.project.toDict());
-      this._el.style.cursor = this._resizeCursor(handle);
-      return;
+          this._groupResizeHandle = handle;
+          this._groupResizeOrigin = {
+            anchorX: anchor.x,
+            anchorY: anchor.y,
+            grabOffsetX: pos.x - grabbed.x,
+            grabOffsetY: pos.y - grabbed.y,
+            groupBaseW: Math.max(1, groupRect.w),
+            groupBaseH: Math.max(1, groupRect.h),
+            members: eligible.map(o => ({
+              id: o.clip.id,
+              centerX: o.rect.x + o.rect.w / 2,
+              centerY: o.rect.y + o.rect.h / 2,
+              scaleX0: o.clip.scale_x ?? o.clip.scale ?? 1.0,
+              scaleY0: o.clip.scale_y ?? o.clip.scale ?? 1.0,
+            })),
+          };
+          this._dragBeforeSnapshot = JSON.stringify(this.project.toDict());
+          this._el.style.cursor = this._resizeCursor(handle);
+          return;
+        }
+      }
+    } else {
+      for (const selectedId of this._selectedIds) {
+        const clip = this.project.clips.find(c => c.id === selectedId);
+        if (!clip) continue;
+        if (!['image', 'video', 'code', 'narration', 'shape'].includes(clip.clip_type)) continue;
+        const drawn = this._drawnRects.get(clip.id);
+        if (!drawn) continue;
+        const handle = this._hitHandle(pos.x, pos.y, drawn);
+        if (!handle) continue;
+
+        const handles  = this._handlePositions(drawn);
+        const opposite = { tl: 'br', tr: 'bl', bl: 'tr', br: 'tl' }[handle];
+        const anchor   = handles[opposite];
+        const grabbed  = handles[handle];          // the actual corner you clicked near
+        const scaleX0 = clip.scale_x ?? 1.0;
+        const scaleY0 = clip.scale_y ?? 1.0;
+
+        this._resizeHandle = handle;
+        this._dragClip = clip;
+        this._resizeOrigin = {
+          anchorX: anchor.x,
+          anchorY: anchor.y,
+          grabOffsetX: pos.x - grabbed.x,
+          grabOffsetY: pos.y - grabbed.y,
+          baseW:   drawn.w / scaleX0,
+          baseH:   drawn.h / scaleY0,
+        };
+        this._dragBeforeSnapshot = JSON.stringify(this.project.toDict());
+        this._el.style.cursor = this._resizeCursor(handle);
+        return;
+      }
     }
 
     const clip = this._clipAt(pos.x, pos.y);
@@ -1563,9 +1808,88 @@ export class CanvasWidget {
       return;
     }
 
+    // #28 — crop tool: drag a corner to resize the crop window (opposite
+    // corner stays anchored), or drag inside it to reposition it. Both are
+    // clamped so the crop window always stays within the full image (0-1).
+    if (this._tool === 'crop') {
+      const MIN_CROP = 0.05;
+      if (this._cropHandle && this._dragClip && (e.buttons & 1)) {
+        const clip = this._dragClip, o = this._cropOrigin;
+        let nx = Math.max(0, Math.min(1, (pos.x - o.x) / o.w));
+        let ny = Math.max(0, Math.min(1, (pos.y - o.y) / o.h));
+        const anchorX = { tl: o.cropX + o.cropW, tr: o.cropX, bl: o.cropX + o.cropW, br: o.cropX }[this._cropHandle];
+        const anchorY = { tl: o.cropY + o.cropH, tr: o.cropY + o.cropH, bl: o.cropY, br: o.cropY }[this._cropHandle];
+        let newCropX = Math.min(nx, anchorX), newCropW = Math.abs(anchorX - nx);
+        let newCropY = Math.min(ny, anchorY), newCropH = Math.abs(anchorY - ny);
+        if (newCropW < MIN_CROP) newCropW = MIN_CROP;
+        if (newCropH < MIN_CROP) newCropH = MIN_CROP;
+        newCropX = Math.max(0, Math.min(1 - newCropW, newCropX));
+        newCropY = Math.max(0, Math.min(1 - newCropH, newCropY));
+        clip.crop_x = Math.round(newCropX * 1000) / 1000;
+        clip.crop_y = Math.round(newCropY * 1000) / 1000;
+        clip.crop_w = Math.round(newCropW * 1000) / 1000;
+        clip.crop_h = Math.round(newCropH * 1000) / 1000;
+        this._el.dispatchEvent(new CustomEvent('canvas:clipcropped', { bubbles: true, detail: { id: clip.id } }));
+        this.redraw();
+        return;
+      }
+      if (this._cropMoving && this._dragClip && (e.buttons & 1)) {
+        const clip = this._dragClip, o = this._cropOrigin;
+        let newCropX = o.cropX + (pos.x - o.grabX) / o.w;
+        let newCropY = o.cropY + (pos.y - o.grabY) / o.h;
+        newCropX = Math.max(0, Math.min(1 - o.cropW, newCropX));
+        newCropY = Math.max(0, Math.min(1 - o.cropH, newCropY));
+        clip.crop_x = Math.round(newCropX * 1000) / 1000;
+        clip.crop_y = Math.round(newCropY * 1000) / 1000;
+        this._el.dispatchEvent(new CustomEvent('canvas:clipcropped', { bubbles: true, detail: { id: clip.id } }));
+        this.redraw();
+        return;
+      }
+      this._el.style.cursor = 'crosshair';
+      return;
+    }
+
     if (this._marqueeActive && (e.buttons & 1)) {
       this._marqueeCurrent = { x: raw.x, y: raw.y };
       this.redraw();
+      return;
+    }
+
+    if (this._groupResizeHandle && (e.buttons & 1)) {
+      const o = this._groupResizeOrigin;
+      if (o) {
+        let cornerX = pos.x - o.grabOffsetX;
+        let cornerY = pos.y - o.grabOffsetY;
+
+        let newW = Math.max(4, Math.abs(cornerX - o.anchorX));
+        let newH = Math.max(4, Math.abs(cornerY - o.anchorY));
+
+        if (e.shiftKey) {
+          const aspect = o.groupBaseW / o.groupBaseH;
+          if (newW / newH > aspect) newW = newH * aspect;
+          else newH = newW / aspect;
+        }
+
+        const scaleX = Math.max(0.02, newW / o.groupBaseW);
+        const scaleY = Math.max(0.02, newH / o.groupBaseH);
+
+        for (const m of o.members) {
+          const clip = this.project.clips.find(c => c.id === m.id);
+          if (!clip) continue;
+          const newCenterX = o.anchorX + (m.centerX - o.anchorX) * scaleX;
+          const newCenterY = o.anchorY + (m.centerY - o.anchorY) * scaleY;
+          const { nx, ny } = this._pxToNorm(newCenterX, newCenterY);
+          clip.x = nx;
+          clip.y = ny;
+          clip.scale_x = parseFloat(Math.max(MIN_SCALE, Math.min(MAX_SCALE, m.scaleX0 * scaleX)).toFixed(3));
+          clip.scale_y = parseFloat(Math.max(MIN_SCALE, Math.min(MAX_SCALE, m.scaleY0 * scaleY)).toFixed(3));
+        }
+
+        this._el.dispatchEvent(new CustomEvent('canvas:clipresized', {
+          bubbles: true, detail: { group: true, ids: o.members.map(m => m.id) }
+        }));
+        this.redraw();
+      }
       return;
     }
 
@@ -1764,14 +2088,22 @@ export class CanvasWidget {
       return;
     }
 
-    const selectedId = this._selectedIds.values().next().value;
-    if (selectedId) {
-      const clip = this.project.clips.find(c => c.id === selectedId);
-      if (clip && (clip.clip_type === 'image' || clip.clip_type === 'video')) {
-        const drawn = this._drawnRects.get(clip.id);
-        if (drawn) {
-          const handle = this._hitHandle(pos.x, pos.y, drawn);
-          if (handle) { this._el.style.cursor = this._resizeCursor(handle); return; }
+    if (this._selectedIds.size > 1) {
+      const groupRect = this._groupBoundingRect();
+      if (groupRect) {
+        const handle = this._hitHandle(pos.x, pos.y, groupRect);
+        if (handle) { this._el.style.cursor = this._resizeCursor(handle); return; }
+      }
+    } else {
+      const selectedId = this._selectedIds.values().next().value;
+      if (selectedId) {
+        const clip = this.project.clips.find(c => c.id === selectedId);
+        if (clip && (clip.clip_type === 'image' || clip.clip_type === 'video')) {
+          const drawn = this._drawnRects.get(clip.id);
+          if (drawn) {
+            const handle = this._hitHandle(pos.x, pos.y, drawn);
+            if (handle) { this._el.style.cursor = this._resizeCursor(handle); return; }
+          }
         }
       }
     }
@@ -1787,6 +2119,13 @@ export class CanvasWidget {
           bubbles: true, detail: { id: clip.id, scale_x: clip.scale_x, scale_y: clip.scale_y }
         }));
       }
+    }
+
+    if (this._groupResizeHandle) {
+      const ids = this._groupResizeOrigin ? this._groupResizeOrigin.members.map(m => m.id) : [];
+      this._el.dispatchEvent(new CustomEvent('canvas:clipresized', {
+        bubbles: true, detail: { group: true, ids }
+      }));
     }
 
     if (this._marqueeActive) {
@@ -1835,8 +2174,13 @@ export class CanvasWidget {
     this._resizeOrigin = null;
     this._dragClip = null;
     this._groupDragOrigins = null;
+    this._groupResizeHandle = null;
+    this._groupResizeOrigin = null;
     this._snapTarget = null;
     this._marginGuides = [];
+    this._cropHandle = null;   // #28
+    this._cropMoving = false;
+    this._cropOrigin = null;
     this._isPanning = false;
     this._panDragOrigin = null;
     this._el.style.cursor = 'default';

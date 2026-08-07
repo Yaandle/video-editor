@@ -1,11 +1,14 @@
-// mediaBin.js — Media browser / upload panel
+// mediaBin.js — Media browser / upload panel + built-in sound effects (#72)
 const THUMB_FIT_STYLE = 'width:100%;height:100%;object-fit:contain;';
 
 export class MediaBin {
   constructor(containerEl) {
     this._el = containerEl;
     this._items = [];
+    this._sfxItems = [];
     this._onAdd = null;
+    this._previewAudio = null; // shared <audio> for sfx preview playback
+    this._playingSfxRow = null;
     this._build();
   }
 
@@ -17,13 +20,28 @@ export class MediaBin {
     this._renderGrid();
   }
 
+  // #72 — built-in sound effects (fetched from /sfx-list), kept in their own
+  // section: no upload/delete, just preview + drag/add like regular media.
+  addSfxItem(item) {
+    if (this._sfxItems.find(i => i.url === item.url)) return;
+    this._sfxItems.push(item);
+    this._renderSfxList();
+  }
+
   _build() {
     this._el.innerHTML = '';
 
+    // Single scroll container so the panel has one scrollbar across both
+    // the media grid and the sound-effects list below it.
+    const scroll = document.createElement('div');
+    scroll.id = 'mediabin-scroll';
+    this._el.appendChild(scroll);
+
     const header = document.createElement('div');
+    header.className = 'mediabin-section-header';
     header.id = 'mediabin-header';
     header.textContent = 'MEDIA';
-    this._el.appendChild(header);
+    scroll.appendChild(header);
 
     const zone = document.createElement('div');
     zone.id = 'mediabin-dropzone';
@@ -35,7 +53,7 @@ export class MediaBin {
     uploadBtn.addEventListener('click', () => this._pickFiles());
     zone.appendChild(hint);
     zone.appendChild(uploadBtn);
-    this._el.appendChild(zone);
+    scroll.appendChild(zone);
 
     // #67b — accept drops from the OS file explorer anywhere on the media
     // panel, not just the small dropzone. Without the document-level
@@ -76,7 +94,20 @@ export class MediaBin {
 
     this._grid = document.createElement('div');
     this._grid.id = 'mediabin-grid';
-    this._el.appendChild(this._grid);
+    scroll.appendChild(this._grid);
+
+    const sfxHeader = document.createElement('div');
+    sfxHeader.className = 'mediabin-section-header';
+    sfxHeader.id = 'sfxbin-header';
+    sfxHeader.textContent = 'SOUND EFFECTS';
+    scroll.appendChild(sfxHeader);
+
+    this._sfxList = document.createElement('div');
+    this._sfxList.id = 'sfxbin-list';
+    scroll.appendChild(this._sfxList);
+
+    this._renderGrid();
+    this._renderSfxList();
   }
 
   _renderGrid() {
@@ -151,6 +182,85 @@ export class MediaBin {
     return card;
   }
 
+  // ── Sound effects (#72) ──────────────────────────────────────────────
+  _renderSfxList() {
+    this._sfxList.innerHTML = '';
+    if (!this._sfxItems.length) {
+      const empty = document.createElement('div');
+      empty.className = 'mediabin-empty';
+      empty.textContent = 'No sound effects found';
+      this._sfxList.appendChild(empty);
+      return;
+    }
+    this._sfxItems.forEach(item => this._sfxList.appendChild(this._makeSfxRow(item)));
+  }
+
+  _makeSfxRow(item) {
+    const row = document.createElement('div');
+    row.className = 'sfx-row';
+    row.draggable = true;
+    row.title = `${item.original ?? item.name} — drag onto the timeline`;
+
+    const playBtn = document.createElement('button');
+    playBtn.className = 'sfx-play-btn';
+    playBtn.textContent = '▶';
+    playBtn.title = 'Preview';
+    playBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._previewSfx(item, row, playBtn);
+    });
+    row.appendChild(playBtn);
+
+    const lbl = document.createElement('div');
+    lbl.className = 'sfx-name';
+    lbl.textContent = item.original ?? item.name;
+    row.appendChild(lbl);
+
+    const addBtn = document.createElement('div');
+    addBtn.className = 'sfx-add-btn';
+    addBtn.textContent = '+';
+    addBtn.title = 'Add to timeline';
+    addBtn.addEventListener('click', (e) => { e.stopPropagation(); this._onAdd?.(item); });
+    row.appendChild(addBtn);
+
+    row.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('application/vidkit-media', JSON.stringify(item));
+    });
+
+    return row;
+  }
+
+  _previewSfx(item, row, playBtn) {
+    if (!this._previewAudio) this._previewAudio = new Audio();
+    const a = this._previewAudio;
+    // Clicking the currently-playing row's button again stops it.
+    if (this._playingSfxRow === row && !a.paused) {
+      a.pause();
+      a.currentTime = 0;
+      this._setSfxPlayingState(null);
+      return;
+    }
+    try { a.pause(); } catch {}
+    a.src = item.url;
+    a.currentTime = 0;
+    a.play().catch(() => {});
+    this._setSfxPlayingState(row);
+    a.onended = () => this._setSfxPlayingState(null);
+  }
+
+  _setSfxPlayingState(row) {
+    this._sfxList?.querySelectorAll('.sfx-row.playing').forEach(r => {
+      r.classList.remove('playing');
+      const btn = r.querySelector('.sfx-play-btn');
+      if (btn) btn.textContent = '▶';
+    });
+    this._playingSfxRow = row;
+    if (row) {
+      row.classList.add('playing');
+      const btn = row.querySelector('.sfx-play-btn');
+      if (btn) btn.textContent = '■';
+    }
+  }
 
   _removeItem(item) {
     this._items = this._items.filter(i => i.url !== item.url);

@@ -1,21 +1,38 @@
 # vidkit
 
-A video compositor with a configurable canvas (9:16, 16:9, 1:1, or custom), toolbar, multi-track timeline, and properties editor.
+A video compositor with a configurable canvas (9:16, 16:9, 1:1, or custom), a simple one-menu toolbar, a unified multi-layer timeline, and a properties editor.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │ toolbar                                                      │
 ├───────────────┬────────────────────────┬─────────────────────┤
 │               │                        │                     │
-│               │                        │                     │
-│   Media Bin   │      Canvas            │    Properties       │
-│               │      (9:16 / 16:9)     │                     │
+│  Media Bin +  │      Canvas            │    Properties       │
+│  Sound FX     │      (9:16 / 16:9)     │                     │
 │               │                        │                     │
 │               │                        │                     │
 ├───────────────┴────────────────────────┴─────────────────────┤
-│ timeline     [audio] [text] [visual] (stackable sub-layers)  │
+│ timeline   ◉ L1  ◉ L2  ◉ L3 …  (any clip type, any row)      │
 └──────────────────────────────────────────────────────────────┘
 ```
+
+## Timeline & layers
+
+There's one shared timeline — audio, narration, video, images, shapes and
+graphs can all sit on the same row or be spread across as many rows as you
+like. Rows are just `clip.layer`, not a fixed audio/text/visual partition,
+so drag any clip onto any row freely. Each row has an eye icon in the
+gutter to hide/show it: hidden rows are skipped in the live preview, muted
+during playback, and left out of the rendered file — a quick way to A/B a
+narration take or temporarily silence a sound effect without deleting it.
+
+## Sound effects
+
+The media bin has a built-in **Sound Effects** section (click, tick, pop,
+swipe, whoosh, chime, ding, …) synthesized locally the first time the
+backend starts — nothing to download, nothing bundled as binary assets.
+Preview with the ▶ button, then drag a sound effect onto the timeline or
+use its **+** button, same as any other media item.
 
 ## Stack
 
@@ -61,7 +78,8 @@ Saved as `.vkit` (JSON):
   "canvas_h": 1920,
   "fps": 30,
   "duration": 30.0,
-  "clips": [...]
+  "clips": [...],
+  "hidden_layers": []
 }
 ```
 
@@ -86,7 +104,9 @@ Saved as `.vkit` (JSON):
 | `backend/playback.py` | Shared playback state/controls |
 | `backend/websocket_server.py` | Client registration, message handling, broadcasts, render orchestration |
 | `backend/text_anim.py` | Python port of canvas.js narration animation math, used at render/export time |
+| `backend/sfx_gen.py` | Synthesizes the built-in sound-effect pack (pure stdlib, no downloads) |
 | `backend/uploads/` | Uploaded media + render output |
+| `backend/sfx/` | Generated sound-effect `.wav` files, served at `/sfx/...` |
 | `backend/projects/` | Saved `.vkit` files |
 
 ### Message flow

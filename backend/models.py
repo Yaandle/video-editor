@@ -59,6 +59,13 @@ class Clip:
     text_slide_distance: int = 90
     text_sweep_width: int = 140
 
+    # #28 — crop, normalized 0-1 rect within the source media's natural
+    # pixels. Default (0,0,1,1) is the full, uncropped frame.
+    crop_x: float = 0.0
+    crop_y: float = 0.0
+    crop_w: float = 1.0
+    crop_h: float = 1.0
+
     shape_kind: str = "rectangle"  # rectangle|circle|triangle|polygon|arrow|star|line
     fill: str = "#FFFFFF"
     stroke_color: str = "#000000"
@@ -117,6 +124,10 @@ class Project:
     duration: float = 30.0
     background_color: str = "#000000"
     clips: list = field(default_factory=list)
+    # #71 — consolidated timeline: layers are global (not per-track), and any
+    # layer index can be hidden (eye icon in the UI). Hidden layers are
+    # skipped both in the live preview and at render time.
+    hidden_layers: list = field(default_factory=list)
 
     def to_dict(self):
         return {
@@ -124,6 +135,7 @@ class Project:
             "fps": self.fps, "duration": self.duration,
             "background_color": self.background_color,
             "clips": [asdict(c) for c in self.clips],
+            "hidden_layers": list(self.hidden_layers),
         }
 
     @staticmethod
@@ -135,6 +147,7 @@ class Project:
             fps=data.get("fps", 30),
             duration=data.get("duration", 30.0),
             background_color=data.get("background_color", "#000000"),
+            hidden_layers=list(data.get("hidden_layers", [])),
         )
         known_fields = {f.name for f in dataclasses.fields(Clip)}
         clips = []

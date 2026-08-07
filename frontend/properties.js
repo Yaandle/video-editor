@@ -56,7 +56,8 @@ export class PropertiesPanel {
       this._addLabelRow('selected', `${this._clips.length} clips`);
     } else {
       this._addLabelRow('type', c.clip_type);
-      this._addLabelRow('track', c.track);
+      this._addLabelRow('kind', c.track);
+      this._addLabelRow('layer', `L${(c.layer ?? 0) + 1}`);
     }
 
     this._addSection('Timing');
@@ -97,6 +98,34 @@ export class PropertiesPanel {
           this._applyExternal(() => this._setSize?.(c, null, Math.round(v))));
       } else {
         this._addInlineLabel('Move the playhead over this clip to edit its size.');
+      }
+    }
+
+    // #28 — crop: select a clip, then either this button or right-click it
+    // on the canvas ("Crop image") to enter the crop tool.
+    if (!multi && ['image', 'video'].includes(c.clip_type)) {
+      const cropBtn = document.createElement('button');
+      cropBtn.className = 'props-btn';
+      cropBtn.textContent = 'Crop';
+      cropBtn.addEventListener('click', () =>
+        this._container.dispatchEvent(new CustomEvent('props:crop', { bubbles: true }))
+      );
+      this._container.appendChild(cropBtn);
+
+      const isCropped = (c.crop_x ?? 0) > 0.001 || (c.crop_y ?? 0) > 0.001 ||
+        (c.crop_w ?? 1) < 0.999 || (c.crop_h ?? 1) < 0.999;
+      if (isCropped) {
+        const resetCropBtn = document.createElement('button');
+        resetCropBtn.className = 'props-btn';
+        resetCropBtn.textContent = 'Reset crop';
+        resetCropBtn.addEventListener('click', () => {
+          this._applyExternal(() => {
+            c.crop_x = 0; c.crop_y = 0; c.crop_w = 1; c.crop_h = 1;
+          });
+          this._commitNow();
+          this._rebuild();
+        });
+        this._container.appendChild(resetCropBtn);
       }
     }
 
@@ -226,34 +255,10 @@ export class PropertiesPanel {
         this._boundTextarea('content', 90);
 
         this._addSection('Font');
-        const fontSizeSpin = this._addSpin('Font size', c.font_size ?? 24, 7, 200, 1, 0);
-        this._onInputAndChange(fontSizeSpin, v => this._set('font_size', Math.round(v)));
-
+        // Bold, Italic, and Font size live only in Advanced Text Options now
+        // (props:advancedtext below) — having them here too let the two
+        // panels drift out of sync since both wrote the same clip fields.
         this._addColorPicker('Font color', c.font_color ?? '#ffffff', hex => this._set('font_color', hex));
-
-        const styleRow = document.createElement('div');
-        styleRow.className = 'props-spin-row';
-        const boldLbl = document.createElement('label');
-        boldLbl.textContent = 'Bold';
-        const boldCheck = document.createElement('input');
-        boldCheck.type = 'checkbox';
-        boldCheck.checked = !!c.font_bold;
-        boldCheck.addEventListener('change', () => this._set('font_bold', boldCheck.checked));
-        styleRow.appendChild(boldLbl);
-        styleRow.appendChild(boldCheck);
-        this._container.appendChild(styleRow);
-
-        const italicRow = document.createElement('div');
-        italicRow.className = 'props-spin-row';
-        const italicLbl = document.createElement('label');
-        italicLbl.textContent = 'Italic';
-        const italicCheck = document.createElement('input');
-        italicCheck.type = 'checkbox';
-        italicCheck.checked = !!c.font_italic;
-        italicCheck.addEventListener('change', () => this._set('font_italic', italicCheck.checked));
-        italicRow.appendChild(italicLbl);
-        italicRow.appendChild(italicCheck);
-        this._container.appendChild(italicRow);
 
         break;
       }

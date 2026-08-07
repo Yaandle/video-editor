@@ -302,18 +302,79 @@ input[type="range"]::-moz-range-thumb{
 }
 input[type="range"]:focus-visible{ outline:3px solid var(--charcoal); outline-offset:5px; border-radius:6px; }
 
-input[type="color"]{
+/* ---------- color picker — same component as the properties panel
+   (colorPicker.js), restyled here to match this modal's concrete/charcoal
+   instrument-panel look instead of the main editor's flat theme. ---------- */
+.cp-holder{ position:relative; display:inline-block; }
+.vk-cp-swatch{
   width:46px; height:38px; padding:2px; border-radius:8px;
   border:2px solid var(--ink); background:var(--concrete); cursor:pointer;
 }
-input[type="color"]:focus-visible{ outline:3px solid var(--charcoal); outline-offset:2px; }
-
-.swatch-row{ display:flex; gap:8px; flex-wrap:wrap; margin-top:2px; }
-.swatch{
-  width:26px; height:26px; border-radius:6px; border:2px solid var(--ink);
-  cursor:pointer; box-shadow:2px 2px 0 rgba(0,0,0,.2);
+.vk-cp-swatch:active{ transform:translate(1px,1px); }
+.vk-cp-swatch:focus-visible{ outline:3px solid var(--charcoal); outline-offset:2px; }
+.vk-cp-popover{
+  position:fixed; z-index:200; width:220px; padding:16px;
+  display:flex; flex-direction:column; gap:14px;
+  background:var(--concrete); border:2px solid var(--charcoal); border-radius:12px;
+  box-shadow:0 16px 34px rgba(0,0,0,.35);
 }
-.swatch:focus-visible{ outline:3px solid var(--charcoal); outline-offset:2px; }
+.vk-cp-sv{
+  position:relative; width:100%; height:150px; margin-bottom:2px;
+  border:2px solid var(--charcoal); border-radius:8px; cursor:crosshair; overflow:hidden;
+}
+.vk-cp-sv-gradient{ position:absolute; inset:0; }
+.vk-cp-sv-thumb{
+  position:absolute; width:12px; height:12px; margin:-6px;
+  border:2px solid #fff; box-shadow:0 0 0 1.5px var(--charcoal);
+  border-radius:50%; pointer-events:none;
+}
+.vk-cp-hue{
+  -webkit-appearance:none; appearance:none; width:100%; height:14px;
+  margin:2px 0; padding:0; border:2px solid var(--charcoal); border-radius:6px;
+  cursor:pointer; background:linear-gradient(to right, red, yellow, lime, cyan, blue, magenta, red);
+}
+.vk-cp-hue::-webkit-slider-thumb{
+  -webkit-appearance:none; width:14px; height:18px;
+  background:var(--concrete); border:2px solid var(--charcoal); border-radius:3px; cursor:pointer;
+}
+.vk-cp-hue::-moz-range-thumb{
+  width:14px; height:18px; background:var(--concrete);
+  border:2px solid var(--charcoal); border-radius:3px; cursor:pointer;
+}
+.vk-cp-hue:focus-visible{ outline:3px solid var(--charcoal); outline-offset:3px; }
+.vk-cp-hex-row{ display:flex; align-items:center; gap:8px; }
+.vk-cp-hex-input{
+  flex:1; font-family:var(--font-mono); font-weight:700; text-transform:uppercase;
+  color:var(--ink); background:var(--paper); border:2px solid var(--charcoal);
+  border-radius:6px; padding:6px 8px;
+}
+.vk-cp-hex-input:focus-visible{ outline:3px solid var(--charcoal); outline-offset:2px; }
+.vk-cp-eyedropper-btn{
+  width:30px; height:30px; padding:0; display:flex; align-items:center; justify-content:center;
+  background:var(--concrete); color:var(--ink); border:2px solid var(--charcoal);
+  border-radius:6px; cursor:pointer;
+}
+.vk-cp-eyedropper-btn:hover:not(:disabled){ background:var(--tally); color:var(--paper); }
+.vk-cp-eyedropper-btn:disabled{ opacity:.35; cursor:not-allowed; }
+.vk-cp-eyedropper-btn:focus-visible{ outline:3px solid var(--charcoal); outline-offset:2px; }
+.vk-cp-section-label{
+  font-family:var(--font-ui); font-size:.68rem; font-weight:700; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--ink-soft); margin:2px 0;
+}
+.vk-cp-swatch-row{ display:grid; grid-template-columns:repeat(9,1fr); gap:6px; }
+.vk-cp-color-swatch{
+  width:100%; aspect-ratio:1; padding:0; border:2px solid var(--charcoal);
+  border-radius:4px; cursor:pointer;
+}
+.vk-cp-color-swatch:hover{ box-shadow:0 0 0 2px var(--tally); }
+.vk-cp-color-swatch:focus-visible{ outline:3px solid var(--charcoal); outline-offset:2px; }
+.vk-cp-add-btn{
+  display:block; width:100%; font-family:var(--font-ui); font-weight:700; font-size:.7rem;
+  text-transform:uppercase; letter-spacing:.04em; padding:8px; border:2px solid var(--charcoal);
+  border-radius:6px; background:var(--concrete); color:var(--ink); cursor:pointer;
+}
+.vk-cp-add-btn:hover{ background:var(--tally); color:var(--paper); }
+.vk-cp-add-btn:focus-visible{ outline:3px solid var(--charcoal); outline-offset:2px; }
 
 .fx-block{
   border:1px solid rgba(27,26,24,.14); border-radius:12px; padding:14px; margin-bottom:16px;
@@ -455,9 +516,10 @@ input[type="color"]:focus-visible{ outline:3px solid var(--charcoal); outline-of
             <span class="tally-dot" id="tallyDot"></span> Preview
           </span>
 
-          <label class="stage-bg-label" for="stageBgColor">
-            Frame <input type="color" id="stageBgColor" value="#14171c">
-          </label>
+          <div class="stage-bg-label" role="group" aria-labelledby="stageBgColorLabel">
+            <span id="stageBgColorLabel">Frame</span>
+            <div class="cp-holder" id="stageBgColorPicker"></div>
+          </div>
         </div>
 
         <p class="sr-only" id="liveStatus" aria-live="polite"></p>
@@ -545,9 +607,8 @@ input[type="color"]:focus-visible{ outline:3px solid var(--charcoal); outline-of
           </fieldset>
 
           <div class="field">
-            <label for="textColor">Text colour</label>
-            <input type="color" id="textColor" value="#f5f4f0">
-            <div class="swatch-row" id="colorSwatches" role="group" aria-label="Colour presets"></div>
+            <label id="textColorLabel">Text colour</label>
+            <div class="cp-holder" id="textColorPicker" role="group" aria-labelledby="textColorLabel"></div>
           </div>
         </section>
 
@@ -619,8 +680,8 @@ input[type="color"]:focus-visible{ outline:3px solid var(--charcoal); outline-of
             <div class="fx-body" id="plateBody" hidden>
               <div class="field-row">
                 <div class="field">
-                  <label for="plateColor">Plate colour</label>
-                  <input type="color" id="plateColor" value="#111111">
+                  <label id="plateColorLabel">Plate colour</label>
+                  <div class="cp-holder" id="plateColorPicker" role="group" aria-labelledby="plateColorLabel"></div>
                 </div>
                 <div class="field">
                   <label for="plateRadius">Corner radius <span id="plateRadiusOut">0px</span></label>
@@ -648,7 +709,7 @@ input[type="color"]:focus-visible{ outline:3px solid var(--charcoal); outline-of
                 <div class="field"><label for="shadowBlur">Blur <span id="shadowBlurOut">0px</span></label><input type="range" id="shadowBlur" min="0" max="40" step="1" value="0"></div>
                 <div class="field"><label for="shadowOpacity">Opacity <span id="shadowOpacityOut">60%</span></label><input type="range" id="shadowOpacity" min="0" max="100" step="5" value="60"></div>
               </div>
-              <div class="field"><label for="shadowColor">Colour</label><input type="color" id="shadowColor" value="#000000"></div>
+              <div class="field"><label id="shadowColorLabel">Colour</label><div class="cp-holder" id="shadowColorPicker" role="group" aria-labelledby="shadowColorLabel"></div></div>
             </div>
           </div>
 
@@ -662,7 +723,7 @@ input[type="color"]:focus-visible{ outline:3px solid var(--charcoal); outline-of
                 <div class="field"><label for="glowBlur">Spread <span id="glowBlurOut">20px</span></label><input type="range" id="glowBlur" min="2" max="60" step="1" value="20"></div>
                 <div class="field"><label for="glowOpacity">Intensity <span id="glowOpacityOut">70%</span></label><input type="range" id="glowOpacity" min="0" max="100" step="5" value="70"></div>
               </div>
-              <div class="field"><label for="glowColor">Colour</label><input type="color" id="glowColor" value="#d8341c"></div>
+              <div class="field"><label id="glowColorLabel">Colour</label><div class="cp-holder" id="glowColorPicker" role="group" aria-labelledby="glowColorLabel"></div></div>
             </div>
           </div>
 
@@ -674,7 +735,7 @@ input[type="color"]:focus-visible{ outline:3px solid var(--charcoal); outline-of
             <div class="fx-body" id="strokeBody" hidden>
               <div class="field-row">
                 <div class="field"><label for="strokeWidth">Width <span id="strokeWidthOut">2px</span></label><input type="range" id="strokeWidth" min="0" max="6" step="0.5" value="2"></div>
-                <div class="field"><label for="strokeColor">Colour</label><input type="color" id="strokeColor" value="#111111"></div>
+                <div class="field"><label id="strokeColorLabel">Colour</label><div class="cp-holder" id="strokeColorPicker" role="group" aria-labelledby="strokeColorLabel"></div></div>
               </div>
             </div>
           </div>
@@ -703,7 +764,9 @@ input[type="color"]:focus-visible{ outline:3px solid var(--charcoal); outline-of
   </div>
 </div>
 
-<script>
+<script type="module">
+import { createColorPicker } from './colorPicker.js';
+
 (function(){
   "use strict";
 
@@ -750,7 +813,6 @@ input[type="color"]:focus-visible{ outline:3px solid var(--charcoal); outline-of
   var state = Object.assign({}, DEFAULT_STATE);
 
   var PLACEHOLDER_TEXT = "Your narration text will appear here.";
-  var SWATCHES = ["#f5f4f0", "#111111", "#d8341c", "#e8aa00", "#2f6fed", "#ff6fae"];
 
   var EASING_MAP = {
     linear: "linear", ease: "ease", easeInOut: "ease-in-out", easeOut: "ease-out",
@@ -770,7 +832,6 @@ input[type="color"]:focus-visible{ outline:3px solid var(--charcoal); outline-of
     previewText: $("previewText"), tallyDot: $("tallyDot"), liveStatus: $("liveStatus"),
 
     replayBtn: $("replayBtn"), loopToggle: $("loopToggle"), guidesToggle: $("guidesToggle"),
-    stageBgColor: $("stageBgColor"),
 
     appModal: $("appModal"), modalOverlay: $("modalOverlay"), closeBtn: $("closeBtn"), applyBtn: $("applyBtn"),
     resetBtn: $("resetBtn"), exportBtn: $("exportBtn"), exportPanel: $("exportPanel"),
@@ -785,20 +846,19 @@ input[type="color"]:focus-visible{ outline:3px solid var(--charcoal); outline-of
     animStaggerOut: $("animStaggerOut"), animEasing: $("animEasing"), loopPause: $("loopPause"),
     loopPauseOut: $("loopPauseOut"), reducedMotionToggle: $("reducedMotionToggle"),
 
-    textColor: $("textColor"), colorSwatches: $("colorSwatches"),
-    plateToggle: $("plateToggle"), plateBody: $("plateBody"), plateColor: $("plateColor"),
+    plateToggle: $("plateToggle"), plateBody: $("plateBody"),
     platePadding: $("platePadding"), platePaddingOut: $("platePaddingOut"),
     plateRadius: $("plateRadius"), plateRadiusOut: $("plateRadiusOut"),
 
     shadowToggle: $("shadowToggle"), shadowBody: $("shadowBody"), shadowX: $("shadowX"), shadowXOut: $("shadowXOut"),
     shadowY: $("shadowY"), shadowYOut: $("shadowYOut"), shadowBlur: $("shadowBlur"), shadowBlurOut: $("shadowBlurOut"),
-    shadowOpacity: $("shadowOpacity"), shadowOpacityOut: $("shadowOpacityOut"), shadowColor: $("shadowColor"),
+    shadowOpacity: $("shadowOpacity"), shadowOpacityOut: $("shadowOpacityOut"),
 
     glowToggle: $("glowToggle"), glowBody: $("glowBody"), glowBlur: $("glowBlur"), glowBlurOut: $("glowBlurOut"),
-    glowOpacity: $("glowOpacity"), glowOpacityOut: $("glowOpacityOut"), glowColor: $("glowColor"),
+    glowOpacity: $("glowOpacity"), glowOpacityOut: $("glowOpacityOut"),
 
     strokeToggle: $("strokeToggle"), strokeBody: $("strokeBody"), strokeWidth: $("strokeWidth"),
-    strokeWidthOut: $("strokeWidthOut"), strokeColor: $("strokeColor"),
+    strokeWidthOut: $("strokeWidthOut"),
 
     textOpacity: $("textOpacity"), textOpacityOut: $("textOpacityOut")
   };
@@ -1058,6 +1118,44 @@ input[type="color"]:focus-visible{ outline:3px solid var(--charcoal); outline-of
     sync();
   }
 
+  /* ---------------- color pickers — same component as the properties panel
+     (colorPicker.js), one instance per color field. Built once; state
+     updates thereafter go through picker.setColor() rather than re-creating
+     the widget. ---------------- */
+  var pickers = {};
+  function initColorPickers(){
+    pickers.textColor = createColorPicker($("textColorPicker"), {
+      initialColor: state.textColor,
+      onChange: function(hex){ state.textColor = hex; applyStaticTextStyles(); },
+      onCommit: function(hex){ state.textColor = hex; applyStaticTextStyles(); }
+    });
+    pickers.plateColor = createColorPicker($("plateColorPicker"), {
+      initialColor: state.plateColor,
+      onChange: function(hex){ state.plateColor = hex; applyStaticTextStyles(); },
+      onCommit: function(hex){ state.plateColor = hex; applyStaticTextStyles(); }
+    });
+    pickers.shadowColor = createColorPicker($("shadowColorPicker"), {
+      initialColor: state.shadowColor,
+      onChange: function(hex){ state.shadowColor = hex; applyStaticTextStyles(); },
+      onCommit: function(hex){ state.shadowColor = hex; applyStaticTextStyles(); }
+    });
+    pickers.glowColor = createColorPicker($("glowColorPicker"), {
+      initialColor: state.glowColor,
+      onChange: function(hex){ state.glowColor = hex; applyStaticTextStyles(); },
+      onCommit: function(hex){ state.glowColor = hex; applyStaticTextStyles(); }
+    });
+    pickers.strokeColor = createColorPicker($("strokeColorPicker"), {
+      initialColor: state.strokeColor,
+      onChange: function(hex){ state.strokeColor = hex; applyStaticTextStyles(); },
+      onCommit: function(hex){ state.strokeColor = hex; applyStaticTextStyles(); }
+    });
+    pickers.stageBg = createColorPicker($("stageBgColorPicker"), {
+      initialColor: state.stageBg,
+      onChange: function(hex){ state.stageBg = hex; els.stage.style.background = hex; },
+      onCommit: function(hex){ state.stageBg = hex; els.stage.style.background = hex; }
+    });
+  }
+
   /* ---------------- sync controls FROM state (init / reset) ---------------- */
   function syncControlsFromState(){
     els.textInput.value = state.text;
@@ -1083,9 +1181,9 @@ input[type="color"]:focus-visible{ outline:3px solid var(--charcoal); outline-of
     els.loopToggle.checked = state.loop;
     els.reducedMotionToggle.checked = state.reducedMotion;
 
-    els.textColor.value = state.textColor;
+    pickers.textColor.setColor(state.textColor);
     els.plateToggle.checked = state.plate; els.plateBody.hidden = !state.plate;
-    els.plateColor.value = state.plateColor;
+    pickers.plateColor.setColor(state.plateColor);
     els.platePadding.value = state.platePadding; els.platePaddingOut.textContent = state.platePadding + "px";
     els.plateRadius.value = state.plateRadius; els.plateRadiusOut.textContent = state.plateRadius + "px";
 
@@ -1094,20 +1192,20 @@ input[type="color"]:focus-visible{ outline:3px solid var(--charcoal); outline-of
     els.shadowY.value = state.shadowY; els.shadowYOut.textContent = state.shadowY + "px";
     els.shadowBlur.value = state.shadowBlur; els.shadowBlurOut.textContent = state.shadowBlur + "px";
     els.shadowOpacity.value = state.shadowOpacity; els.shadowOpacityOut.textContent = state.shadowOpacity + "%";
-    els.shadowColor.value = state.shadowColor;
+    pickers.shadowColor.setColor(state.shadowColor);
 
     els.glowToggle.checked = state.glow; els.glowBody.hidden = !state.glow;
     els.glowBlur.value = state.glowBlur; els.glowBlurOut.textContent = state.glowBlur + "px";
     els.glowOpacity.value = state.glowOpacity; els.glowOpacityOut.textContent = state.glowOpacity + "%";
-    els.glowColor.value = state.glowColor;
+    pickers.glowColor.setColor(state.glowColor);
 
     els.strokeToggle.checked = state.stroke; els.strokeBody.hidden = !state.stroke;
     els.strokeWidth.value = state.strokeWidth; els.strokeWidthOut.textContent = state.strokeWidth + "px";
-    els.strokeColor.value = state.strokeColor;
+    pickers.strokeColor.setColor(state.strokeColor);
 
     els.textOpacity.value = state.textOpacity; els.textOpacityOut.textContent = state.textOpacity + "%";
 
-    els.stageBgColor.value = state.stageBg;
+    pickers.stageBg.setColor(state.stageBg);
     els.guidesToggle.checked = state.guides;
     els.stageGuides.hidden = !state.guides;
   }
@@ -1174,16 +1272,11 @@ input[type="color"]:focus-visible{ outline:3px solid var(--charcoal); outline-of
     els.loopToggle.addEventListener("change", function(){ state.loop = this.checked; if (state.loop) playAnimation(); else clearAllTimers(); });
     els.reducedMotionToggle.addEventListener("change", function(){ state.reducedMotion = this.checked; playAnimation(); });
 
-    els.textColor.addEventListener("input", function(){ state.textColor = this.value; applyStaticTextStyles(); });
-    els.colorSwatches.querySelectorAll(".swatch").forEach(function(sw){
-      sw.addEventListener("click", function(){
-        var c = sw.getAttribute("data-color");
-        state.textColor = c; els.textColor.value = c; applyStaticTextStyles();
-      });
-    });
+    // Text/plate/shadow/glow/stroke/frame colours are all driven by their
+    // createColorPicker instance's onChange/onCommit (see initColorPickers)
+    // rather than an 'input' listener here.
 
     els.plateToggle.addEventListener("change", function(){ state.plate = this.checked; els.plateBody.hidden = !state.plate; applyStaticTextStyles(); });
-    els.plateColor.addEventListener("input", function(){ state.plateColor = this.value; applyStaticTextStyles(); });
     bindRange(els.platePadding, els.platePaddingOut, "px", function(v){ state.platePadding = Number(v); applyStaticTextStyles(); });
     bindRange(els.plateRadius, els.plateRadiusOut, "px", function(v){ state.plateRadius = Number(v); applyStaticTextStyles(); });
 
@@ -1192,20 +1285,16 @@ input[type="color"]:focus-visible{ outline:3px solid var(--charcoal); outline-of
     bindRange(els.shadowY, els.shadowYOut, "px", function(v){ state.shadowY = Number(v); applyStaticTextStyles(); });
     bindRange(els.shadowBlur, els.shadowBlurOut, "px", function(v){ state.shadowBlur = Number(v); applyStaticTextStyles(); });
     bindRange(els.shadowOpacity, els.shadowOpacityOut, "%", function(v){ state.shadowOpacity = Number(v); applyStaticTextStyles(); });
-    els.shadowColor.addEventListener("input", function(){ state.shadowColor = this.value; applyStaticTextStyles(); });
 
     els.glowToggle.addEventListener("change", function(){ state.glow = this.checked; els.glowBody.hidden = !state.glow; applyStaticTextStyles(); });
     bindRange(els.glowBlur, els.glowBlurOut, "px", function(v){ state.glowBlur = Number(v); applyStaticTextStyles(); });
     bindRange(els.glowOpacity, els.glowOpacityOut, "%", function(v){ state.glowOpacity = Number(v); applyStaticTextStyles(); });
-    els.glowColor.addEventListener("input", function(){ state.glowColor = this.value; applyStaticTextStyles(); });
 
     els.strokeToggle.addEventListener("change", function(){ state.stroke = this.checked; els.strokeBody.hidden = !state.stroke; applyStaticTextStyles(); });
     bindRange(els.strokeWidth, els.strokeWidthOut, "px", function(v){ state.strokeWidth = Number(v); applyStaticTextStyles(); });
-    els.strokeColor.addEventListener("input", function(){ state.strokeColor = this.value; applyStaticTextStyles(); });
 
     bindRange(els.textOpacity, els.textOpacityOut, "%", function(v){ state.textOpacity = Number(v); applyStaticTextStyles(); });
 
-    els.stageBgColor.addEventListener("input", function(){ state.stageBg = this.value; els.stage.style.background = state.stageBg; });
     els.guidesToggle.addEventListener("change", function(){ state.guides = this.checked; els.stageGuides.hidden = !state.guides; });
 
     els.replayBtn.addEventListener("click", playAnimation);
@@ -1289,24 +1378,11 @@ input[type="color"]:focus-visible{ outline:3px solid var(--charcoal); outline-of
     else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
   }
 
-  function buildSwatches(){
-    SWATCHES.forEach(function(c){
-      var sw = document.createElement("button");
-      sw.type = "button";
-      sw.className = "swatch";
-      sw.style.background = c;
-      sw.setAttribute("data-color", c);
-      sw.setAttribute("aria-label", "Set text colour " + c);
-      els.colorSwatches.appendChild(sw);
-    });
-  }
-
   function init(){
-    buildSwatches();
-
     var mql = window.matchMedia("(prefers-reduced-motion: reduce)");
     state.reducedMotion = mql.matches;
 
+    initColorPickers();
     syncControlsFromState();
     bindEvents();
 

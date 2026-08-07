@@ -1,8 +1,9 @@
 # main.py
-import os, hashlib, time, uvicorn
+import os, hashlib, time, wave, uvicorn
 from fastapi import FastAPI, HTTPException, WebSocket, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from websocket_server import PROJECTS_DIR, VideoEditorServer
+from sfx_gen import ensure_sfx_pack, list_sfx_meta
 
 try:
     from moviepy.editor import VideoFileClip, AudioFileClip
@@ -14,8 +15,13 @@ except Exception:
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+SFX_DIR = os.path.join(BASE_DIR, "sfx")
 STATIC_DIR = os.path.join(ROOT_DIR, "frontend")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# #72 — built-in sound-effect pack. Synthesized locally (no downloads, no
+# committed binaries); a no-op after the first run since files persist.
+ensure_sfx_pack(SFX_DIR)
 
 app = FastAPI()
 server = VideoEditorServer()
@@ -115,7 +121,29 @@ async def list_media():
     return items
 
 
+@app.get("/sfx-list")
+async def list_sfx():
+    items = []
+    for meta in list_sfx_meta():
+        fpath = os.path.join(SFX_DIR, meta["name"])
+        if not os.path.isfile(fpath):
+            continue
+        duration = None
+        try:
+            with wave.open(fpath, "rb") as wf:
+                duration = wf.getnframes() / float(wf.getframerate())
+        except Exception:
+            pass
+        items.append({
+            "name": meta["name"], "original": meta["label"], "url": f"/sfx/{meta['name']}",
+            "kind": "audio", "category": meta["category"],
+            **({"metadata": {"duration": duration}} if duration else {}),
+        })
+    return items
+
+
 app.mount("/media", StaticFiles(directory=UPLOAD_DIR), name="media")
+app.mount("/sfx", StaticFiles(directory=SFX_DIR), name="sfx")
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 if __name__ == "__main__":

@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>vidkit — untitled</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Same family list as animationwindow.html's "Advanced Text Options" font
+     picker. Those names are only usable by the canvas (via ctx.font) once
+     they're loaded into *this* document — loading them solely inside the
+     advanced-text iframe left the main canvas falling back to a default
+     font whenever a narration clip picked a non-system font family. -->
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Playfair+Display:ital,wght@0,600;1,600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -59,23 +67,25 @@
   <button class="btn btn-play" id="play-btn">▶  Play</button>
   <button class="btn btn-stop" id="stop-btn">■  Stop</button>
 
-  <!-- Add clips -->
+  <!-- Add clips — one consolidated menu instead of five separate buttons (#71) -->
   <div class="toolbar-sep"></div>
-  <button class="btn btn-add" id="add-narration-btn">+ Narration</button>
-  <button class="btn btn-add" id="add-code-btn">+ Code</button>
-  <button class="btn btn-add" id="add-graph-btn">+ Graph</button>
-  <button class="btn btn-add" id="add-audio-btn">+ Audio</button>
-
   <div class="toolbar-shape-wrap">
-    <button class="btn btn-add" id="add-shape-btn">+ Shape ▾</button>
-    <div class="menu-dropdown" id="add-shape-menu">
-      <div class="menu-dropdown-item" data-shape="rectangle"><span>Rectangle</span></div>
-      <div class="menu-dropdown-item" data-shape="circle"><span>Circle</span></div>
-      <div class="menu-dropdown-item" data-shape="triangle"><span>Triangle</span></div>
-      <div class="menu-dropdown-item" data-shape="polygon"><span>Polygon</span></div>
-      <div class="menu-dropdown-item" data-shape="arrow"><span>Arrow</span></div>
-      <div class="menu-dropdown-item" data-shape="star"><span>Star</span></div>
-      <div class="menu-dropdown-item" data-shape="line"><span>Line</span></div>
+    <button class="btn btn-add" id="add-clip-btn">+ Add ▾</button>
+    <div class="menu-dropdown" id="add-clip-menu">
+      <div class="menu-dropdown-item" data-add="narration"><span>Narration</span></div>
+      <div class="menu-dropdown-item" data-add="code"><span>Code block</span></div>
+      <div class="menu-dropdown-item" data-add="graph"><span>Graph</span></div>
+      <div class="menu-dropdown-item" data-add="audio"><span>Audio</span></div>
+      <div class="menu-dropdown-item separator"></div>
+      <div class="menu-dropdown-item" data-shape="rectangle"><span>Shape · Rectangle</span></div>
+      <div class="menu-dropdown-item" data-shape="circle"><span>Shape · Circle</span></div>
+      <div class="menu-dropdown-item" data-shape="triangle"><span>Shape · Triangle</span></div>
+      <div class="menu-dropdown-item" data-shape="polygon"><span>Shape · Polygon</span></div>
+      <div class="menu-dropdown-item" data-shape="arrow"><span>Shape · Arrow</span></div>
+      <div class="menu-dropdown-item" data-shape="star"><span>Shape · Star</span></div>
+      <div class="menu-dropdown-item" data-shape="line"><span>Shape · Line</span></div>
+      <div class="menu-dropdown-item separator"></div>
+      <div class="menu-dropdown-item" data-add="sfx"><span>Sound effect…</span></div>
     </div>
   </div>
 
@@ -153,6 +163,9 @@
     <iframe id="advtext-iframe" src="animationwindow.html" title="Advanced Text Options"></iframe>
   </div>
 </div>
+
+<!-- ── Canvas context menu (right-click a clip — #28) ───────────────────── -->
+<div id="canvas-context-menu"></div>
 
 <!-- ── Confirm dialog ────────────────────────────────────────────────────── -->
 <div id="confirm-overlay">

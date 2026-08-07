@@ -1,13 +1,19 @@
 import { TRACK_COLOURS } from './app.js';
 
-const TRACKS = ['audio', 'text', 'visual'];
+// #71 — consolidated timeline: rows ("layers") are global and hold any mix
+// of clip types (audio/text/visual all free to share or swap rows). A row
+// is just `clip.layer`; there's no more fixed audio/text/visual partition.
+// `clip.track` still exists on the model (see app.js CLIP_TYPE_TRACK) but
+// is now used only as a "kind" tag for colour-coding and default placement,
+// never for vertical layout.
 const HEADER_H = 24;
 const LABEL_W = 60;
 const MIN_CLIP_PX = 8;
 const RESIZE_ZONE = 10;
 const MIN_DUR_SEC = 0.1;
 const MIN_TRACK_H = 38;
-const MAX_TIMELINE_H = 260
+const MAX_TIMELINE_H = 260;
+const EYE_SIZE = 13; // eye-icon hit target in the layer gutter
 
 
 
@@ -57,7 +63,7 @@ export class TimelineWidget {
 
   resize(manualH = null) {
     const container = this._el.parentElement;
-    const layerTotal = TRACKS.reduce((s, t) => s + this._trackLayerCount(t), 0);
+    const layerTotal = this._layerCount();
     this._contentH = HEADER_H + layerTotal * MIN_TRACK_H + 4;
     const desired = manualH != null ? manualH : (this._manualH ?? this._contentH);
     if (manualH != null) this._manualH = manualH;
@@ -78,36 +84,42 @@ export class TimelineWidget {
   _pxPerSec() { return ((this._el.width - LABEL_W) * this._zoom) / Math.max(this.project.duration, 1.0); }
   _secToPx(t) { return LABEL_W + (t * this._pxPerSec()) - this._panOffsetPx | 0; }
   _pxToSec(px) { return Math.max(0, (px - LABEL_W + this._panOffsetPx) / this._pxPerSec()); }
-  _trackLayerCount(track) {
+
+  // #71 — layer count/rows are global now: every clip, regardless of type,
+  // occupies a row (`clip.layer`) in one shared stack.
+  _layerCount() {
     let max = 0;
-    for (const c of this.project.clips) if (c.track === track) max = Math.max(max, (c.layer ?? 0) + 1);
+    for (const c of this.project.clips) max = Math.max(max, (c.layer ?? 0) + 1);
     return Math.max(1, max);
   }
 
   _subLayerH() { return MIN_TRACK_H; }
 
-  _trackHeightPx(track) { return this._trackLayerCount(track) * this._subLayerH(); }
+  _layerRowY(layer) { return HEADER_H + layer * this._subLayerH(); }
 
-  _trackY(track) {
-    let y = HEADER_H;
-    for (const t of TRACKS) { if (t === track) return y; y += this._trackHeightPx(t); }
-    return y;
+  _isLayerHidden(layer) { return !!this.project.hidden_layers?.has?.(layer); }
+
+  _eyeIconRect(layer) {
+    const y = this._layerRowY(layer), subH = this._subLayerH();
+    return { x: 5, y: y + (subH - EYE_SIZE) / 2, w: EYE_SIZE, h: EYE_SIZE };
   }
 
+  // Global bin-packing: clips are laid out earliest-start-first, each
+  // keeping its explicit `layer` unless that row is already occupied at
+  // this point in time, in which case it slides to the first free row.
+  // No more per-track grouping — any clip type can land in any row.
   _reflowLayers() {
-    for (const track of TRACKS) {
-      const clips = this.project.clips.filter(c => c.track === track).sort((a, b) => a.start - b.start);
-      const laneEnds = [];
-      for (const c of clips) {
-        if (Number.isInteger(c.layer) && laneEnds[c.layer] === undefined) {
-          laneEnds[c.layer] = c.end();
-          continue;
-        }
-        let layer = 0;
-        while (layer < laneEnds.length && laneEnds[layer] > c.start + 1e-6) layer++;
-        c.layer = layer;
-        laneEnds[layer] = c.end();
+    const clips = [...this.project.clips].sort((a, b) => a.start - b.start);
+    const laneEnds = [];
+    for (const c of clips) {
+      if (Number.isInteger(c.layer) && laneEnds[c.layer] === undefined) {
+        laneEnds[c.layer] = c.end();
+        continue;
       }
+      let layer = 0;
+      while (layer < laneEnds.length && laneEnds[layer] > c.start + 1e-6) layer++;
+      c.layer = layer;
+      laneEnds[layer] = c.end();
     }
   }
 
@@ -116,7 +128,7 @@ export class TimelineWidget {
     return {
       x: this._secToPx(clip.start),
       w: Math.max(MIN_CLIP_PX, (clip.duration * this._pxPerSec()) | 0),
-      y: this._trackY(clip.track) + (clip.layer ?? 0) * subH,
+      y: this._layerRowY(clip.layer ?? 0),
       h: subH - 2
     };
   }
@@ -158,11 +170,10 @@ export class TimelineWidget {
     ctx.save();
     ctx.beginPath(); ctx.rect(0, HEADER_H, W, H - HEADER_H); ctx.clip(); // viewport, screen space
     ctx.translate(0, -this._scrollY);
-    this._drawTrackLabels(ctx, W);
+    this._drawLayerLabels(ctx, W);
     ctx.save();
     ctx.beginPath(); ctx.rect(LABEL_W, 0, W - LABEL_W, this._contentH); ctx.clip();
     this._drawClips(ctx);
-    this._drawLayerDividers(ctx);
     ctx.restore();
     ctx.restore();
 
@@ -172,6 +183,12 @@ export class TimelineWidget {
       const x = this._secToPx(this._dropIndicatorT);
       if (x >= LABEL_W) {
         ctx.save();
+        if (this._dropIndicatorLayer != null) {
+          // #71 — highlight the exact row a media-bin drag would land on.
+          const y = this._layerRowY(this._dropIndicatorLayer) - this._scrollY;
+          ctx.fillStyle = 'rgba(59,130,246,0.10)';
+          ctx.fillRect(LABEL_W, Math.max(HEADER_H, y), W - LABEL_W, this._subLayerH());
+        }
         ctx.strokeStyle = 'rgba(59,130,246,0.9)';
         ctx.lineWidth = 1.5;
         ctx.setLineDash([5, 4]);
@@ -221,20 +238,46 @@ export class TimelineWidget {
     }
   }
 
-  _drawTrackLabels(ctx, W) {
+  // #71 — one row per layer, any clip type. Each row gets a compact "L1"
+  // label plus an eye icon (click to hide/show — mutes playback & render).
+  _drawLayerLabels(ctx, W) {
     const c = this._colors;
+    const count = this._layerCount();
     ctx.font = '8px "Segoe UI", system-ui, sans-serif';
-    for (const track of TRACKS) {
-      const y = this._trackY(track);
-      const trackH = this._trackHeightPx(track);
-      ctx.fillStyle = c.labelBg; ctx.fillRect(0, y, LABEL_W, trackH);
+    for (let layer = 0; layer < count; layer++) {
+      const y = this._layerRowY(layer), subH = this._subLayerH();
+      const hidden = this._isLayerHidden(layer);
+      ctx.fillStyle = c.labelBg; ctx.fillRect(0, y, LABEL_W, subH);
       ctx.strokeStyle = c.labelBorder; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(0, y + trackH - 0.5); ctx.lineTo(W, y + trackH - 0.5); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(LABEL_W + 0.5, y); ctx.lineTo(LABEL_W + 0.5, y + trackH); ctx.stroke();
-      const col = TRACK_COLOURS(track);
-      ctx.fillStyle = col.text ?? c.text; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(track.toUpperCase(), LABEL_W / 2, y + trackH / 2);
+      ctx.beginPath(); ctx.moveTo(0, y + subH - 0.5); ctx.lineTo(W, y + subH - 0.5); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(LABEL_W + 0.5, y); ctx.lineTo(LABEL_W + 0.5, y + subH); ctx.stroke();
+
+      const eye = this._eyeIconRect(layer);
+      this._drawEyeIcon(ctx, eye.x + eye.w / 2, eye.y + eye.h / 2, !hidden);
+
+      ctx.save();
+      ctx.globalAlpha = hidden ? 0.45 : 1;
+      ctx.fillStyle = c.text; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText(`L${layer + 1}`, eye.x + eye.w + 5, y + subH / 2);
+      ctx.restore();
     }
+  }
+
+  _drawEyeIcon(ctx, cx, cy, visible) {
+    const c = this._colors;
+    ctx.save();
+    ctx.lineWidth = 1;
+    if (visible) {
+      ctx.strokeStyle = c.text; ctx.fillStyle = c.text;
+      ctx.beginPath(); ctx.ellipse(cx, cy, 5, 3, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx, cy, 1.3, 0, Math.PI * 2); ctx.fill();
+    } else {
+      ctx.globalAlpha = 0.55;
+      ctx.strokeStyle = c.text;
+      ctx.beginPath(); ctx.ellipse(cx, cy, 5, 3, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx - 5.5, cy + 3.5); ctx.lineTo(cx + 5.5, cy - 3.5); ctx.stroke();
+    }
+    ctx.restore();
   }
 
   _drawClips(ctx) {
@@ -243,6 +286,10 @@ export class TimelineWidget {
     for (const clip of this.project.clips) {
       const cr = this._clipRect(clip), col = TRACK_COLOURS(clip.track), isSelected = this._selectedIds.has(clip.id);
       const glowColor = col.border ?? c.clipBorder;
+      const hidden = this._isLayerHidden(clip.layer ?? 0);
+
+      ctx.save();
+      if (hidden) ctx.globalAlpha *= 0.35; // #71 — muted layer reads as muted on the timeline too
 
       if (c.clipMode === 'glow') {
         // light mode: no fill, glowing stroke only
@@ -270,6 +317,7 @@ export class TimelineWidget {
       ctx.fillStyle = col.text ?? c.clipText; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       ctx.save(); ctx.beginPath(); ctx.rect(cr.x + RESIZE_ZONE, cr.y + 1, Math.max(0, cr.w - RESIZE_ZONE * 2), cr.h - 2); ctx.clip();
       ctx.fillText(clip.label(), cr.x + RESIZE_ZONE + 2, cr.y + cr.h / 2); ctx.restore();
+      ctx.restore();
     }
   }
 
@@ -297,19 +345,6 @@ export class TimelineWidget {
       ctx.lineTo(x + 0.5, midY + max * ampScale);
     }
     ctx.stroke();
-  }
-
-  _drawLayerDividers(ctx) {
-    ctx.strokeStyle = this._colors.divider; ctx.lineWidth = 0.5;
-    for (const track of TRACKS) {
-      const count = this._trackLayerCount(track);
-      if (count <= 1) continue;
-      const top = this._trackY(track), subH = this._subLayerH();
-      for (let i = 1; i < count; i++) {
-        const y = top + i * subH;
-        ctx.beginPath(); ctx.moveTo(LABEL_W, y - 0.5); ctx.lineTo(this._el.width, y - 0.5); ctx.stroke();
-      }
-    }
   }
 
   _drawPlayhead(ctx, H) {
@@ -350,9 +385,13 @@ export class TimelineWidget {
   _bindEvents() {
     const el = this._el;
     el.addEventListener('mousedown', e => this._onMouseDown(e));
-    el.addEventListener('mousemove', e => this._onMouseMove(e));
-    el.addEventListener('mouseup', e => this._onMouseUp(e));
-    el.addEventListener('mouseleave', e => this._onMouseUp(e));
+    // mousemove/mouseup live on window, not the canvas: panning, clip drags,
+    // resizes, and marquee-select all continue correctly once the cursor
+    // crosses the canvas edge (which happens constantly — that's the whole
+    // point of dragging to pan). Binding them to `el` instead used to cancel
+    // the gesture via 'mouseleave' the moment the pointer left the element.
+    window.addEventListener('mousemove', e => this._onMouseMove(e));
+    window.addEventListener('mouseup', e => this._onMouseUp(e));
     el.addEventListener('dblclick', e => this._onDblClick(e));
     el.addEventListener('wheel', e => this._onWheel(e), { passive: false });
 
@@ -363,16 +402,24 @@ export class TimelineWidget {
       if (!e.dataTransfer?.types?.includes('application/vidkit-media')) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
-      this._dropIndicatorT = this._snapPoint(this._pxToSec(this._getPos(e).x));
+      const pos = this._getPos(e);
+      this._dropIndicatorT = this._snapPoint(this._pxToSec(pos.x));
+      // #71 — unified timeline: track which row the drag is hovering so the
+      // dropped clip can land exactly there instead of always picking track 0.
+      const contentY = this._toContentY(pos.y);
+      this._dropIndicatorLayer = Math.max(0, Math.floor((contentY - HEADER_H) / this._subLayerH()));
       this.redraw();
     });
     el.addEventListener('dragleave', () => {
       if (this._dropIndicatorT == null) return;
       this._dropIndicatorT = null;
+      this._dropIndicatorLayer = null;
       this.redraw();
     });
     el.addEventListener('drop', e => {
       this._dropIndicatorT = null;
+      const layer = this._dropIndicatorLayer;
+      this._dropIndicatorLayer = null;
       const data = e.dataTransfer?.getData('application/vidkit-media');
       if (!data) { this.redraw(); return; }
       e.preventDefault();
@@ -380,7 +427,7 @@ export class TimelineWidget {
       try { item = JSON.parse(data); } catch { this.redraw(); return; }
       const t = this._snapPoint(this._pxToSec(this._getPos(e).x));
       this._el.dispatchEvent(new CustomEvent('timeline:mediadropped', {
-        bubbles: true, detail: { item, time: Math.round(t * 1000) / 1000 }
+        bubbles: true, detail: { item, time: Math.round(t * 1000) / 1000, layer }
       }));
       this.redraw();
     });
@@ -398,6 +445,20 @@ export class TimelineWidget {
     if (this.tool === 'razor') {
       const clip = this._clipAt(pos.x, pos.y); if (clip) this._sliceClip(clip, pos.x); return;
     }
+
+    // #71 — eye icon in the layer gutter: click toggles that row's visibility.
+    if (pos.x < LABEL_W && pos.y >= HEADER_H) {
+      const contentY = this._toContentY(pos.y);
+      const layer = Math.floor((contentY - HEADER_H) / this._subLayerH());
+      if (layer >= 0 && layer < this._layerCount()) {
+        const eye = this._eyeIconRect(layer);
+        if (pos.x >= eye.x - 3 && pos.x <= eye.x + eye.w + 3 && contentY >= eye.y - 3 && contentY <= eye.y + eye.h + 3) {
+          this._el.dispatchEvent(new CustomEvent('timeline:layervisibility', { bubbles: true, detail: { layer } }));
+          return;
+        }
+      }
+    }
+
     if (pos.y < HEADER_H || this._hitPlayheadTriangle(pos.x, pos.y)) {
       this._scrubPlayhead = true; this._emitSeek(Math.max(0, Math.min(this._pxToSec(pos.x), this.project.duration))); return;
     }
@@ -465,7 +526,14 @@ export class TimelineWidget {
       this.redraw();
       return;
     }
-    if (!(e.buttons & 1)) { this._updateCursor(pos); return; }
+    if (!(e.buttons & 1)) {
+      // mousemove is window-wide now, so only bother computing hover state
+      // (cursor, clip-under-pointer) while the pointer is actually over the
+      // canvas; elsewhere there's nothing to hover.
+      if (pos.x >= 0 && pos.x <= this._el.width && pos.y >= 0 && pos.y <= this._el.height) this._updateCursor(pos);
+      else this._el.style.cursor = 'default';
+      return;
+    }
     if (!this._dragClip) return;
 
     const dxSec = (pos.x - this._dragOriginX) / this._pxPerSec();
@@ -476,10 +544,11 @@ export class TimelineWidget {
       const offset = roundedStart - this._dragOriginStart;
 
       const subH = this._subLayerH();
-      const trackTop = this._trackY(this._dragClip.track);
-      const contentY = this._toContentY(pos.y); // see Issue 2 - needed once scroll exists
-      const rawLayer = Math.floor((contentY - trackTop) / subH);
+      const contentY = this._toContentY(pos.y);
+      const rawLayer = Math.floor((contentY - HEADER_H) / subH);
 
+      // #71 — one shared stack of rows now, so dragging above row 0 (or back
+      // down) shifts every other clip, not just ones of the same kind.
       const draggedIds = (this._groupDragOrigins && this._groupDragOrigins.size > 1)
         ? new Set(this._groupDragOrigins.keys())
         : new Set([this._dragClip.id]);
@@ -487,18 +556,18 @@ export class TimelineWidget {
       if (rawLayer < 0) {
         if (!this._insertedTopLayer) {
           for (const c of this.project.clips) {
-            if (c.track === this._dragClip.track && !draggedIds.has(c.id)) c.layer = (c.layer ?? 0) + 1;
+            if (!draggedIds.has(c.id)) c.layer = (c.layer ?? 0) + 1;
           }
           this._insertedTopLayer = true;
         }
       } else if (this._insertedTopLayer) {
         for (const c of this.project.clips) {
-          if (c.track === this._dragClip.track && !draggedIds.has(c.id)) c.layer = Math.max(0, (c.layer ?? 0) - 1);
+          if (!draggedIds.has(c.id)) c.layer = Math.max(0, (c.layer ?? 0) - 1);
         }
         this._insertedTopLayer = false;
       }
 
-      const maxLayer = this._trackLayerCount(this._dragClip.track); // recompute — shift changed it
+      const maxLayer = this._layerCount(); // recompute — shift changed it
       const newLayer = Math.max(0, Math.min(maxLayer, rawLayer));
       const layerDelta = newLayer - (this._dragClip.layer ?? 0);
 
@@ -507,11 +576,9 @@ export class TimelineWidget {
           const clip = this.project.clips.find(c => c.id === id);
           if (!clip) continue;
           clip.start = Math.max(0, Math.round((origin.start + offset) * 1000) / 1000);
-          // Only shift layers within the dragged clip's own track — clips on
-          // other tracks keep their lane so a cross-track selection doesn't scatter.
-          if (clip.track === this._dragClip.track) {
-            clip.layer = Math.max(0, Math.min(this._trackLayerCount(clip.track), (origin.layer ?? 0) + layerDelta));
-          }
+          // #71 — any clip type can share any row now, so the whole
+          // multi-selection shifts layers together, not just same-kind clips.
+          clip.layer = Math.max(0, Math.min(this._layerCount(), (origin.layer ?? 0) + layerDelta));
         }
       } else {
         this._dragClip.start = roundedStart;

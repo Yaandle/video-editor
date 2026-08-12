@@ -159,6 +159,17 @@ export class CanvasWidget {
     this._drawnRects = new Map(); // clipId → {x,y,w,h}
     this._dragBeforeSnapshot = null;
 
+    // Tokenizing+wrapping code-clip text runs several regex passes and is
+    // pure w.r.t. (content, theme) — cache the last result per clip so a
+    // clip whose text hasn't changed doesn't re-tokenize on every playback
+    // frame / mousemove repaint.
+    this._codeLinesCache = new Map(); // clipId → {code, theme, lines}
+
+    // Same idea for narration text wrapping: _layoutNarrationText calls
+    // ctx.measureText per-character and per-word, which is expensive to
+    // redo every frame for text that hasn't changed.
+    this._narrationLayoutCache = new Map(); // clipId → {text, maxWidth, lineHeight, font, layout}
+
     // #28 — crop tool state. _cropFull/_cropRect are the on-screen rects
     // (full source image, and the current crop window within it) computed
     // fresh each _drawCropOverlay() call; _cropHandle/_cropMoving/_cropOrigin
@@ -649,7 +660,7 @@ export class CanvasWidget {
           ? clip.content.toUpperCase()
           : clip.content;
 
-        const layout = this._layoutNarrationText(ctx, displayContent, maxW, lineHeight);
+        const layout = this._getNarrationLayout(clip, ctx, displayContent, maxW, lineHeight);
         // #66: honour the Advanced Text modal's delay — animation clock starts
         // after text_delay_ms. While the delay is pending the text stays hidden.
         const delayMs = clip.text_delay_ms ?? 0;
@@ -750,6 +761,15 @@ export class CanvasWidget {
     }
   }
 
+  _getCodeLines(clip, theme) {
+    const code = clip.content ?? "";
+    const cached = this._codeLinesCache.get(clip.id);
+    if (cached && cached.code === code && cached.theme === theme) return cached.lines;
+    const lines = tokensToLines(tokenizeCode(code, theme));
+    this._codeLinesCache.set(clip.id, { code, theme, lines });
+    return lines;
+  }
+
   _drawCodeTerminal(ctx, clip, r, pt, theme) {
     const blockW = Math.floor(r.w * 0.92);
     const maxBlockH = Math.min(Math.floor(r.h * 0.60), 360);
@@ -761,7 +781,7 @@ export class CanvasWidget {
     const lineH = Math.round(fontSize * 1.55);
     const gutterW = Math.max(34, fontSize * 2.5);
 
-    const lines = tokensToLines(tokenizeCode(clip.content ?? "", theme));
+    const lines = this._getCodeLines(clip, theme);
     const contentHeight = lines.length * lineH + padY * 2;
     const blockH = Math.min(maxBlockH, titleH + promptH + contentHeight);
     const by = pt.y - (blockH >> 1);
@@ -892,6 +912,18 @@ export class CanvasWidget {
     const n = parseInt(hex.slice(1), 16);
     const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
     return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  _getNarrationLayout(clip, ctx, text, maxWidth, lineHeight) {
+    const font = ctx.font;
+    const cached = this._narrationLayoutCache.get(clip.id);
+    if (cached && cached.text === text && cached.maxWidth === maxWidth
+        && cached.lineHeight === lineHeight && cached.font === font) {
+      return cached.layout;
+    }
+    const layout = this._layoutNarrationText(ctx, text, maxWidth, lineHeight);
+    this._narrationLayoutCache.set(clip.id, { text, maxWidth, lineHeight, font, layout });
+    return layout;
   }
 
   _layoutNarrationText(ctx, text, maxWidth, lineHeight) {

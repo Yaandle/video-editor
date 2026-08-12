@@ -54,13 +54,13 @@
   --timeline-border: #eee;
   --timeline-label-bg: #161616;
   --timeline-label-border: #eee;
-  --timeline-divider: #333;
+  --timeline-divider: #2b2b2b;
   --timeline-text: #999;
   --timeline-clip-bg: #202020;
   --timeline-clip-border: #eee;
   --timeline-clip-text: #eee;
-  --timeline-overlay: rgba(255,255,255,0.08);
-  --timeline-overlay-strong: rgba(255,255,255,0.14);
+  --timeline-overlay: rgba(255,255,255,0.07);
+  --timeline-overlay-strong: rgba(255,255,255,0.13);
   --timeline-waveform: rgba(74, 222, 128, 0.35);
   /* read by timeline.js _themeColors — 'solid' (dark) or 'glow' (light) */
   --timeline-clip-mode: solid;
@@ -116,7 +116,7 @@
   --timeline-border: #111111;
   --timeline-label-bg: #e6e0d0;
   --timeline-label-border: #111111;
-  --timeline-divider: #ccc4b2;
+  --timeline-divider: #d5cfbf;
   --timeline-text: #444;
   --timeline-clip-bg: #ffffff;
   --timeline-clip-border: #111111;
@@ -271,8 +271,10 @@ body {
   padding: 8px 16px;
   font: 800 13px/1 monospace;
   letter-spacing: 0.08em;
-  color: var(--bg, #fff);
-  background: var(--accent, #000);
+  /* dark text on the yellow accent — matches the readable pairing used
+     everywhere else the accent is a background (e.g. menu item hover) */
+  color: #111;
+  background: var(--accent, #ffde59);
   border: 3px solid var(--border, #000);
   box-shadow: 4px 4px 0 var(--border, #000);
   pointer-events: none;
@@ -345,12 +347,17 @@ body {
   min-width: 80px;
 }
 .btn-render:hover { background: var(--accent-green-bg-hover); }
-.btn-add  { height: 26px; padding: 0 8px; font-size: 11px; }
-.btn-tool { height: 26px; padding: 0 8px; font-size: 11px; }
-#move-btn {
-    font-size: 14px;
-
+.btn-add  { height: 28px; padding: 0 9px; font-size: 11px; }
+.btn-tool {
+  height: 28px;
+  min-width: 30px;
+  padding: 0 7px;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
+
 /* Razor active state */
 #razor-btn.active {
   background: var(--accent-red-bg);
@@ -358,6 +365,27 @@ body {
   border-color: var(--accent-red-border);
 }
 #razor-btn.active:hover { background: var(--accent-red-bg-hover); }
+
+/* Move active state — mirrors razor's active treatment so the two
+   mutually-exclusive tools are equally legible at a glance. */
+#move-btn.active {
+  background: var(--accent-green-bg);
+  color: var(--accent-green);
+  border-color: var(--accent-green-border);
+}
+#move-btn.active:hover { background: var(--accent-green-bg-hover); }
+
+/* ── Keyboard-focus visibility (canvas/timeline tools live entirely on
+   icon-only buttons, so a clear focus ring matters for accessibility) ── */
+.btn:focus-visible,
+#project-name-lbl:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+#canvas-widget:focus-visible {
+  outline: var(--border-w) solid var(--accent);
+  outline-offset: 2px;
+}
 
 /* ── Workspace ── */
 #workspace {
@@ -648,15 +676,30 @@ body {
   border-top: var(--border-w) solid var(--border);
   cursor: ns-resize;
   flex-shrink: 0;
+  position: relative;
+}
+/* Small grip mark so the drag affordance reads at a glance instead of
+   relying purely on cursor shape. */
+#timeline-resize-handle::before {
+  content: "";
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 32px; height: 2px;
+  transform: translate(-50%, -50%);
+  background: var(--border-faint);
+  pointer-events: none;
 }
 #timeline-resize-handle:hover,
 #timeline-resize-handle.active { background: var(--accent); }
+#timeline-resize-handle:hover::before,
+#timeline-resize-handle.active::before { background: #111; }
 
 #timeline-container { position: relative; }
 
 /* ── Timeline ── */
 #timeline-container { background: var(--bg-panel); border-top: var(--border-w-lg) solid var(--border); flex-shrink: 0; }
 #timeline-canvas    { display: block; width: 100%; }
+#timeline-canvas:focus-visible { outline: var(--border-w) solid var(--accent); outline-offset: -2px; }
 
 /* ── Status bar ── */
 #status-bar {
@@ -723,16 +766,30 @@ body {
   justify-content: center;
 }
 #snap-modal-overlay.open { display: flex; }
-#snap-modal { background: var(--bg-surface); border: var(--border-w-lg) solid var(--border); box-shadow: var(--shadow); padding: 16px; min-width: 200px; border-radius: 0; }
-#snap-modal h3 { color: var(--text-primary); font-size: 12px; font-weight: 700; margin-bottom: 10px; }
+#snap-modal { background: var(--bg-surface); border: var(--border-w-lg) solid var(--border); box-shadow: var(--shadow); padding: 18px; min-width: 220px; border-radius: 0; }
+#snap-modal h3 {
+  color: var(--text-primary); font-size: 12px; font-weight: 700;
+  padding-bottom: 8px; margin-bottom: 10px;
+  border-bottom: var(--border-w) solid var(--border);
+}
+#snap-options { display: flex; flex-direction: column; gap: 6px; }
+#snap-options .snap-option { margin-bottom: 0; }
 .snap-option {
-  display: block; width: 100%; text-align: left;
+  display: flex; align-items: center; width: 100%; text-align: left;
   background: var(--bg-panel); color: var(--text-primary); border: var(--border-w) solid var(--border);
   font-family: var(--font); font-weight: 700;
-  padding: 6px 10px; margin-bottom: 5px; cursor: pointer; font-size: 11px; border-radius: 0;
+  padding: 7px 10px; margin-bottom: 5px; cursor: pointer; font-size: 11px; border-radius: 0;
+  box-shadow: var(--shadow-sm);
 }
 .snap-option:hover { background: var(--accent); color: #111; }
-#snap-modal-cancel { margin-top: 6px; color: var(--text-faint); font-size: 10px; font-weight: 700; cursor: pointer; text-align: right; display: block; }
+.snap-option:active { box-shadow: none; transform: translate(2px,2px); }
+#snap-modal-cancel {
+  margin-top: 12px; padding-top: 8px;
+  border-top: var(--border-w) solid var(--border);
+  color: var(--text-faint); font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+  cursor: pointer; text-align: right; display: block;
+}
+#snap-modal-cancel:hover { color: var(--text-primary); }
 
 /* ── Confirm dialog ── */
 #confirm-overlay {
@@ -746,8 +803,17 @@ body {
 }
 #confirm-overlay.open { display: flex; }
 #confirm-box { background: var(--bg-surface); border: var(--border-w-lg) solid var(--border); box-shadow: var(--shadow); padding: 20px; min-width: 280px; border-radius: 0; }
-#confirm-box p { color: var(--text-primary); font-size: 12px; font-weight: 700; margin-bottom: 14px; }
+#confirm-box p { color: var(--text-primary); font-size: 12px; font-weight: 700; margin-bottom: 14px; line-height: 1.5; }
 .confirm-btns { display: flex; gap: 8px; justify-content: flex-end; }
+.confirm-btns .btn { min-width: 64px; }
+/* "Yes" discards the user's work — flag it as the destructive choice so
+   it isn't visually identical to the safe "No" default. */
+#confirm-yes {
+  background: var(--accent-red-bg);
+  color: var(--accent-red);
+  border-color: var(--accent-red-border);
+}
+#confirm-yes:hover { background: var(--accent-red-bg-hover); }
 
 /* ── Advanced text modal ── */
 #advtext-modal-overlay {

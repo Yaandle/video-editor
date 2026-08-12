@@ -134,6 +134,20 @@ export class TimelineWidget {
   }
 
   _themeColors() {
+    // getComputedStyle + ~15 custom-property reads is redundant work when
+    // called every paint (every playback tick, every drag mousemove) and
+    // the theme hasn't changed since the last call — cache by the
+    // data-theme attribute and only recompute when it flips.
+    const themeAttr = document.documentElement.getAttribute('data-theme') || 'dark';
+    if (this._themeColorsCache && this._themeColorsCache.theme === themeAttr) {
+      return this._themeColorsCache.colors;
+    }
+    const colors = this._computeThemeColors();
+    this._themeColorsCache = { theme: themeAttr, colors };
+    return colors;
+  }
+
+  _computeThemeColors() {
     const cs = getComputedStyle(document.documentElement);
     const v = (name) => cs.getPropertyValue(name).trim();
     return {

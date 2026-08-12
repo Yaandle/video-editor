@@ -205,7 +205,10 @@ class VideoEditorServer:
             if not filename.endswith(".vkit"):
                 filename += ".vkit"
             path = os.path.join(PROJECTS_DIR, filename)
-            ProjectStore.save(self.project, path)
+            # File I/O + json (de)serialization is sync; a large project would
+            # otherwise stall this event loop — and every connected client's
+            # websocket — for the duration of the write.
+            await asyncio.get_event_loop().run_in_executor(None, ProjectStore.save, self.project, path)
             await websocket.send_text(json.dumps({"type": "save_status", "status": "done", "path": path, "filename": filename}))
 
         elif action == "load_project":
@@ -214,7 +217,7 @@ class VideoEditorServer:
             if not os.path.isfile(path):
                 await websocket.send_text(json.dumps({"type": "save_status", "status": "error", "message": f"Project not found: {filename}"}))
                 return
-            self.project = ProjectStore.load(path)
+            self.project = await asyncio.get_event_loop().run_in_executor(None, ProjectStore.load, path)
             await self.broadcast({"type": "project", "data": self.project.to_dict(), "filename": filename})
 
         elif action == "delete_project":

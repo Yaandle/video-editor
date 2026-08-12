@@ -14,10 +14,42 @@ export class MediaBin {
 
   onAddClip(fn) { this._onAdd = fn; }
 
+  // Shared observer: loads a video thumb's real src only once it scrolls
+  // near the viewport, instead of every card loading video data up front.
+  static _thumbObserver() {
+    if (!MediaBin._observer) {
+      MediaBin._observer = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const vid = entry.target;
+          MediaBin._observer.unobserve(vid);
+          vid.preload = 'metadata';
+          vid.src = vid.dataset.src;
+        }
+      }, { root: null, rootMargin: '200px' });
+    }
+    return MediaBin._observer;
+  }
+
   addItem(item) {
     if (this._items.find(i => i.url === item.url)) return;
     this._items.push(item);
     this._renderGrid();
+  }
+
+  // Bulk variant for initial project load — pushes every item then renders
+  // the grid once, instead of the O(n^2) rebuild you get from calling
+  // addItem() in a loop (each call tore down and recreated every card
+  // already added, including their <video> thumbs, so N items meant the
+  // first video's thumb got reloaded N times).
+  addItems(items) {
+    let added = false;
+    for (const item of items) {
+      if (this._items.find(i => i.url === item.url)) continue;
+      this._items.push(item);
+      added = true;
+    }
+    if (added) this._renderGrid();
   }
 
   // #72 — built-in sound effects (fetched from /sfx-list), kept in their own
@@ -26,6 +58,16 @@ export class MediaBin {
     if (this._sfxItems.find(i => i.url === item.url)) return;
     this._sfxItems.push(item);
     this._renderSfxList();
+  }
+
+  addSfxItems(items) {
+    let added = false;
+    for (const item of items) {
+      if (this._sfxItems.find(i => i.url === item.url)) continue;
+      this._sfxItems.push(item);
+      added = true;
+    }
+    if (added) this._renderSfxList();
   }
 
   _build() {
@@ -133,16 +175,23 @@ export class MediaBin {
 
     if (item.kind === 'image' || item.kind === 'svg') {
       const img = document.createElement('img');
+      img.loading = 'lazy';
       img.src = item.url;
       img.style.cssText = THUMB_FIT_STYLE;
       thumb.appendChild(img);
     } else if (item.kind === 'video') {
+      // Loading a real <video src> for every card at once (e.g. on project
+      // open, where many cards mount in one frame) means the browser starts
+      // fetching/decoding N full videos simultaneously just to paint a
+      // thumbnail. Defer that until the card actually scrolls into view.
       const vid = document.createElement('video');
-      vid.src = item.url;
       vid.muted = true;
+      vid.preload = 'none';
       vid.style.cssText = THUMB_FIT_STYLE;
-      vid.addEventListener('loadeddata', () => { vid.currentTime = 0.5; });
+      vid.addEventListener('loadeddata', () => { vid.currentTime = 0.5; }, { once: true });
       thumb.appendChild(vid);
+      MediaBin._thumbObserver().observe(vid);
+      vid.dataset.src = item.url;
     } else {
       const icon = document.createElement('div');
       icon.className = 'mediabin-icon';

@@ -400,7 +400,7 @@ class App {
   async _loadMediaBin() {
     try {
       const items = await fetch('/media-list').then(r => r.json());
-      items.forEach(item => this.mediaBin.addItem(item));
+      this.mediaBin.addItems(items);
     } catch (err) {
       console.error('Failed to load media bin', err);
     }
@@ -411,7 +411,7 @@ class App {
   async _loadSfxBin() {
     try {
       const items = await fetch('/sfx-list').then(r => r.json());
-      items.forEach(item => this.mediaBin.addSfxItem(item));
+      this.mediaBin.addSfxItems(items);
     } catch (err) {
       console.error('Failed to load sound effects', err);
     }
@@ -1889,7 +1889,9 @@ class App {
 
   _refreshAll() {
     if (this.project.clips.length > 0) {
-      const maxEnd = Math.max(...this.project.clips.map(c => c.end()));
+      // Avoid Math.max(...array) — spreading thousands of clips as call
+      // arguments risks "Maximum call stack size exceeded" on a large project.
+      const maxEnd = this.project.clips.reduce((max, c) => Math.max(max, c.end()), -Infinity);
       this.project.duration = maxEnd + 2.0;
     } else {
       this.project.duration = 30.0; // or whatever your empty-project default is

@@ -1,6 +1,7 @@
 # main.py
-import os, hashlib, time, wave, uvicorn
+import json, os, hashlib, time, wave, uvicorn
 from fastapi import FastAPI, HTTPException, WebSocket, UploadFile, File
+from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from websocket_server import PROJECTS_DIR, VideoEditorServer
 from sfx_gen import ensure_sfx_pack, list_sfx_meta
@@ -18,6 +19,31 @@ UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 SFX_DIR = os.path.join(BASE_DIR, "sfx")
 STATIC_DIR = os.path.join(ROOT_DIR, "frontend")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# Probing a video/audio file's duration/size with moviepy spawns an ffmpeg
+# process — cheap once, but /media-list used to redo this for every file on
+# every project load. Cache results on disk keyed by (mtime, size) so an
+# unchanged file is never re-probed.
+_METADATA_CACHE_PATH = os.path.join(UPLOAD_DIR, ".metadata_cache.json")
+
+
+def _load_metadata_cache():
+    try:
+        with open(_METADATA_CACHE_PATH, "r", encoding="utf8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_metadata_cache(cache):
+    try:
+        with open(_METADATA_CACHE_PATH, "w", encoding="utf8") as f:
+            json.dump(cache, f)
+    except Exception:
+        pass
+
+
+_metadata_cache = _load_metadata_cache()
 
 # #72 — built-in sound-effect pack. Synthesized locally (no downloads, no
 # committed binaries); a no-op after the first run since files persist.
@@ -60,6 +86,24 @@ def _probe_metadata(path, kind):
     return meta
 
 
+def _probe_metadata_cached(fpath, kind, fname):
+    """Same as _probe_metadata but skips the ffmpeg probe entirely when the
+    file's mtime+size match what's already cached on disk."""
+    try:
+        st = os.stat(fpath)
+        stamp = f"{st.st_mtime_ns}:{st.st_size}"
+    except OSError:
+        return _probe_metadata(fpath, kind)
+
+    cached = _metadata_cache.get(fname)
+    if cached and cached.get("stamp") == stamp:
+        return cached.get("metadata", {})
+
+    metadata = _probe_metadata(fpath, kind)
+    _metadata_cache[fname] = {"stamp": stamp, "metadata": metadata}
+    return metadata
+
+
 @app.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket):
     await server.handler(websocket)
@@ -76,7 +120,10 @@ async def upload(file: UploadFile = File(...)):
         f.write(content)
 
     kind = _kind_of(ext)
-    metadata = _probe_metadata(dest, kind)
+    # ffmpeg probing blocks; run off the event loop so other requests (and
+    # the collab websocket) aren't stalled while a big video is probed.
+    metadata = await run_in_threadpool(_probe_metadata_cached, dest, kind, name)
+    _save_metadata_cache(_metadata_cache)
 
     return {
         "name": name, "original": file.filename, "url": f"/media/{name}",
@@ -104,21 +151,36 @@ async def list_projects():
     return items
 
 
-@app.get("/media-list")
-async def list_media():
+def _list_media_sync():
     items = []
+    dirty = False
     for fname in os.listdir(UPLOAD_DIR):
+        if fname.startswith("."):
+            continue  # skip the metadata cache file itself
         fpath = os.path.join(UPLOAD_DIR, fname)
         if not os.path.isfile(fpath):
             continue
         ext = fname.rsplit(".", 1)[-1] if "." in fname else ""
         kind = _kind_of(ext)
         item = {"name": fname, "url": f"/media/{fname}", "kind": kind}
-        metadata = _probe_metadata(fpath, kind)
+        before = _metadata_cache.get(fname)
+        metadata = _probe_metadata_cached(fpath, kind, fname)
+        if _metadata_cache.get(fname) is not before:
+            dirty = True
         if metadata:
             item["metadata"] = metadata
         items.append(item)
+    if dirty:
+        _save_metadata_cache(_metadata_cache)
     return items
+
+
+@app.get("/media-list")
+async def list_media():
+    # Only ever hits ffmpeg for files that are new or changed since the last
+    # call (see _probe_metadata_cached); run off the event loop regardless
+    # since even a cold cache over many files takes real time.
+    return await run_in_threadpool(_list_media_sync)
 
 
 @app.get("/sfx-list")

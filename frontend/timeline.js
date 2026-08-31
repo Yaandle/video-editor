@@ -15,7 +15,12 @@ const MIN_TRACK_H = 38;
 const MAX_TIMELINE_H = 260;
 const EYE_SIZE = 13; // eye-icon hit target in the layer gutter
 
-
+// Viewport culling — only consider clips whose [start, end) overlaps the
+// given time range, so paint/hit-test cost scales with what's on screen, not
+// with total clip count. Mirrors canvas.js's _activeClips() for the preview.
+export function clipsInRange(clips, rangeStart, rangeEnd) {
+  return clips.filter(c => c.start < rangeEnd && c.end() > rangeStart);
+}
 
 export class TimelineWidget {
   constructor(canvasEl, project) {
@@ -84,6 +89,7 @@ export class TimelineWidget {
   _pxPerSec() { return ((this._el.width - LABEL_W) * this._zoom) / Math.max(this.project.duration, 1.0); }
   _secToPx(t) { return LABEL_W + (t * this._pxPerSec()) - this._panOffsetPx | 0; }
   _pxToSec(px) { return Math.max(0, (px - LABEL_W + this._panOffsetPx) / this._pxPerSec()); }
+  _visibleRange() { return [this._pxToSec(LABEL_W), this._pxToSec(this._el.width)]; }
 
   // #71 — layer count/rows are global now: every clip, regardless of type,
   // occupies a row (`clip.layer`) in one shared stack.
@@ -297,7 +303,8 @@ export class TimelineWidget {
   _drawClips(ctx) {
     const c = this._colors;
     ctx.font = '8px Consolas, monospace';
-    for (const clip of this.project.clips) {
+    const [viewStart, viewEnd] = this._visibleRange();
+    for (const clip of clipsInRange(this.project.clips, viewStart, viewEnd)) {
       const cr = this._clipRect(clip), col = TRACK_COLOURS(clip.track), isSelected = this._selectedIds.has(clip.id);
       const glowColor = col.border ?? c.clipBorder;
       const hidden = this._isLayerHidden(clip.layer ?? 0);
@@ -385,8 +392,10 @@ export class TimelineWidget {
 
   _clipAt(px, py) {
     const cy = this._toContentY(py);
-    for (let i = this.project.clips.length - 1; i >= 0; i--) {
-      const clip = this.project.clips[i], cr = this._clipRect(clip);
+    const [viewStart, viewEnd] = this._visibleRange();
+    const visible = clipsInRange(this.project.clips, viewStart, viewEnd);
+    for (let i = visible.length - 1; i >= 0; i--) {
+      const clip = visible[i], cr = this._clipRect(clip);
       if (px >= cr.x && px <= cr.x + cr.w && cy >= cr.y && cy <= cr.y + cr.h) return clip;
     }
     return null;
@@ -408,6 +417,7 @@ export class TimelineWidget {
     window.addEventListener('mouseup', e => this._onMouseUp(e));
     el.addEventListener('dblclick', e => this._onDblClick(e));
     el.addEventListener('wheel', e => this._onWheel(e), { passive: false });
+    el.addEventListener('contextmenu', e => this._onContextMenu(e));
 
     // #67b follow-up — accept drags from the media bin and add the clip at
     // the dropped time. mediaBin.js sets 'application/vidkit-media' on
@@ -620,7 +630,8 @@ export class TimelineWidget {
     const threshSec = THRESH_PX / this._pxPerSec();
     let best = t, bestDist = threshSec;
     const candidates = [0, this.playhead];
-    for (const c of this.project.clips) {
+    const [viewStart, viewEnd] = this._visibleRange();
+    for (const c of clipsInRange(this.project.clips, viewStart - threshSec, viewEnd + threshSec)) {
       if (c === this._dragClip) continue;
       candidates.push(c.start, c.end());
     }
@@ -683,6 +694,27 @@ export class TimelineWidget {
         bubbles: true, detail: { selectedIds: Array.from(this._selectedIds), primaryId: clip.id }
       }));
     }
+  }
+
+  // Right-click a clip: select it and let app.js show the same context menu
+  // canvas.js uses (Crop, Bring to Front/Back, Duplicate, Delete, ...) —
+  // mirrors canvas.js's _onContextMenu so both surfaces behave the same way.
+  _onContextMenu(e) {
+    e.preventDefault();
+    const pos = this._getPos(e), clip = this._clipAt(pos.x, pos.y);
+    if (!clip) return;
+    if (!this._selectedIds.has(clip.id)) {
+      this._selectedIds.clear();
+      this._selectedIds.add(clip.id);
+      this._selectionPrimaryId = clip.id;
+      this.redraw();
+    }
+    this._el.dispatchEvent(new CustomEvent('timeline:selectionchanged', {
+      bubbles: true, detail: { selectedIds: Array.from(this._selectedIds), primaryId: this._selectionPrimaryId }
+    }));
+    this._el.dispatchEvent(new CustomEvent('timeline:contextmenu', {
+      bubbles: true, detail: { clip, x: e.clientX, y: e.clientY }
+    }));
   }
 
   _onWheel(e) {

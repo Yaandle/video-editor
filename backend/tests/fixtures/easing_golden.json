@@ -1,0 +1,235 @@
+{
+  "cases": [
+    {
+      "fn": "linear",
+      "t": 0.0,
+      "expected": 0.0
+    },
+    {
+      "fn": "easeOutCubic",
+      "t": 0.0,
+      "expected": 0.0
+    },
+    {
+      "fn": "easeOutExpo",
+      "t": 0.0,
+      "expected": 0.0
+    },
+    {
+      "fn": "easeOutBack",
+      "t": 0.0,
+      "overshoot": 1.7,
+      "expected": -2.220446049250313e-16
+    },
+    {
+      "fn": "easeOutBack",
+      "t": 0.0,
+      "overshoot": 1.2,
+      "expected": -2.220446049250313e-16
+    },
+    {
+      "fn": "easeOutBack",
+      "t": 0.0,
+      "overshoot": 1.4,
+      "expected": 0.0
+    },
+    {
+      "fn": "linear",
+      "t": 0.1,
+      "expected": 0.1
+    },
+    {
+      "fn": "easeOutCubic",
+      "t": 0.1,
+      "expected": 0.2709999999999999
+    },
+    {
+      "fn": "easeOutExpo",
+      "t": 0.1,
+      "expected": 0.5
+    },
+    {
+      "fn": "easeOutBack",
+      "t": 0.1,
+      "overshoot": 1.7,
+      "expected": 0.4086999999999996
+    },
+    {
+      "fn": "easeOutBack",
+      "t": 0.1,
+      "overshoot": 1.2,
+      "expected": 0.36819999999999964
+    },
+    {
+      "fn": "easeOutBack",
+      "t": 0.1,
+      "overshoot": 1.4,
+      "expected": 0.38439999999999963
+    },
+    {
+      "fn": "linear",
+      "t": 0.25,
+      "expected": 0.25
+    },
+    {
+      "fn": "easeOutCubic",
+      "t": 0.25,
+      "expected": 0.578125
+    },
+    {
+      "fn": "easeOutExpo",
+      "t": 0.25,
+      "expected": 0.8232233047033631
+    },
+    {
+      "fn": "easeOutBack",
+      "t": 0.25,
+      "overshoot": 1.7,
+      "expected": 0.8171874999999998
+    },
+    {
+      "fn": "easeOutBack",
+      "t": 0.25,
+      "overshoot": 1.2,
+      "expected": 0.7468749999999998
+    },
+    {
+      "fn": "easeOutBack",
+      "t": 0.25,
+      "overshoot": 1.4,
+      "expected": 0.775
+    },
+    {
+      "fn": "linear",
+      "t": 0.5,
+      "expected": 0.5
+    },
+    {
+      "fn": "easeOutCubic",
+      "t": 0.5,
+      "expected": 0.875
+    },
+    {
+      "fn": "easeOutExpo",
+      "t": 0.5,
+      "expected": 0.96875
+    },
+    {
+      "fn": "easeOutBack",
+      "t": 0.5,
+      "overshoot": 1.7,
+      "expected": 1.0875
+    },
+    {
+      "fn": "easeOutBack",
+      "t": 0.5,
+      "overshoot": 1.2,
+      "expected": 1.025
+    },
+    {
+      "fn": "easeOutBack",
+      "t": 0.5,
+      "overshoot": 1.4,
+      "expected": 1.0499999999999998
+    },
+    {
+      "fn": "linear",
+      "t": 0.75,
+      "expected": 0.75
+    },
+    {
+      "fn": "easeOutCubic",
+      "t": 0.75,
+      "expected": 0.984375
+    },
+    {
+      "fn": "easeOutExpo",
+      "t": 0.75,
+      "expected": 0.99447572827198
+    },
+    {
+      "fn": "easeOutBack",
+      "t": 0.75,
+      "overshoot": 1.7,
+      "expected": 1.0640625
+    },
+    {
+      "fn": "easeOutBack",
+      "t": 0.75,
+      "overshoot": 1.2,
+      "expected": 1.040625
+    },
+    {
+      "fn": "easeOutBack",
+      "t": 0.75,
+      "overshoot": 1.4,
+      "expected": 1.05
+    },
+    {
+      "fn": "linear",
+      "t": 0.9,
+      "expected": 0.9
+    },
+    {
+      "fn": "easeOutCubic",
+      "t": 0.9,
+      "expected": 0.999
+    },
+    {
+      "fn": "easeOutExpo",
+      "t": 0.9,
+      "expected": 0.998046875
+    },
+    {
+      "fn": "easeOutBack",
+      "t": 0.9,
+      "overshoot": 1.7,
+      "expected": 1.0143
+    },
+    {
+      "fn": "easeOutBack",
+      "t": 0.9,
+      "overshoot": 1.2,
+      "expected": 1.0098
+    },
+    {
+      "fn": "easeOutBack",
+      "t": 0.9,
+      "overshoot": 1.4,
+      "expected": 1.0116
+    },
+    {
+      "fn": "linear",
+      "t": 1.0,
+      "expected": 1.0
+    },
+    {
+      "fn": "easeOutCubic",
+      "t": 1.0,
+      "expected": 1.0
+    },
+    {
+      "fn": "easeOutExpo",
+      "t": 1.0,
+      "expected": 1.0
+    },
+    {
+      "fn": "easeOutBack",
+      "t": 1.0,
+      "overshoot": 1.7,
+      "expected": 1.0
+    },
+    {
+      "fn": "easeOutBack",
+      "t": 1.0,
+      "overshoot": 1.2,
+      "expected": 1.0
+    },
+    {
+      "fn": "easeOutBack",
+      "t": 1.0,
+      "overshoot": 1.4,
+      "expected": 1.0
+    }
+  ]
+}

@@ -174,7 +174,45 @@ export function newClip(clip_type, start = 0.0, duration = 5.0) {
   return new Clip({ id: genId(), track, clip_type, start, duration, ...(defaults[clip_type] ?? {}) });
 }
 
+// True when some other clip's [start, end) shares any time with `clip`'s —
+// i.e. whether stacking order (layer) means anything for it at all. Used to
+// decide whether to show the Bring to Front/Back menu items.
+export function hasOverlappingClip(clips, clip) {
+  return clips.some(c => c !== clip && c.start < clip.end() && c.end() > clip.start);
+}
 
+// Bring to Front / Bring Forward / Send Backward / Send to Back — pure,
+// DOM-free reordering math (see frontend/tests/layer_reorder.test.mjs).
+// Lower clip.layer draws on top (canvas.js _activeClips(),
+// websocket_server.py's render sort both put the lowest layer last so it
+// paints over everything else). Only permutes the layer numbers already in
+// use among clips that time-overlap `clip` — never invents a new layer
+// number and never touches a clip outside that overlap group, so it can't
+// collide with anything elsewhere in the timeline.
+//
+// Returns null when there's nothing to do (fewer than 2 overlapping clips,
+// or `clip` is already at the requested end of the stack); otherwise an
+// array of { id, layer } assignments for the caller to apply.
+export function computeLayerReorder(clips, clip, direction) {
+  const group = clips
+    .filter(c => c.start < clip.end() && c.end() > clip.start)
+    .sort((a, b) => (a.layer ?? 0) - (b.layer ?? 0));
+  if (group.length < 2) return null;
+
+  const idx = group.indexOf(clip);
+  const layers = group.map(c => c.layer ?? 0);
+  const newIdx =
+    direction === 'front' ? 0 :
+    direction === 'back' ? group.length - 1 :
+    direction === 'forward' ? Math.max(0, idx - 1) :
+    Math.min(group.length - 1, idx + 1);
+  if (newIdx === idx) return null;
+
+  const reordered = group.slice();
+  reordered.splice(idx, 1);
+  reordered.splice(newIdx, 0, clip);
+  return reordered.map((c, i) => ({ id: c.id, layer: layers[i] }));
+}
 
 export class Project {
   constructor(data = {}) {
@@ -734,7 +772,7 @@ class App {
       this._updateStatus();
     });
     document.getElementById('canvas-widget').addEventListener('canvas:contextmenu', (e) => {
-      this._showCanvasContextMenu(e.detail.clip, e.detail.x, e.detail.y);
+      this._showClipContextMenu(e.detail.clip, e.detail.x, e.detail.y);
     });
     document.getElementById('canvas-widget').addEventListener('canvas:selectionchanged', (e) => {
       this._setSelection(e.detail.selectedIds ?? e.detail.ids, e.detail.primaryId);
@@ -744,6 +782,9 @@ class App {
     });
     document.getElementById('timeline-canvas').addEventListener('timeline:selectionchanged', (e) => {
       this._setSelection(e.detail.selectedIds ?? e.detail.ids, e.detail.primaryId);
+    });
+    document.getElementById('timeline-canvas').addEventListener('timeline:contextmenu', (e) => {
+      this._showClipContextMenu(e.detail.clip, e.detail.x, e.detail.y);
     });
     document.getElementById('timeline-canvas').addEventListener('timeline:clipchanged', () => {
       this._dirty = true;
@@ -1137,6 +1178,8 @@ class App {
           case 'r': e.preventDefault(); this._openRenderModal(); break;
           case 'q': e.preventDefault(); window.close(); break;
           case 'd': if (!inInput) { e.preventDefault(); this._duplicateSelected(); } break;
+          case ']': if (!inInput) { e.preventDefault(); this._reorderSelected(e.shiftKey ? 'front' : 'forward'); } break;
+          case '[': if (!inInput) { e.preventDefault(); this._reorderSelected(e.shiftKey ? 'back' : 'backward'); } break;
           case 'x': if (!inInput) { e.preventDefault(); this._cutSelected(); } break;
           case 'c': if (!inInput) { e.preventDefault(); this._copySelected(); } break;
           case 'v': if (!inInput) { e.preventDefault(); this._pasteClip(); } break;
@@ -1166,6 +1209,10 @@ class App {
       case 'add-shape':     this._addShapeClip(payload ?? 'rectangle'); break;
       case 'delete':        this._deleteSelected(); break;
       case 'duplicate':     this._duplicateSelected(); break;
+      case 'bring-front':   this._reorderSelected('front'); break;
+      case 'bring-forward': this._reorderSelected('forward'); break;
+      case 'send-backward': this._reorderSelected('backward'); break;
+      case 'send-back':     this._reorderSelected('back'); break;
       case 'cut':           this._cutSelected(); break;
       case 'copy':          this._copySelected(); break;
       case 'paste':         this._pasteClip(); break;
@@ -1246,6 +1293,37 @@ class App {
     this._dirty = true;
     this._refreshAll();
     this._commit(before);
+  }
+
+  // Bring to Front / Bring Forward / Send Backward / Send to Back — reorders
+  // clip.layer among clips that time-overlap the given clip (its current
+  // on-canvas "stack"; lower layer number draws on top, see canvas.js
+  // _activeClips() and websocket_server.py's render sort). The actual index
+  // math lives in computeLayerReorder (a pure, DOM-free function — see
+  // frontend/tests/layer_reorder.test.mjs) so it's independently testable;
+  // this just applies the resulting assignments and records undo/dirty state.
+  _reorderLayer(clip, direction) {
+    const assignments = computeLayerReorder(this.project.clips, clip, direction);
+    if (!assignments) { this._updateStatus('Nothing to reorder'); return; }
+
+    const before = JSON.stringify(this.project.toDict());
+    for (const { id, layer } of assignments) {
+      const c = this._findClip(id);
+      if (c) c.layer = layer;
+    }
+    this._dirty = true;
+    this._refreshAll();
+    if (this._selectionPrimaryId === clip.id) this.props.showClip(clip);
+    this._commit(before);
+    this._updateStatus({
+      front: 'Brought to front', back: 'Sent to back',
+      forward: 'Brought forward', backward: 'Sent backward',
+    }[direction] + `: ${clip.label()}`);
+  }
+
+  _reorderSelected(direction) {
+    const clip = this._findClip(this._selectionPrimaryId ?? '');
+    if (clip) this._reorderLayer(clip, direction);
   }
 
   _duplicateSelected() {
@@ -1451,9 +1529,12 @@ class App {
 
   _render() { this._wsSend({ type: 'render', data: this.project.toDict() }); }
 
-  // #28 — right-click a clip on the canvas: a small menu with Crop (image/
-  // video only), Reset crop (when one's applied), Duplicate and Delete.
-  _showCanvasContextMenu(clip, x, y) {
+  // #28 — right-click a clip (on the canvas or the timeline — both dispatch
+  // the same *:contextmenu event, see _wireEvents): a small menu with Crop
+  // (image/video only), Reset crop (when one's applied), layer reordering
+  // (only when this clip actually overlaps another one in time — otherwise
+  // there's nothing to reorder against), Duplicate and Delete.
+  _showClipContextMenu(clip, x, y) {
     const menu = document.getElementById('canvas-context-menu');
     if (!menu || !clip) return;
     menu.innerHTML = '';
@@ -1464,6 +1545,9 @@ class App {
       item.innerHTML = `<span>${label}</span>`;
       item.addEventListener('click', () => { menu.classList.remove('open'); onClick(); });
       menu.appendChild(item);
+    };
+    const addSeparator = () => {
+      menu.appendChild(document.createElement('div')).className = 'menu-dropdown-item separator';
     };
 
     if (['image', 'video'].includes(clip.clip_type)) {
@@ -1484,8 +1568,20 @@ class App {
           this._commit(before);
         });
       }
-      menu.appendChild(document.createElement('div')).className = 'menu-dropdown-item separator';
+      addSeparator();
     }
+
+    // Stacking order only means anything among clips that share screen time
+    // with this one — with nothing to reorder against, skip the items
+    // entirely rather than show them disabled.
+    if (hasOverlappingClip(this.project.clips, clip)) {
+      addItem('Bring to Front', () => this._reorderLayer(clip, 'front'));
+      addItem('Bring Forward', () => this._reorderLayer(clip, 'forward'));
+      addItem('Send Backward', () => this._reorderLayer(clip, 'backward'));
+      addItem('Send to Back', () => this._reorderLayer(clip, 'back'));
+      addSeparator();
+    }
+
     addItem('Duplicate', () => { this._setSelection([clip.id], clip.id); this._duplicateSelected(); });
     addItem('Delete', () => { this._setSelection([clip.id], clip.id); this._deleteSelected(); });
 

@@ -61,7 +61,7 @@ function tokensToLines(tokens) {
   return lines;
 }
 
-const Easing = {
+export const Easing = {
   linear: t => t,
   easeOutCubic: t => 1 - Math.pow(1 - t, 3),
   easeOutExpo: t => t === 1 ? 1 : 1 - Math.pow(2, -10 * t),

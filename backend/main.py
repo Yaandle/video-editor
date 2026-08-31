@@ -1,5 +1,5 @@
-# main.py
-import json, os, hashlib, time, wave, uvicorn
+﻿# main.py
+import asyncio, json, os, hashlib, time, wave, uvicorn
 from fastapi import FastAPI, HTTPException, WebSocket, UploadFile, File
 from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
@@ -7,7 +7,7 @@ from websocket_server import PROJECTS_DIR, VideoEditorServer
 from sfx_gen import ensure_sfx_pack, list_sfx_meta
 
 try:
-    from moviepy.editor import VideoFileClip, AudioFileClip
+    from moviepy import VideoFileClip, AudioFileClip
     _HAS_MOVIEPY = True
 except Exception:
     VideoFileClip = AudioFileClip = None
@@ -21,7 +21,7 @@ STATIC_DIR = os.path.join(ROOT_DIR, "frontend")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Probing a video/audio file's duration/size with moviepy spawns an ffmpeg
-# process — cheap once, but /media-list used to redo this for every file on
+# process â€” cheap once, but /media-list used to redo this for every file on
 # every project load. Cache results on disk keyed by (mtime, size) so an
 # unchanged file is never re-probed.
 _METADATA_CACHE_PATH = os.path.join(UPLOAD_DIR, ".metadata_cache.json")
@@ -45,7 +45,11 @@ def _save_metadata_cache(cache):
 
 _metadata_cache = _load_metadata_cache()
 
-# #72 — built-in sound-effect pack. Synthesized locally (no downloads, no
+_UPLOAD_CHUNK_SIZE = 1024 * 1024  # 1MiB â€” bounds handler memory regardless of upload size
+_PROBE_TIMEOUT_S = 60  # ffmpeg probe reads headers only and is normally near-instant;
+                        # this is a safety net against a hang on a pathological file
+
+# #72 â€” built-in sound-effect pack. Synthesized locally (no downloads, no
 # committed binaries); a no-op after the first run since files persist.
 ensure_sfx_pack(SFX_DIR)
 
@@ -115,25 +119,33 @@ async def upload(file: UploadFile = File(...)):
     tag = hashlib.md5(f"{stem}{time.time()}".encode()).hexdigest()[:8]
     name = f"{stem}_{tag}{ext}"
     dest = os.path.join(UPLOAD_DIR, name)
-    content = await file.read()
+    size = 0
     with open(dest, "wb") as f:
-        f.write(content)
+        while chunk := await file.read(_UPLOAD_CHUNK_SIZE):
+            f.write(chunk)
+            size += len(chunk)
 
     kind = _kind_of(ext)
     # ffmpeg probing blocks; run off the event loop so other requests (and
-    # the collab websocket) aren't stalled while a big video is probed.
-    metadata = await run_in_threadpool(_probe_metadata_cached, dest, kind, name)
+    # the collab websocket) aren't stalled while a big video is probed. Bound
+    # by a timeout so a pathological file can't hang the request forever.
+    try:
+        metadata = await asyncio.wait_for(
+            run_in_threadpool(_probe_metadata_cached, dest, kind, name), timeout=_PROBE_TIMEOUT_S
+        )
+    except asyncio.TimeoutError:
+        metadata = {}
     _save_metadata_cache(_metadata_cache)
 
     return {
         "name": name, "original": file.filename, "url": f"/media/{name}",
-        "kind": kind, "mime": file.content_type, "size": len(content),
+        "kind": kind, "mime": file.content_type, "size": size,
         **({"metadata": metadata} if metadata else {}),
     }
 
 @app.delete("/media/{name}")
 async def delete_media(name: str):
-    # prevent path traversal — only allow deleting exactly what's in UPLOAD_DIR
+    # prevent path traversal â€” only allow deleting exactly what's in UPLOAD_DIR
     safe_name = os.path.basename(name)
     fpath = os.path.join(UPLOAD_DIR, safe_name)
     if not os.path.isfile(fpath):

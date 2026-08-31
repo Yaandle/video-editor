@@ -1,4 +1,4 @@
-# websocket_server.py
+﻿# websocket_server.py
 import asyncio
 import json
 import os
@@ -8,12 +8,14 @@ from PIL import Image as _PILImage
 if not hasattr(_PILImage, "ANTIALIAS"):
     _PILImage.ANTIALIAS = _PILImage.LANCZOS
 
+from moviepy.video.fx import Resize, Rotate, CrossFadeIn, CrossFadeOut
+
 from models import Project
 from project_store import ProjectStore
 
 _BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(_BACKEND_DIR, "uploads")
-SFX_DIR = os.path.join(_BACKEND_DIR, "sfx")  # #72 — built-in sound effects
+SFX_DIR = os.path.join(_BACKEND_DIR, "sfx")  # #72 â€” built-in sound effects
 PROJECTS_DIR = os.path.join(_BACKEND_DIR, "projects")
 os.makedirs(PROJECTS_DIR, exist_ok=True)
 
@@ -73,7 +75,7 @@ def _apply_motion_keyframes(mclip, kfs, nat_w, nat_h, base_scale, canvas_w, canv
     Ken Burns style pan/zoom for export: drives a dynamic resize+position
     across clip.motion_keyframes instead of the static _place() call, so a
     clip can zoom into a feature, pan to another, and zoom back out in the
-    rendered file too — not just the live canvas preview.
+    rendered file too â€” not just the live canvas preview.
     """
     fit_scale = min(canvas_w * 0.88 / nat_w, canvas_h * 0.80 / nat_h, 1.0)
 
@@ -90,22 +92,22 @@ def _apply_motion_keyframes(mclip, kfs, nat_w, nat_h, base_scale, canvas_w, canv
         dw, dh = nat_w * fit_scale * s, nat_h * fit_scale * s
         return (ix * canvas_w - dw / 2, iy * canvas_h - dh / 2)
 
-    return mclip.resize(factor).set_position(pos)
+    return mclip.with_effects([Resize(factor=factor)]).with_position(pos)
 
 
 def _apply_crop(mclip, clip):
     """
-    #28 — crop an image/video source to clip.crop_x/y/w/h (normalized 0-1
+    #28 â€” crop an image/video source to clip.crop_x/y/w/h (normalized 0-1
     rect in the source's natural pixels) before any resize/position math
     runs, so downstream fit-to-canvas sizing is based on the cropped
-    dimensions — mirrors canvas.js _drawMedia's 9-arg drawImage crop.
+    dimensions â€” mirrors canvas.js _drawMedia's 9-arg drawImage crop.
     """
     crop_x = float(clip.get("crop_x", 0) or 0)
     crop_y = float(clip.get("crop_y", 0) or 0)
     crop_w = float(clip.get("crop_w", 1) or 1)
     crop_h = float(clip.get("crop_h", 1) or 1)
     if crop_x <= 0.001 and crop_y <= 0.001 and crop_w >= 0.999 and crop_h >= 0.999:
-        return mclip  # full frame — nothing to do
+        return mclip  # full frame â€” nothing to do
 
     nat_w, nat_h = mclip.size
     x1 = max(0, min(nat_w - 1, crop_x * nat_w))
@@ -113,12 +115,15 @@ def _apply_crop(mclip, clip):
     x2 = max(x1 + 1, min(nat_w, (crop_x + crop_w) * nat_w))
     y2 = max(y1 + 1, min(nat_h, (crop_y + crop_h) * nat_h))
 
-    from moviepy.video.fx.all import crop as _crop_fx
-    return mclip.fx(_crop_fx, x1=x1, y1=y1, x2=x2, y2=y2)
+    from moviepy.video.fx import Crop
+
+    return mclip.with_effects([
+        Crop(x1=x1, y1=y1, x2=x2, y2=y2)
+    ])
 
 
 _SLIDE_OFFSETS = {
-    # #63 — direction the clip travels FROM when sliding in (canvas fractions)
+    # #63 â€” direction the clip travels FROM when sliding in (canvas fractions)
     "slide_up": (0, 1), "slide_down": (0, -1),
     "slide_left": (1, 0), "slide_right": (-1, 0),
 }
@@ -126,7 +131,7 @@ _SLIDE_OFFSETS = {
 
 def _apply_transitions(mclip, clip, base_pos, canvas_w, canvas_h):
     """
-    #63 — mirror canvas.js's _transitionState at render time.
+    #63 â€” mirror canvas.js's _transitionState at render time.
     Fades map to crossfadein/out; slides animate position with the same
     ease-out-cubic decay as the preview; scale_pop falls back to fade
     (moviepy 1.x has no cheap per-frame scale about a point).
@@ -144,13 +149,13 @@ def _apply_transitions(mclip, clip, base_pos, canvas_w, canvas_h):
     if "scale_pop" in (t_in, t_out):
         # Intentional: moviepy 1.x has no cheap per-frame scale about a point,
         # so scale_pop renders as a plain crossfade. The canvas preview still
-        # shows the real pop — this note flags the mismatch for developers.
+        # shows the real pop â€” this note flags the mismatch for developers.
         print("[render] note: scale_pop transition falls back to crossfade at render time", file=sys.stderr)
 
     if t_in in ("fade", "scale_pop"):
-        mclip = mclip.crossfadein(in_d)
+        mclip = mclip.with_effects([CrossFadeIn(in_d)])
     if t_out in ("fade", "scale_pop"):
-        mclip = mclip.crossfadeout(out_d)
+        mclip = mclip.with_effects([CrossFadeOut(out_d)])
 
     if t_in in _SLIDE_OFFSETS or t_out in _SLIDE_OFFSETS:
         inx, iny = _SLIDE_OFFSETS.get(t_in, (0, 0))
@@ -169,11 +174,11 @@ def _apply_transitions(mclip, clip, base_pos, canvas_w, canvas_h):
                 y_ += outy * canvas_h * 1.1 * p
             return (x_, y_)
 
-        mclip = mclip.set_position(pos)
+        mclip = mclip.with_position(pos)
         if t_in in _SLIDE_OFFSETS:
-            mclip = mclip.crossfadein(min(in_d * 0.6, dur))
+            mclip = mclip.with_effects([CrossFadeIn(min(in_d * 0.6, dur))])
         if t_out in _SLIDE_OFFSETS:
-            mclip = mclip.crossfadeout(min(out_d * 0.6, dur))
+            mclip = mclip.with_effects([CrossFadeOut(min(out_d * 0.6, dur))])
 
     return mclip
 
@@ -182,6 +187,10 @@ class VideoEditorServer:
     def __init__(self):
         self.project = Project()
         self.clients = set()
+        # Compose+encode is CPU/memory heavy; cap concurrent renders to 1 so a
+        # double-click or a second tab against the same server can't compete
+        # for memory with an in-flight render (see the out_of_memory path below).
+        self._render_semaphore = asyncio.Semaphore(1)
 
     async def register(self, websocket):
         self.clients.add(websocket)
@@ -206,8 +215,8 @@ class VideoEditorServer:
                 filename += ".vkit"
             path = os.path.join(PROJECTS_DIR, filename)
             # File I/O + json (de)serialization is sync; a large project would
-            # otherwise stall this event loop — and every connected client's
-            # websocket — for the duration of the write.
+            # otherwise stall this event loop â€” and every connected client's
+            # websocket â€” for the duration of the write.
             await asyncio.get_event_loop().run_in_executor(None, ProjectStore.save, self.project, path)
             await websocket.send_text(json.dumps({"type": "save_status", "status": "done", "path": path, "filename": filename}))
 
@@ -249,13 +258,13 @@ class VideoEditorServer:
         moviepy 1.x composite render.
         Supported clip types: video, image, audio, narration, shape.
         Skipped: code, graph.
-        Emits render_status: started → done | error
+        Emits render_status: started â†’ done | error
         """
-        from moviepy.editor import (
+        from moviepy import (
             VideoFileClip, ImageClip, ColorClip,
             CompositeVideoClip, AudioFileClip, CompositeAudioClip,
         )
-        from moviepy.video.fx.all import speedx
+        from moviepy.video.fx import MultiplySpeed
 
         CANVAS_W = project_data.get("canvas_w", 1080)
         CANVAS_H = project_data.get("canvas_h", 1920)
@@ -263,7 +272,7 @@ class VideoEditorServer:
         DURATION = project_data.get("duration", 5.0)
         proj_name = project_data.get("name", "output").replace(" ", "_")
         out_path = os.path.join(UPLOAD_DIR, f"{proj_name}_output.mp4")
-        # #71 — hidden layers (eye icon off in the timeline) are muted from
+        # #71 â€” hidden layers (eye icon off in the timeline) are muted from
         # the rendered output too, same as the live preview.
         hidden_layers = set(project_data.get("hidden_layers", []))
 
@@ -272,14 +281,23 @@ class VideoEditorServer:
             if rel.startswith("media/"):
                 return os.path.join(UPLOAD_DIR, rel[len("media/"):])
             if rel.startswith("sfx/"):
-                # #72 — sound-effect clips reference /sfx/<file>, generated
+                # #72 â€” sound-effect clips reference /sfx/<file>, generated
                 # into backend/sfx/ rather than the uploads folder.
                 return os.path.join(SFX_DIR, rel[len("sfx/"):])
             return os.path.join(UPLOAD_DIR, rel)
 
-        stage = "compose"  # compose → encode; reported in render_status errors
-        try:
-            video_layers = [ColorClip(size=(CANVAS_W, CANVAS_H), color=(0, 0, 0)).set_duration(DURATION)]
+        # compose â†’ encode; reported in render_status errors. A dict (not a
+        # plain local) so the except-block below can read the stage reached
+        # inside _compose_and_encode() after it runs in a worker thread.
+        stage_box = {"stage": "compose"}
+
+        # Building every clip's moviepy object (opening files, spawning an
+        # ffmpeg probe per clip) plus the final ffmpeg encode are both
+        # blocking, CPU/IO-heavy work; run the whole thing in a worker thread
+        # so a heavy multi-clip project doesn't freeze the event loop (and
+        # every other request/collab client) for the whole render.
+        def _compose_and_encode():
+            video_layers = [ColorClip(size=(CANVAS_W, CANVAS_H), color=(0, 0, 0)).with_duration(DURATION)]
             audio_tracks = []
 
             for clip in sorted(project_data.get("clips", []), key=lambda c: c.get("layer", 0), reverse=True):
@@ -298,14 +316,14 @@ class VideoEditorServer:
                 if not src and ctype not in ("narration", "shape"):
                     continue
 
-                # ── NARRATION ──
+                # â”€â”€ NARRATION â”€â”€
                 if ctype == "narration":
                     text = clip.get("content", "").strip()
                     if not text:
                         print("[render] WARNING: narration clip has empty content", file=sys.stderr)
                         continue
                     try:
-                        from moviepy.editor import VideoClip
+                        from moviepy import VideoClip
                         from text_anim import render_narration_frame
                         import numpy as np
 
@@ -321,7 +339,7 @@ class VideoEditorServer:
 
                         def _get_frame(t, _cache=_cache):
                             if _cache["t"] != t:
-                                # #66 — animation clock starts after text_delay_ms
+                                # #66 â€” animation clock starts after text_delay_ms
                                 _cache["img"] = render_narration_frame(
                                     text, anim_style, (max(0.0, t) - anim_delay_s) * 1000.0, clip,
                                     CANVAS_W, x_norm, font_size, pad_top, pad_bottom,
@@ -336,10 +354,10 @@ class VideoEditorServer:
                         probe_img = render_narration_frame(text, anim_style, 0, clip, CANVAS_W, x_norm, font_size, pad_top, pad_bottom, color=font_color, scale_x=scale_x)
 
                         tc = VideoClip(make_frame, duration=duration)
-                        mc = VideoClip(make_mask, duration=duration, ismask=True)
-                        tc = tc.set_mask(mc).set_start(start)
+                        mc = VideoClip(make_mask, duration=duration, is_mask=True)
+                        tc = tc.with_mask(mc).with_start(start)
                         dy = y * CANVAS_H - pad_top
-                        tc = tc.set_position((0, int(round(dy))))
+                        tc = tc.with_position((0, int(round(dy))))
                         tc = _apply_transitions(tc, clip, (0, int(round(dy))), CANVAS_W, CANVAS_H)
                         video_layers.append(tc)
                         print(f"[render] narration OK ({anim_style or 'static'}): {probe_img.height}px block at y={dy:.0f}", file=sys.stderr)
@@ -349,7 +367,7 @@ class VideoEditorServer:
                         print(traceback.format_exc(), file=sys.stderr)
                     continue
 
-                # ── SHAPE ──
+                # â”€â”€ SHAPE â”€â”€
                 if ctype == "shape":
                     try:
                         from PIL import Image, ImageDraw
@@ -426,10 +444,10 @@ class VideoEditorServer:
                             img = img.rotate(-rotation, resample=Image.BICUBIC, expand=True)
 
                         arr = np.array(img)
-                        sc = ImageClip(arr, duration=duration).set_start(start)
+                        sc = ImageClip(arr, duration=duration).with_start(start)
                         fw, fh = img.size
                         base = (x * CANVAS_W - fw / 2, y * CANVAS_H - fh / 2)
-                        sc = sc.set_position(base)
+                        sc = sc.with_position(base)
                         sc = _apply_transitions(sc, clip, base, CANVAS_W, CANVAS_H)
                         video_layers.append(sc)
                     except Exception as exc:
@@ -440,21 +458,21 @@ class VideoEditorServer:
 
                 fpath = _resolve(src)
                 if not os.path.isfile(fpath):
-                    print(f"[render] WARNING: file not found, skipping — {fpath}", file=sys.stderr)
+                    print(f"[render] WARNING: file not found, skipping â€” {fpath}", file=sys.stderr)
                     continue
 
-                # ── AUDIO ──
+                # â”€â”€ AUDIO â”€â”€
                 if ctype == "audio":
                     try:
                         source_start = float(clip.get("source_start", 0))
                         audio = AudioFileClip(fpath)
                         end_in_source = min(source_start + duration, audio.duration)
-                        audio_tracks.append(audio.subclip(source_start, end_in_source).set_start(start))
+                        audio_tracks.append(audio.subclipped(source_start, end_in_source).with_start(start))
                     except Exception as exc:
                         print(f"[render] WARNING: audio load failed ({src}): {exc}", file=sys.stderr)
                     continue
 
-                # ── VIDEO ──
+                # â”€â”€ VIDEO â”€â”€
                 if ctype == "video":
                     try:
                         source_start = float(clip.get("source_start", 0))
@@ -467,33 +485,35 @@ class VideoEditorServer:
                         # of source, so the clip appears to play faster/slower
                         # while keeping the authored timeline duration.
                         end_in_source = min(source_start + duration * speed, vc.duration)
-                        vc = vc.subclip(source_start, end_in_source)
+                        vc = vc.subclipped(source_start, end_in_source)
                         if speed != 1.0:
-                            vc = vc.fx(speedx, speed)
+                            vc = vc.with_effects([
+                                MultiplySpeed(factor=speed)
+                            ])
 
                         rotation = float(clip.get("rotation", 0) or 0)
                         kfs = _sorted_keyframes(clip.get("motion_keyframes"))
 
                         if kfs and not rotation:
-                            # Animate Position/Zoom — Ken Burns pan/zoom driven by
+                            # Animate Position/Zoom â€” Ken Burns pan/zoom driven by
                             # the clip's own keyframes, mirrors canvas.js resolvePos.
                             nat_w, nat_h = vc.size
                             vc = _apply_motion_keyframes(vc, kfs, nat_w, nat_h, scale_x, CANVAS_W, CANVAS_H, duration)
                             dx, dy = x * CANVAS_W - nat_w / 2, y * CANVAS_H - nat_h / 2  # transitions fallback
                         else:
                             dw, dh, dx, dy = _place(*vc.size, x, y, scale_x, scale_y, CANVAS_W, CANVAS_H)
-                            vc = vc.resize((int(round(dw)), int(round(dh))))
+                            vc = vc.with_effects([Resize(new_size=(int(round(dw)), int(round(dh))))])
                             if rotation:
-                                vc = vc.rotate(-rotation, expand=True)
+                                vc = vc.with_effects([Rotate(angle=-rotation, expand=True)])
                                 rw, rh = vc.size
                                 dx, dy = x * CANVAS_W - rw / 2, y * CANVAS_H - rh / 2
-                            vc = vc.set_position((dx, dy))
+                            vc = vc.with_position((dx, dy))
                             if kfs:
-                                print("[render] note: Animate Position/Zoom + rotation isn't supported together at render time — using the static position instead", file=sys.stderr)
+                                print("[render] note: Animate Position/Zoom + rotation isn't supported together at render time â€” using the static position instead", file=sys.stderr)
 
-                        vc = vc.set_start(start)
+                        vc = vc.with_start(start)
                         if vc.audio is not None:
-                            audio_tracks.append(vc.audio.set_start(start))
+                            audio_tracks.append(vc.audio.with_start(start))
                             vc = vc.without_audio()
                         vc = _apply_transitions(vc, clip, (dx, dy), CANVAS_W, CANVAS_H)
                         video_layers.append(vc)
@@ -501,7 +521,7 @@ class VideoEditorServer:
                         print(f"[render] WARNING: video load failed ({src}): {exc}", file=sys.stderr)
                     continue
 
-                # ── IMAGE ──
+                # â”€â”€ IMAGE â”€â”€
                 if ctype == "image":
                     try:
                         ic = ImageClip(fpath, duration=duration)
@@ -515,63 +535,71 @@ class VideoEditorServer:
                             dx, dy = x * CANVAS_W - nat_w / 2, y * CANVAS_H - nat_h / 2  # transitions fallback
                         else:
                             dw, dh, dx, dy = _place(*ic.size, x, y, scale_x, scale_y, CANVAS_W, CANVAS_H)
-                            ic = ic.resize((int(round(dw)), int(round(dh))))
+                            ic = ic.with_effects([Resize(new_size=(int(round(dw)), int(round(dh))))])
                             if rotation:
-                                ic = ic.rotate(-rotation, expand=True)
+                                ic = ic.with_effects([Rotate(angle=-rotation, expand=True)])
                                 rw, rh = ic.size
                                 dx, dy = x * CANVAS_W - rw / 2, y * CANVAS_H - rh / 2
-                            ic = ic.set_position((dx, dy))
+                            ic = ic.with_position((dx, dy))
                             if kfs:
-                                print("[render] note: Animate Position/Zoom + rotation isn't supported together at render time — using the static position instead", file=sys.stderr)
+                                print("[render] note: Animate Position/Zoom + rotation isn't supported together at render time â€” using the static position instead", file=sys.stderr)
 
-                        ic = ic.set_start(start)
+                        ic = ic.with_start(start)
                         ic = _apply_transitions(ic, clip, (dx, dy), CANVAS_W, CANVAS_H)
                         video_layers.append(ic)
                     except Exception as exc:
                         print(f"[render] WARNING: image load failed ({src}): {exc}", file=sys.stderr)
                     continue
 
-            final_video = CompositeVideoClip(video_layers, size=(CANVAS_W, CANVAS_H), use_bgclip=True).set_duration(DURATION)
+            final_video = CompositeVideoClip(video_layers, size=(CANVAS_W, CANVAS_H), use_bgclip=True).with_duration(DURATION)
             if audio_tracks:
-                final_video = final_video.set_audio(CompositeAudioClip(audio_tracks))
+                final_video = final_video.with_audio(CompositeAudioClip(audio_tracks))
 
-            stage = "encode"
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, lambda: final_video.write_videofile(
+            stage_box["stage"] = "encode"
+            final_video.write_videofile(
                 out_path, fps=FPS, codec="libx264", audio_codec="aac", preset="slow",
                 ffmpeg_params=[
                     "-crf", "18", "-profile:v", "high", "-level", "4.2", "-pix_fmt", "yuv420p",
                     "-b:v", "10M", "-maxrate", "12M", "-bufsize", "24M", "-ar", "48000", "-b:a", "320k",
                 ],
                 logger=None,
-            ))
+            )
 
-            await websocket.send_text(json.dumps({
-                "type": "render_status", "status": "done",
-                "message": f"Rendered → {out_path}", "path": f"/media/{proj_name}_output.mp4",
-            }))
-        except Exception as exc:
-            import traceback
-            # Classify so the frontend can show something better than
-            # "render error". `code` is stable; `message` is human-readable.
-            if isinstance(exc, ImportError):
-                code, hint = "dependency_missing", "A required render dependency (moviepy/numpy/Pillow) failed to import."
-            elif isinstance(exc, FileNotFoundError):
-                code, hint = "missing_media", "A media file referenced by the project could not be found."
-            elif isinstance(exc, MemoryError):
-                code, hint = "out_of_memory", "The project is too large to render in memory."
-            elif stage == "encode":
-                code, hint = "encode_failed", "ffmpeg failed while writing the output file."
-            else:
-                code, hint = "compose_failed", "Building the composite video failed."
-            print(f"[render] ERROR ({code}, stage={stage}): {exc}", file=sys.stderr)
-            print(traceback.format_exc(), file=sys.stderr)
-            await websocket.send_text(json.dumps({
-                "type": "render_status", "status": "error",
-                "code": code, "stage": stage,
-                "message": f"{hint} ({exc})",
-                "detail": traceback.format_exc()[-800:],
-            }))
+        # One render at a time â€” compose+encode is memory-heavy enough that a
+        # second concurrent render (double-click, second tab) risks the
+        # out_of_memory path below on its own.
+        async with self._render_semaphore:
+            try:
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, _compose_and_encode)
+
+                await websocket.send_text(json.dumps({
+                    "type": "render_status", "status": "done",
+                    "message": f"Rendered â†’ {out_path}", "path": f"/media/{proj_name}_output.mp4",
+                }))
+            except Exception as exc:
+                import traceback
+                stage = stage_box["stage"]
+                # Classify so the frontend can show something better than
+                # "render error". `code` is stable; `message` is human-readable.
+                if isinstance(exc, ImportError):
+                    code, hint = "dependency_missing", "A required render dependency (moviepy/numpy/Pillow) failed to import."
+                elif isinstance(exc, FileNotFoundError):
+                    code, hint = "missing_media", "A media file referenced by the project could not be found."
+                elif isinstance(exc, MemoryError):
+                    code, hint = "out_of_memory", "The project is too large to render in memory."
+                elif stage == "encode":
+                    code, hint = "encode_failed", "ffmpeg failed while writing the output file."
+                else:
+                    code, hint = "compose_failed", "Building the composite video failed."
+                print(f"[render] ERROR ({code}, stage={stage}): {exc}", file=sys.stderr)
+                print(traceback.format_exc(), file=sys.stderr)
+                await websocket.send_text(json.dumps({
+                    "type": "render_status", "status": "error",
+                    "code": code, "stage": stage,
+                    "message": f"{hint} ({exc})",
+                    "detail": traceback.format_exc()[-800:],
+                }))
 
             
     async def handler(self, websocket):
@@ -596,3 +624,9 @@ class VideoEditorServer:
             pass
         finally:
             await self.unregister(websocket)
+
+
+
+
+
+

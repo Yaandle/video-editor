@@ -1,8 +1,8 @@
-
+﻿
 import math
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-# ── Easing (ported 1:1 from canvas.js `Easing`) ─────────────────────────────
+# â”€â”€ Easing (ported 1:1 from canvas.js `Easing`) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class Easing:
     @staticmethod
     def linear(t):
@@ -30,7 +30,7 @@ def load_narration_font(size):
     """
     Load a monospace font at `size`, trying Windows/Linux/macOS locations.
     PIL's bitmap default font IGNORES the size argument, so falling back to it
-    produces tiny unreadable text in rendered frames — warn loudly if we must.
+    produces tiny unreadable text in rendered frames â€” warn loudly if we must.
     """
     global _FONT_WARNED
     candidates = (
@@ -58,7 +58,7 @@ def load_narration_font(size):
         _FONT_WARNED = True
         import sys
         print(
-            "[text_anim] WARNING: no scalable monospace font found — falling "
+            "[text_anim] WARNING: no scalable monospace font found â€” falling "
             "back to PIL's bitmap default, which ignores font size. Rendered "
             "text will be tiny. Install DejaVu Sans Mono (or Consolas).",
             file=sys.stderr,
@@ -66,8 +66,8 @@ def load_narration_font(size):
     return ImageFont.load_default()
 
 
-# ── Layout (ported 1:1 from canvas.js `_layoutNarrationText`) ──────────────
-# ⚠ SYNC CONTRACT: this function MUST stay behaviourally identical to
+# â”€â”€ Layout (ported 1:1 from canvas.js `_layoutNarrationText`) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# âš  SYNC CONTRACT: this function MUST stay behaviourally identical to
 # `_layoutNarrationText` in frontend/canvas.js. If either side changes, port
 # the change to the other. Parameters that must match: word-wrap threshold
 # (space + word > max_width), per-char x offsets, global word/char indices,
@@ -200,7 +200,7 @@ def draw_narration_text(draw_target, text, font, x, y, color, params=None, alpha
         )
 
 
-# ── Low-level transformed glyph/word draw (mirrors ctx.translate+scale+fillText) ─
+# â”€â”€ Low-level transformed glyph/word draw (mirrors ctx.translate+scale+fillText) â”€
 def _draw_text_transformed(
     base_img,
     text,
@@ -228,7 +228,7 @@ def _draw_text_transformed(
 
     base_w = font.getlength(text)        # advance width, matches layout positions
     w = draw_font.getlength(text)
-    ascent, descent = draw_font.getmetrics()  # constant per font — no per-glyph jitter
+    ascent, descent = draw_font.getmetrics()  # constant per font â€” no per-glyph jitter
     h = ascent + descent
     if w <= 0 or h <= 0:
         return
@@ -414,11 +414,11 @@ def render_narration_linescan(base_img, layout, ox, oy, elapsed_ms, params, font
         # Defensive: strip any embedded newlines from each word before joining
         line_text = " ".join(w["text"].replace('\n', '').replace('\r', '') for w in line["words"])
 
-        # Base draw now goes through the shared helper — shadow/stroke/fill,
+        # Base draw now goes through the shared helper â€” shadow/stroke/fill,
         # same order and same colour resolution as every other style.
         draw_narration_text(draw, line_text, font, line_x, oy + line["y"], color, params, alpha)
 
-        # Sweep highlight (approximation — soft bright band crossing the line as it settles)
+        # Sweep highlight (approximation â€” soft bright band crossing the line as it settles)
         if t < 0.9 and line["line_width"] > 0:
             sweep_t = Easing.ease_out_cubic(min(1.0, t / 0.75))
             lw = int(line["line_width"]) + 20
@@ -477,7 +477,7 @@ def render_narration_slideup(base_img, layout, ox, oy, elapsed_ms, params, font,
 
 
 def render_narration_scalepop(base_img, layout, ox, oy, elapsed_ms, params, font, color):
-    # canvas.js _renderNarrationScalePop — uniform scale about (ox, oy).
+    # canvas.js _renderNarrationScalePop â€” uniform scale about (ox, oy).
     dur = params.get("text_duration_ms", 550)
     t = max(0.0, min(1.0, elapsed_ms / dur))
     scale = 0.6 + 0.4 * max(0.0, Easing.ease_out_back(t, 1.7))
@@ -519,7 +519,7 @@ def render_narration_charstagger(base_img, layout, ox, oy, elapsed_ms, params, f
 
 
 def render_narration_glitch(base_img, layout, ox, oy, elapsed_ms, params, font, color):
-    # canvas.js _renderNarrationGlitch — same pseudo-random jitter/flicker.
+    # canvas.js _renderNarrationGlitch â€” same pseudo-random jitter/flicker.
     dur = params.get("text_duration_ms", 500)
     t = max(0.0, min(1.0, elapsed_ms / dur))
     if t >= 1.0:
@@ -545,7 +545,7 @@ def render_narration_glitch(base_img, layout, ox, oy, elapsed_ms, params, font, 
 ANIM_RENDERERS = {
     "typewriter": render_narration_typewriter,
     "wordblurin": render_narration_wordblurin,
-    "wordblur": render_narration_wordblurin,  # alias — Advanced Text modal id (#66)
+    "wordblur": render_narration_wordblurin,  # alias â€” Advanced Text modal id (#66)
     "linescan": render_narration_linescan,
     "fade": render_narration_fade,
     "slideup": render_narration_slideup,
@@ -565,7 +565,7 @@ def render_narration_frame(text, style, elapsed_ms, params, canvas_w, x_norm, fo
     color = _to_rgb(color)  # accept '#rrggbb' from clip dicts as well as tuples
 
     # wrap width now respects scale_x, mirroring canvas.js's baseMaxW * sx.
-    # ratio corrected from 0.85 -> 0.88 to match canvas.js exactly — this was
+    # ratio corrected from 0.85 -> 0.88 to match canvas.js exactly â€” this was
     # a second, pre-existing mismatch independent of resize/scale.
     base_max_width = int(canvas_w * 0.88)
     max_width = int(base_max_width * scale_x)

@@ -1,9 +1,9 @@
-# sfx_gen.py — built-in sound-effect pack (#72)
+﻿# sfx_gen.py â€” built-in sound-effect pack (#72)
 #
 # Procedurally synthesizes a small library of simple, generic UI/transition
 # sounds (clicks, swipes, whooshes, chimes...) using nothing but the Python
 # standard library (wave/struct/math/random). No binary assets are committed
-# to the repo and nothing is downloaded — the pack is generated once, on the
+# to the repo and nothing is downloaded â€” the pack is generated once, on the
 # machine that runs the app, the first time the server starts. This keeps
 # the project fully local/offline and avoids any licensing questions around
 # bundled audio.
@@ -35,7 +35,7 @@ def _n(duration):
     return max(1, int(SAMPLE_RATE * duration))
 
 
-# ── Generators — each returns a list of floats in [-1, 1] ──────────────────
+# â”€â”€ Generators â€” each returns a list of floats in [-1, 1] â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _gen_click(duration=0.05):
     n = _n(duration)
@@ -170,7 +170,7 @@ SFX_CATALOG = [
 
 
 def ensure_sfx_pack(sfx_dir):
-    """Generate any missing files in the built-in sfx pack. Idempotent —
+    """Generate any missing files in the built-in sfx pack. Idempotent â€”
     existing files are left untouched, so user edits/replacements stick."""
     os.makedirs(sfx_dir, exist_ok=True)
     for filename, _label, _category, gen in SFX_CATALOG:
@@ -179,9 +179,10 @@ def ensure_sfx_pack(sfx_dir):
             continue
         try:
             _write_wav(path, gen())
-        except Exception as exc:  # pragma: no cover — never block server start
+        except Exception as exc:  # pragma: no cover â€” never block server start
             print(f"[sfx_gen] failed to generate {filename}: {exc}")
 
 
 def list_sfx_meta():
     return [{"name": fn, "label": label, "category": cat} for fn, label, cat, _ in SFX_CATALOG]
+

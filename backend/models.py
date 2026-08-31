@@ -1,4 +1,4 @@
-# models.py
+﻿# models.py
 from dataclasses import dataclass, field, asdict
 import dataclasses
 from pathlib import Path
@@ -47,8 +47,8 @@ class Clip:
     speed: float = 1.0
 
     text_anim_style: Optional[str] = None  # None = static wrapped text
-    text_delay_ms: int = 0                 # #66 — delay before text animation starts
-    text_anim_easing: str = "easeInOut"    # #66 — easing selected in Advanced Text modal
+    text_delay_ms: int = 0                 # #66 â€” delay before text animation starts
+    text_anim_easing: str = "easeInOut"    # #66 â€” easing selected in Advanced Text modal
     text_chars_per_second: int = 26
     text_pop_duration_ms: int = 90
     text_stagger_ms: int = 60
@@ -59,7 +59,7 @@ class Clip:
     text_slide_distance: int = 90
     text_sweep_width: int = 140
 
-    # #28 — crop, normalized 0-1 rect within the source media's natural
+    # #28 â€” crop, normalized 0-1 rect within the source media's natural
     # pixels. Default (0,0,1,1) is the full, uncropped frame.
     crop_x: float = 0.0
     crop_y: float = 0.0
@@ -93,7 +93,7 @@ class Clip:
     text_stroke: Optional[dict] = None
     text_plate: Optional[dict] = None
 
-    # #63 — Canva-style in/out transitions, valid on any clip type
+    # #63 â€” Canva-style in/out transitions, valid on any clip type
     # kinds: fade | slide_up | slide_down | slide_left | slide_right | scale_pop
     transition_in: Optional[str] = None
     transition_in_ms: int = 500
@@ -107,11 +107,11 @@ class Clip:
         if self.clip_type == "narration":
             return f'"{self.content[:28].replace(chr(10), " ")}..."'
         if self.clip_type == "code":
-            return f"code · {Path(self.code_file).name}"
+            return f"code Â· {Path(self.code_file).name}"
         if self.clip_type == "graph":
-            return f"graph · {self.graph_type}"
+            return f"graph Â· {self.graph_type}"
         if self.clip_type == "shape":
-            return f"shape · {self.shape_kind}"
+            return f"shape Â· {self.shape_kind}"
         return self.clip_type
 
 
@@ -124,7 +124,7 @@ class Project:
     duration: float = 30.0
     background_color: str = "#000000"
     clips: list = field(default_factory=list)
-    # #71 — consolidated timeline: layers are global (not per-track), and any
+    # #71 â€” consolidated timeline: layers are global (not per-track), and any
     # layer index can be hidden (eye icon in the UI). Hidden layers are
     # skipped both in the live preview and at render time.
     hidden_layers: list = field(default_factory=list)

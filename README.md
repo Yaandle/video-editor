@@ -9,7 +9,7 @@ A video compositor with a configurable canvas (9:16, 16:9, 1:1, or custom), tool
 │               │                        │                     │
 │               │                        │                     │
 │   Media Bin   │      Canvas            │    Properties       │
-│               │      (9:16 / 16:9)     │                     │
+│               │                        │                     │
 │               │                        │                     │
 │               │                        │                     │
 ├───────────────┴────────────────────────┴─────────────────────┤

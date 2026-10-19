@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>vidkit render harness</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="frame" width="1920" height="1080"></canvas>
+<script type="module">
+// Headless harness driven by studio/render/engine.py. Time is the only input:
+// __seek(t) quantizes t to a frame, decodes whatever that frame needs, renders
+// synchronously and returns the renderer's frame report. The engine waits for
+// a paint and captures the viewport.
+import { createRenderer } from './renderer/core.js';
+
+const canvas = document.getElementById('frame');
+const ctx = canvas.getContext('2d', { alpha: false });
+let renderer = null, fps = 30, W = 1920, H = 1080;
+
+window.__load = async (project, opts = {}) => {
+  W = opts.width ?? project.settings.width;
+  H = opts.height ?? project.settings.height;
+  canvas.width = W; canvas.height = H;
+  canvas.style.width = `${W}px`; canvas.style.height = `${H}px`;
+  renderer = await createRenderer({ mode: 'export', base: opts.base ?? '/', tokens: opts.tokens });
+  await renderer.load(project, { width: W, height: H });
+  fps = project.settings.fps;
+  return { ok: true, errors: renderer.errors, fonts: [...document.fonts].map((f) => `${f.family}:${f.weight}:${f.status}`) };
+};
+
+window.__seek = async (t) => {
+  const frame = Math.round(t * fps);
+  const tq = frame / fps;
+  await renderer.prepare(tq);
+  return renderer.renderFrame(ctx, tq, { width: W, height: H });
+};
+
+window.__events = () => renderer.events();
+window.__harness = 'ready';
+</script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+{
+  "schema": "vidkit.project",
+  "version": 1,
+  "name": "showcase",
+  "settings": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "bpm": 120,
+    "subdivision": 1,
+    "beat_offset": 0,
+    "beat_lock": true,
+    "duration": 24,
+    "background": "paper",
+    "style_pack": "neo-brutal"
+  },
+  "tracks": [
+    { "index": 0, "name": "Chrome", "hidden": false, "muted": false, "locked": false },
+    { "index": 1, "name": "Overlays", "hidden": false, "muted": false, "locked": false },
+    { "index": 2, "name": "Scenes", "hidden": false, "muted": false, "locked": false }
+  ],
+  "clips": [
+    {
+      "id": "nav", "type": "nav-bar", "layer": 0, "start": 0, "duration": 24,
+      "props": { "brand": "vidkit/studio", "links": ["Title", "Beat", "Springs", "Layout", "Render", "Start"] }
+    },
+    {
+      "id": "footer", "type": "footer-bar", "layer": 0, "start": 0, "duration": 24,
+      "props": { "left": "Beat-locked motion, rendered offline", "right": "120 BPM — 30 FPS — 1080p" }
+    },
+    { "id": "s1", "type": "scene.title-slam", "layer": 2, "start": 0, "duration": 4, "props": {} },
+    { "id": "s2", "type": "scene.beat-grid", "layer": 2, "start": 4, "duration": 4, "props": {} },
+    { "id": "s3", "type": "scene.spring-lab", "layer": 2, "start": 8, "duration": 4, "props": {} },
+    { "id": "s4", "type": "scene.editorial", "layer": 2, "start": 12, "duration": 4, "props": {} },
+    { "id": "s5", "type": "scene.render-queue", "layer": 2, "start": 16, "duration": 4, "props": {} },
+    { "id": "s6", "type": "scene.outro", "layer": 2, "start": 20, "duration": 4, "props": {} }
+  ],
+  "audio": {
+    "music": { "preset": "brutal-bounce", "seed": 7, "gain_db": -2, "end_hit": true },
+    "auto_sfx": true,
+    "sfx_gain_db": 0,
+    "target_lufs": -14,
+    "cues": []
+  },
+  "meta": { "title": "vidkit studio 2.0 — showcase", "author": "vidkit" }
+}

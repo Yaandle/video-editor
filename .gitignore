@@ -1,5 +1,7 @@
 # Python
 .venv/
+videoeditor_venv/
+.pytest_cache/
 __pycache__/
 *.pyc
 *.pyo
@@ -20,9 +22,19 @@ renders/
 *.mov
 *.avi
 backend/uploads/
+media/uploads/
+media/.trash/
+reports/doctor.json
 
-# Project saves (keep if you want to track them)
+# Local tools copied in by doctor (ffmpeg build is ~190 MB; doctor re-creates it)
+tools/
+
+# Project saves (keep if you want to track them) — the showcase is the shipped example
 *.vkit
+projects/*.json
+!projects/showcase.json
+projects/autosave/
+projects/.trash/
 
 # Editor
 .vscode/

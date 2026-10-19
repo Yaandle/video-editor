@@ -1,4 +1,4 @@
-import { CanvasWidget } from './canvas.js';
+﻿import { CanvasWidget } from './canvas.js';
 import { TimelineWidget } from './timeline.js';
 import { PropertiesPanel } from './properties.js';
 import { PlaybackController } from './playback.js';
@@ -62,8 +62,8 @@ export const THEMES = {
 export const UNDO_LIMIT = 100;
 
 // Single source of truth for every Clip field + default. Constructor and
-// toDict() both derive from this — a field added here can't silently
-// vanish on save the way `layer` did (see #22 postmortem, §1.1).
+// toDict() both derive from this â€” a field added here can't silently
+// vanish on save the way `layer` did (see #22 postmortem, Â§1.1).
 const CLIP_DEFAULTS = {
   id: '', track: 'visual', clip_type: 'narration', start: 0.0, duration: 5.0,
   content: '',
@@ -107,7 +107,7 @@ const CLIP_DEFAULTS = {
 
   layer: 0,
   // shape (#22)
-  // #28 — crop, normalized 0-1 rect within the source media's natural
+  // #28 â€” crop, normalized 0-1 rect within the source media's natural
   // pixels. Default (0,0,1,1) is the full, uncropped frame.
   crop_x: 0.0,
   crop_y: 0.0,
@@ -125,9 +125,9 @@ const CLIP_DEFAULTS = {
   inner_radius_ratio: 0.5,
   opacity: 1.0,
 
-  motion_keyframes: null, // or [{t, x, y, scale}, …] — any number of stops, t in 0-1 of the clip
+  motion_keyframes: null, // or [{t, x, y, scale}, â€¦] â€” any number of stops, t in 0-1 of the clip
 
-  // transitions (#63) — apply to any clip type on any track
+  // transitions (#63) â€” apply to any clip type on any track
   transition_in: null,      // null|'fade'|'slide_up'|'slide_down'|'slide_left'|'slide_right'|'scale_pop'
   transition_in_ms: 500,
   transition_out: null,     // null|'fade'|'slide_up'|'slide_down'|'slide_left'|'slide_right'|'scale_pop'
@@ -145,14 +145,14 @@ export class Clip {
   label() {
     if (this.clip_type === 'narration') {
       const preview = this.content.slice(0, 28).replace(/\n/g, ' ');
-      return this.content.length > 28 ? `"${preview}…"` : `"${this.content}"`;
+      return this.content.length > 28 ? `"${preview}â€¦"` : `"${this.content}"`;
     }
-    if (this.clip_type === 'code')  return `code · ${this.code_file ? this.code_file.split(/[\\/]/).pop() : 'code block'}`;
-    if (this.clip_type === 'graph') return `graph · ${this.graph_type}`;
-    if (this.clip_type === 'audio') return `audio · ${this.content.slice(0, 24).replace(/\n/g, ' ')}`;
-    if (this.clip_type === 'video') return `video · ${this.code_file ? this.code_file.split(/[\\/]/).pop() : 'video'}`;
-    if (this.clip_type === 'image') return `image · ${this.code_file ? this.code_file.split(/[\\/]/).pop() : 'image'}`;
-    if (this.clip_type === 'shape') return `shape · ${this.shape_kind}`;
+    if (this.clip_type === 'code')  return `code Â· ${this.code_file ? this.code_file.split(/[\\/]/).pop() : 'code block'}`;
+    if (this.clip_type === 'graph') return `graph Â· ${this.graph_type}`;
+    if (this.clip_type === 'audio') return `audio Â· ${this.content.slice(0, 24).replace(/\n/g, ' ')}`;
+    if (this.clip_type === 'video') return `video Â· ${this.code_file ? this.code_file.split(/[\\/]/).pop() : 'video'}`;
+    if (this.clip_type === 'image') return `image Â· ${this.code_file ? this.code_file.split(/[\\/]/).pop() : 'image'}`;
+    if (this.clip_type === 'shape') return `shape Â· ${this.shape_kind}`;
     return this.clip_type;
   }
   toDict() {
@@ -174,19 +174,19 @@ export function newClip(clip_type, start = 0.0, duration = 5.0) {
   return new Clip({ id: genId(), track, clip_type, start, duration, ...(defaults[clip_type] ?? {}) });
 }
 
-// True when some other clip's [start, end) shares any time with `clip`'s —
+// True when some other clip's [start, end) shares any time with `clip`'s â€”
 // i.e. whether stacking order (layer) means anything for it at all. Used to
 // decide whether to show the Bring to Front/Back menu items.
 export function hasOverlappingClip(clips, clip) {
   return clips.some(c => c !== clip && c.start < clip.end() && c.end() > clip.start);
 }
 
-// Bring to Front / Bring Forward / Send Backward / Send to Back — pure,
+// Bring to Front / Bring Forward / Send Backward / Send to Back â€” pure,
 // DOM-free reordering math (see frontend/tests/layer_reorder.test.mjs).
 // Lower clip.layer draws on top (canvas.js _activeClips(),
 // websocket_server.py's render sort both put the lowest layer last so it
 // paints over everything else). Only permutes the layer numbers already in
-// use among clips that time-overlap `clip` — never invents a new layer
+// use among clips that time-overlap `clip` â€” never invents a new layer
 // number and never touches a clip outside that overlap group, so it can't
 // collide with anything elsewhere in the timeline.
 //
@@ -223,9 +223,9 @@ export class Project {
     this.duration          = data.duration         ?? 30.0;
     this.background_color  = data.background_color ?? '#000000';
     this.clips             = (data.clips ?? []).map(cd => new Clip(cd));
-    // #71 — consolidated timeline: layers are global rows shared by every
+    // #71 â€” consolidated timeline: layers are global rows shared by every
     // clip type. hidden_layers holds the set of layer indices toggled off
-    // via the eye icon — hidden in the preview, muted in playback, and
+    // via the eye icon â€” hidden in the preview, muted in playback, and
     // skipped at render time.
     this.hidden_layers      = new Set(data.hidden_layers ?? []);
   }
@@ -333,7 +333,7 @@ class App {
     this.canvas   = new CanvasWidget(document.getElementById('canvas-widget'), this.project, this._selectedIds);
     this.timeline = new TimelineWidget(document.getElementById('timeline-canvas'), this.project);
     this.props    = new PropertiesPanel(document.getElementById('props-inner'));
-    // #67c — let the properties panel read/write on-screen dimensions
+    // #67c â€” let the properties panel read/write on-screen dimensions
     this.props.setSizeHooks(
       (clip) => this.canvas.getClipProjectSize(clip),
       (clip, w, h) => this.canvas.setClipProjectSize(clip, w, h),
@@ -421,7 +421,7 @@ class App {
     // Narration clips can pick a web font (Advanced Text Options). ctx.font
     // silently falls back to a default until the family has actually
     // downloaded, and canvas text doesn't auto-repaint the way DOM text
-    // does — so force one redraw once every requested font is ready.
+    // does â€” so force one redraw once every requested font is ready.
     if (document.fonts?.ready) {
       document.fonts.ready.then(() => this.canvas.redraw());
     }
@@ -444,7 +444,7 @@ class App {
     }
   }
 
-  // #72 — built-in sound effects, synthesized locally by the backend
+  // #72 â€” built-in sound effects, synthesized locally by the backend
   // (backend/sfx_gen.py) and listed the same way uploaded media is.
   async _loadSfxBin() {
     try {
@@ -476,12 +476,12 @@ class App {
 
     const before = JSON.stringify(this.project.toDict());
     // startAt: explicit drop position (timeline drag-drop, #67b follow-up);
-    // otherwise #73 — land on the current playhead, not appended after the
+    // otherwise #73 â€” land on the current playhead, not appended after the
     // last clip of the same kind.
     const start = startAt != null ? Math.max(0, startAt) : this.playback.playhead;
     const c = newClip(clip_type, start, dur);
     c.code_file = item.url;
-    // #71 — unified timeline: if it was dropped onto a specific row, honour
+    // #71 â€” unified timeline: if it was dropped onto a specific row, honour
     // that row when free; otherwise (toolbar/media-bin "+") pick the first
     // free layer so it never silently overlaps something already there.
     c.layer = (layerAt != null && !this._layerCollides(layerAt, c.start, c.duration))
@@ -502,7 +502,7 @@ class App {
 
   _addShapeClip(shape_kind) {
     const before = JSON.stringify(this.project.toDict());
-    // #73 — land on the current playhead, not appended after the last shape.
+    // #73 â€” land on the current playhead, not appended after the last shape.
     const start = this.playback.playhead;
     const c = newClip('shape', start);
     c.shape_kind = shape_kind;
@@ -602,7 +602,7 @@ class App {
     const playhead = this.playback.playhead;
     for (const clip of this.project.clips) {
       if (clip.clip_type !== 'audio' || !clip.code_file || !clip.duration) continue;
-      if (this.project.isLayerHidden(clip.layer ?? 0)) continue; // #71 — hidden layer = muted
+      if (this.project.isLayerHidden(clip.layer ?? 0)) continue; // #71 â€” hidden layer = muted
       this._ensureAudioForClip(clip);
       const el = this._audioEls[clip.id];
       const start = clip.start;
@@ -651,7 +651,7 @@ class App {
       if (clip.clip_type !== 'audio' || !clip.code_file || !clip.duration) continue;
       this._ensureAudioForClip(clip);
       const el = this._audioEls[clip.id];
-      const hidden = this.project.isLayerHidden(clip.layer ?? 0); // #71 — hidden layer = muted
+      const hidden = this.project.isLayerHidden(clip.layer ?? 0); // #71 â€” hidden layer = muted
       const start = clip.start;
       const end = clip.end();
       const srcStart = clip.source_start ?? 0;
@@ -741,16 +741,16 @@ class App {
     toast.className = 'visible';
     if (status === 'started') {
       toast.classList.remove('done', 'error');
-      toast.textContent = '⏳ Rendering…';
+      toast.textContent = 'â³ Renderingâ€¦';
     } else if (status === 'done') {
       toast.classList.add('done');
       toast.classList.remove('error');
-      toast.textContent = `✓ ${message}`;
+      toast.textContent = `âœ“ ${message}`;
       setTimeout(() => toast.classList.remove('visible', 'done'), 6000);
     } else if (status === 'error') {
       toast.classList.add('error');
       toast.classList.remove('done');
-      toast.textContent = `✗ ${message}`;
+      toast.textContent = `âœ— ${message}`;
       setTimeout(() => toast.classList.remove('visible', 'error'), 8000);
     }
   }
@@ -764,7 +764,7 @@ class App {
       this._dirty = true;
       this._updateStatus();
     });
-    // #28 — live crop-drag updates (canvas.js already redraws itself)
+    // #28 â€” live crop-drag updates (canvas.js already redraws itself)
     document.getElementById('canvas-widget').addEventListener('canvas:clipcropped', (e) => {
       const clip = this._findClip(e.detail.id);
       if (clip && this._selectionPrimaryId === e.detail.id) this.props.showClip(clip);
@@ -800,13 +800,13 @@ class App {
       this.playback.seek(e.detail.t);
     });
 
-    // #67b follow-up — media-bin card dragged onto the timeline: add the
+    // #67b follow-up â€” media-bin card dragged onto the timeline: add the
     // clip at the dropped (snapped) time instead of appending at track end.
     document.getElementById('timeline-canvas').addEventListener('timeline:mediadropped', (e) => {
       this._addMediaClip(e.detail.item, e.detail.time, e.detail.layer);
     });
 
-    // #71 — eye icon in the timeline's layer gutter: toggle that row's
+    // #71 â€” eye icon in the timeline's layer gutter: toggle that row's
     // visibility (preview + playback + render all respect it).
     document.getElementById('timeline-canvas').addEventListener('timeline:layervisibility', (e) => {
       const before = JSON.stringify(this.project.toDict());
@@ -849,22 +849,22 @@ class App {
 
     document.getElementById('props-inner').addEventListener('props:animatepos', () => {
       this.canvas.setTool('motion');
-      this._updateStatus('Animate Position/Zoom — scroll to set zoom level, click canvas to add a stop at the playhead, Esc when done');
+      this._updateStatus('Animate Position/Zoom â€” scroll to set zoom level, click canvas to add a stop at the playhead, Esc when done');
     });
 
-    // #28 — crop: from the properties panel button or the canvas right-click menu
+    // #28 â€” crop: from the properties panel button or the canvas right-click menu
     document.getElementById('props-inner').addEventListener('props:crop', () => {
       this.canvas.setTool('crop');
-      this._updateStatus('Crop — drag the corner handles to resize, drag inside to move, Esc when done');
+      this._updateStatus('Crop â€” drag the corner handles to resize, drag inside to move, Esc when done');
     });
 
-    // #63/#64 — preview a clip's transitions/animation from its start
+    // #63/#64 â€” preview a clip's transitions/animation from its start
     document.getElementById('props-inner').addEventListener('props:previewclip', (e) => {
       const clip = e.detail?.clip;
       if (clip) this._previewClipAnimation(clip, true);
     });
 
-    // Position/Zoom path — every click while the tool is armed adds (or
+    // Position/Zoom path â€” every click while the tool is armed adds (or
     // updates, if one already sits at this playhead) one stop; the tool
     // stays armed so a clip can pick up several stops in one go (zoom
     // into a feature, pan to another, zoom back out). Esc finishes.
@@ -874,7 +874,7 @@ class App {
       this.timeline.redraw();
       const clip = this._findClip(e.detail.id);
       if (clip && this._selectionPrimaryId === clip.id) this.props.showClip(clip);
-      this._updateStatus(`Zoom stop ${e.detail.count} set (${Math.round(e.detail.scale * 100)}%) — click to add another, Esc when done`);
+      this._updateStatus(`Zoom stop ${e.detail.count} set (${Math.round(e.detail.scale * 100)}%) â€” click to add another, Esc when done`);
     });
     document.getElementById('props-inner').addEventListener('props:editstart', () => {
       if (!this._pendingPropsBefore) {
@@ -916,7 +916,7 @@ class App {
       if (!e.target.closest('.menu-item')) {
         document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('open'));
       }
-      // #28 — click anywhere outside the right-click context menu closes it
+      // #28 â€” click anywhere outside the right-click context menu closes it
       if (!e.target.closest('#canvas-context-menu')) {
         document.getElementById('canvas-context-menu')?.classList.remove('open');
       }
@@ -1005,7 +1005,7 @@ class App {
     document.getElementById('render-btn').addEventListener('click', () => this._openRenderModal());
       const themeToggleBtn = document.getElementById('theme-toggle');
       const setThemeIcon = (theme) => {
-        themeToggleBtn.textContent = theme === 'light' ? '☀' : '☾';
+        themeToggleBtn.textContent = theme === 'light' ? 'â˜€' : 'â˜¾';
       };
       setThemeIcon(document.documentElement.getAttribute('data-theme') || 'dark');
 
@@ -1032,7 +1032,7 @@ class App {
 
         this._updateStatus(
           next === 'razor'
-            ? 'Razor tool — click a clip to slice'
+            ? 'Razor tool â€” click a clip to slice'
             : 'Select tool'
         );
       });
@@ -1045,7 +1045,7 @@ class App {
         this.timeline.tool = next;
         this.canvas.setTool(next);   // <-- added
         moveBtn.classList.toggle('active', next === 'move');
-        this._updateStatus(next === 'move' ? 'Move tool — drag to move selected clips' : 'Select tool');
+        this._updateStatus(next === 'move' ? 'Move tool â€” drag to move selected clips' : 'Select tool');
       });
     }
 
@@ -1054,7 +1054,7 @@ class App {
     if (undoBtn) undoBtn.addEventListener('click', () => this._undo());
     if (redoBtn) redoBtn.addEventListener('click', () => this._redo());
 
-    // #71 — one consolidated "+ Add" menu replaces the five separate
+    // #71 â€” one consolidated "+ Add" menu replaces the five separate
     // add-narration/code/graph/audio/shape buttons that used to crowd the
     // toolbar.
     const addBtn  = document.getElementById('add-clip-btn');
@@ -1086,7 +1086,7 @@ class App {
     }
   }
 
-  // #72 — "Sound effect…" in the Add menu jumps straight to the built-in
+  // #72 â€” "Sound effectâ€¦" in the Add menu jumps straight to the built-in
   // sfx list in the media bin instead of guessing which one to add.
   _focusSfxBin() {
     const list = document.getElementById('sfxbin-list');
@@ -1102,7 +1102,7 @@ class App {
       const tag = document.activeElement.tagName;
       const inInput = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT');
 
-      // #28 — Escape closes an open right-click menu first, then falls
+      // #28 â€” Escape closes an open right-click menu first, then falls
       // through to the tool-exit checks below on a second press.
       if (e.key === 'Escape') {
         const ctxMenu = document.getElementById('canvas-context-menu');
@@ -1134,7 +1134,7 @@ class App {
         this.timeline.setTool(next);
         const razorBtn = document.getElementById('razor-btn');
         if (razorBtn) razorBtn.classList.toggle('active', next === 'razor');
-        this._updateStatus(next === 'razor' ? 'Razor tool — click a clip to slice' : 'Select tool');
+        this._updateStatus(next === 'razor' ? 'Razor tool â€” click a clip to slice' : 'Select tool');
         return;
       }
       if ((e.key === '+' || e.key === '=') && !inInput) { e.preventDefault(); this.timeline.zoomIn(); return; }
@@ -1143,8 +1143,8 @@ class App {
       if (e.key === 'ArrowLeft' && e.shiftKey && !inInput) { e.preventDefault(); this.playback.stepFrame(-1); return; }
       if (e.key === 'ArrowRight' && e.shiftKey && !inInput) { e.preventDefault(); this.playback.stepFrame(1); return; }
 
-      // #67d — arrow keys nudge selected canvas objects.
-      // Plain arrow = fine step, Ctrl+arrow = coarse step. (Shift+←/→ stays frame stepping.)
+      // #67d â€” arrow keys nudge selected canvas objects.
+      // Plain arrow = fine step, Ctrl+arrow = coarse step. (Shift+â†/â†’ stays frame stepping.)
       const ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
       if (ARROWS[e.key] && !inInput && !e.shiftKey && this._selectedIds.size > 0) {
         const step = e.ctrlKey || e.metaKey ? 0.02 : 0.005;
@@ -1221,7 +1221,7 @@ class App {
 
   _togglePlay() {
     this.playback.toggle();
-    document.getElementById('play-btn').textContent = this.playback.playing ? '⏸  Pause' : '▶  Play';
+    document.getElementById('play-btn').textContent = this.playback.playing ? 'â¸  Pause' : 'â–¶  Play';
     if (this.playback.playing) {
       this._startAudioScheduling();
     } else {
@@ -1232,12 +1232,12 @@ class App {
   _stop() {
     this.playback.pause();
     this.playback.seek(0.0);
-    document.getElementById('play-btn').textContent = '▶  Play';
+    document.getElementById('play-btn').textContent = 'â–¶  Play';
     this._pauseAllAudio(true);
   }
 
   _onPlaybackTick(t, isSeek = false) {
-    this.canvas.setPlayhead(t);
+    this.canvas.setPlayhead(t, isSeek);
     this.timeline.setPlayhead(t);
     const mins = Math.floor(t / 60);
     const secs = Math.floor(t % 60);
@@ -1249,7 +1249,7 @@ class App {
     if (isSeek || !this.playback.playing) this._resyncAudioOnSeek(t);
   }
 
-  // #71 — unified timeline: any clip type can sit on any row. These two
+  // #71 â€” unified timeline: any clip type can sit on any row. These two
   // helpers find/verify a free row for a new or moved clip so additions
   // never silently overlap something already there.
   _layerCollides(layer, start, duration, excludeId = null) {
@@ -1267,7 +1267,7 @@ class App {
 
   _addClip(clip_type) {
     const before = JSON.stringify(this.project.toDict());
-    // #73 — land on the current playhead, not appended after the last clip
+    // #73 â€” land on the current playhead, not appended after the last clip
     // of the same kind.
     const start = this.playback.playhead;
     const c = newClip(clip_type, start);
@@ -1295,11 +1295,11 @@ class App {
     this._commit(before);
   }
 
-  // Bring to Front / Bring Forward / Send Backward / Send to Back — reorders
+  // Bring to Front / Bring Forward / Send Backward / Send to Back â€” reorders
   // clip.layer among clips that time-overlap the given clip (its current
   // on-canvas "stack"; lower layer number draws on top, see canvas.js
   // _activeClips() and websocket_server.py's render sort). The actual index
-  // math lives in computeLayerReorder (a pure, DOM-free function — see
+  // math lives in computeLayerReorder (a pure, DOM-free function â€” see
   // frontend/tests/layer_reorder.test.mjs) so it's independently testable;
   // this just applies the resulting assignments and records undo/dirty state.
   _reorderLayer(clip, direction) {
@@ -1529,10 +1529,10 @@ class App {
 
   _render() { this._wsSend({ type: 'render', data: this.project.toDict() }); }
 
-  // #28 — right-click a clip (on the canvas or the timeline — both dispatch
+  // #28 â€” right-click a clip (on the canvas or the timeline â€” both dispatch
   // the same *:contextmenu event, see _wireEvents): a small menu with Crop
   // (image/video only), Reset crop (when one's applied), layer reordering
-  // (only when this clip actually overlaps another one in time — otherwise
+  // (only when this clip actually overlaps another one in time â€” otherwise
   // there's nothing to reorder against), Duplicate and Delete.
   _showClipContextMenu(clip, x, y) {
     const menu = document.getElementById('canvas-context-menu');
@@ -1554,7 +1554,7 @@ class App {
       addItem('Crop image', () => {
         this._setSelection([clip.id], clip.id);
         this.canvas.setTool('crop');
-        this._updateStatus('Crop — drag the corner handles to resize, drag inside to move, Esc when done');
+        this._updateStatus('Crop â€” drag the corner handles to resize, drag inside to move, Esc when done');
       });
       const isCropped = (clip.crop_x ?? 0) > 0.001 || (clip.crop_y ?? 0) > 0.001 ||
         (clip.crop_w ?? 1) < 0.999 || (clip.crop_h ?? 1) < 0.999;
@@ -1572,7 +1572,7 @@ class App {
     }
 
     // Stacking order only means anything among clips that share screen time
-    // with this one — with nothing to reorder against, skip the items
+    // with this one â€” with nothing to reorder against, skip the items
     // entirely rather than show them disabled.
     if (hasOverlappingClip(this.project.clips, clip)) {
       addItem('Bring to Front', () => this._reorderLayer(clip, 'front'));
@@ -1737,7 +1737,7 @@ class App {
     this._previewClipAnimation(clip);
   }
 
-  // #66 — the canvas animation clock is playhead-driven, so a static redraw
+  // #66 â€” the canvas animation clock is playhead-driven, so a static redraw
   // after Apply shows the animation's *finished* state. Seek to the clip's
   // start and play so the newly applied animation actually runs.
   _previewClipAnimation(clip, force = false) {
@@ -1753,10 +1753,10 @@ class App {
 
   _openCanvasResizeModal() {
     const PRESETS = [
-      { label: '9:16  — Shorts / Reels  (1080×1920)', w: 1080, h: 1920 },
-      { label: '16:9  — YouTube / landscape (1920×1080)', w: 1920, h: 1080 },
-      { label: '1:1   — Square  (1080×1080)',             w: 1080, h: 1080 },
-      { label: '4:5   — Instagram portrait (1080×1350)',  w: 1080, h: 1350 },
+      { label: '9:16  â€” Shorts / Reels  (1080Ã—1920)', w: 1080, h: 1920 },
+      { label: '16:9  â€” YouTube / landscape (1920Ã—1080)', w: 1920, h: 1080 },
+      { label: '1:1   â€” Square  (1080Ã—1080)',             w: 1080, h: 1080 },
+      { label: '4:5   â€” Instagram portrait (1080Ã—1350)',  w: 1080, h: 1350 },
     ];
 
     let overlay = document.getElementById('canvas-resize-overlay');
@@ -1772,7 +1772,7 @@ class App {
             <input id="canvas-w-input" type="number" min="1" max="7680" step="1"
               style="width:72px;background:#1a1a1a;color:#d4d4d4;border:1px solid #333;
                     font-size:11px;padding:3px 4px;border-radius:2px;font-family:Consolas,monospace">
-            <span style="color:#555;font-size:11px">×</span>
+            <span style="color:#555;font-size:11px">Ã—</span>
             <input id="canvas-h-input" type="number" min="1" max="7680" step="1"
               style="width:72px;background:#1a1a1a;color:#d4d4d4;border:1px solid #333;
                     font-size:11px;padding:3px 4px;border-radius:2px;font-family:Consolas,monospace">
@@ -1807,7 +1807,7 @@ class App {
         this._dirty = true;
         this._syncProjectToWidgets();
         this._refreshAll();
-        this._updateStatus(`Canvas: ${w}×${h}`);
+        this._updateStatus(`Canvas: ${w}Ã—${h}`);
         overlay.classList.remove('open');
         this._commit(before);
       });
@@ -1828,7 +1828,7 @@ class App {
   // Tight-fit output length: end of the last clip + a small trailing buffer.
   // This is what project.duration *should* be, but nothing currently keeps
   // it in sync when a clip shrinks (e.g. speeding a video clip up shortens
-  // its duration but leaves the old, longer project length in place —
+  // its duration but leaves the old, longer project length in place â€”
   // rendering several extra seconds/minutes of empty black at the end).
   _fitDuration() {
     if (!this.project.clips.length) return 30.0;
@@ -1889,9 +1889,9 @@ class App {
 
     const n = this.project.clips.length;
     const tracks = [...new Set(this.project.clips.map(c => c.track))].sort().join(', ') || 'no clips';
-    let info = `${n} clip${n !== 1 ? 's' : ''} · ${tracks} · ${this.project.canvas_w}×${this.project.canvas_h} @ ${this.project.fps}fps`;
+    let info = `${n} clip${n !== 1 ? 's' : ''} Â· ${tracks} Â· ${this.project.canvas_w}Ã—${this.project.canvas_h} @ ${this.project.fps}fps`;
     if (slack > 0.5) {
-      info += `<br><span style="color:#e0a030">Current length is ${this.project.duration.toFixed(1)}s — trimmed to ${fit.toFixed(1)}s below to drop ${slack.toFixed(1)}s of empty tail.</span>`;
+      info += `<br><span style="color:#e0a030">Current length is ${this.project.duration.toFixed(1)}s â€” trimmed to ${fit.toFixed(1)}s below to drop ${slack.toFixed(1)}s of empty tail.</span>`;
     }
     overlay.querySelector('#render-confirm-info').innerHTML = info;
     overlay.classList.add('open');
@@ -1985,7 +1985,7 @@ class App {
 
   _refreshAll() {
     if (this.project.clips.length > 0) {
-      // Avoid Math.max(...array) — spreading thousands of clips as call
+      // Avoid Math.max(...array) â€” spreading thousands of clips as call
       // arguments risks "Maximum call stack size exceeded" on a large project.
       const maxEnd = this.project.clips.reduce((max, c) => Math.max(max, c.end()), -Infinity);
       this.project.duration = maxEnd + 2.0;
@@ -2000,7 +2000,7 @@ class App {
 
   _updateTitle() {
     const dirty = this._dirty ? ' *' : '';
-    document.title = `vidkit — ${this.project.name}${dirty}`;
+    document.title = `vidkit â€” ${this.project.name}${dirty}`;
     const nameInput = document.getElementById('project-name-lbl');
     if (document.activeElement !== nameInput) {
       nameInput.value = this.project.name;
@@ -2009,8 +2009,8 @@ class App {
 
   _updateStatus(msg = '') {
     const n = this.project.clips.length;
-    const tracks = [...new Set(this.project.clips.map(c => c.track))].sort().join(' · ') || 'no clips';
-    const base = `${n} clip${n !== 1 ? 's' : ''} · ${tracks} · ${this.project.duration.toFixed(1)}s · ${this.project.fps}fps · ${this.project.canvas_w}×${this.project.canvas_h}`;
+    const tracks = [...new Set(this.project.clips.map(c => c.track))].sort().join(' Â· ') || 'no clips';
+    const base = `${n} clip${n !== 1 ? 's' : ''} Â· ${tracks} Â· ${this.project.duration.toFixed(1)}s Â· ${this.project.fps}fps Â· ${this.project.canvas_w}Ã—${this.project.canvas_h}`;
     document.getElementById('status-text').textContent = '  ' + base + (msg ? `  |  ${msg}` : '');
   }
 

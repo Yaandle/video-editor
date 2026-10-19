@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>vidkit — untitled</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Same family list as animationwindow.html's "Advanced Text Options" font
+     picker. Those names are only usable by the canvas (via ctx.font) once
+     they're loaded into *this* document — loading them solely inside the
+     advanced-text iframe left the main canvas falling back to a default
+     font whenever a narration clip picked a non-system font family. -->
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Playfair+Display:ital,wght@0,600;1,600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ── Menu bar ─────────────────────────────────────────────────────────── -->
+<div id="menubar">
+  <div class="menu-item" data-menu="file">
+    File
+    <div class="menu-dropdown">
+      <div class="menu-dropdown-item" data-action="new"><span>New</span><span class="menu-shortcut">Ctrl+N</span></div>
+      <div class="menu-dropdown-item" data-action="open"><span>Open…</span><span class="menu-shortcut">Ctrl+O</span></div>
+      <div class="menu-dropdown-item" data-action="save"><span>Save</span><span class="menu-shortcut">Ctrl+S</span></div>
+      <div class="menu-dropdown-item" data-action="save-as"><span>Save As…</span><span class="menu-shortcut">Ctrl+Shift+S</span></div>
+      <div class="menu-dropdown-item" data-action="canvas-resize"><span>Canvas Size…</span></div>
+      <div class="menu-dropdown-item separator"></div>
+      <div class="menu-dropdown-item" data-action="render"><span>Render…</span><span class="menu-shortcut">Ctrl+R</span></div>
+      <div class="menu-dropdown-item separator"></div>
+      <div class="menu-dropdown-item" data-action="quit"><span>Quit</span><span class="menu-shortcut">Ctrl+Q</span></div>
+    </div>
+  </div>
+  <div class="menu-item" data-menu="clip">
+    Clip
+    <div class="menu-dropdown">
+      <div class="menu-dropdown-item" data-action="add-narration">Add narration</div>
+      <div class="menu-dropdown-item" data-action="add-code">Add code block</div>
+      <div class="menu-dropdown-item" data-action="add-graph">Add graph</div>
+      <div class="menu-dropdown-item" data-action="add-audio">Add audio</div>
+      <div class="menu-dropdown-item" data-action="add-image">Add image</div>
+      <div class="menu-dropdown-item separator"></div>
+      <div class="menu-dropdown-item" data-action="delete"><span>Delete selected</span><span class="menu-shortcut">Del</span></div>
+      <div class="menu-dropdown-item" data-action="duplicate"><span>Duplicate selected</span><span class="menu-shortcut">Ctrl+D</span></div>
+      <div class="menu-dropdown-item separator"></div>
+      <div class="menu-dropdown-item" data-action="bring-front"><span>Bring to Front</span><span class="menu-shortcut">Ctrl+Shift+]</span></div>
+      <div class="menu-dropdown-item" data-action="bring-forward"><span>Bring Forward</span><span class="menu-shortcut">Ctrl+]</span></div>
+      <div class="menu-dropdown-item" data-action="send-backward"><span>Send Backward</span><span class="menu-shortcut">Ctrl+[</span></div>
+      <div class="menu-dropdown-item" data-action="send-back"><span>Send to Back</span><span class="menu-shortcut">Ctrl+Shift+[</span></div>
+      <div class="menu-dropdown-item separator"></div>
+      <div class="menu-dropdown-item" data-action="cut"><span>Cut</span><span class="menu-shortcut">Ctrl+X</span></div>
+      <div class="menu-dropdown-item" data-action="copy"><span>Copy</span><span class="menu-shortcut">Ctrl+C</span></div>
+      <div class="menu-dropdown-item" data-action="paste"><span>Paste</span><span class="menu-shortcut">Ctrl+V</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toolbar ───────────────────────────────────────────────────────────── -->
+<div id="toolbar">
+
+  <!-- Project name -->
+  <input id="project-name-lbl" type="text" value="untitled" spellcheck="false" autocomplete="off" />
+
+  <div id="toolbar-spacer"></div>
+
+  <!-- Timecode -->
+  <span id="timecode-lbl">0:00.000</span>
+
+  <!-- Transport -->
+  <div class="toolbar-sep"></div>
+  <button class="btn btn-play" id="play-btn">▶  Play</button>
+  <button class="btn btn-stop" id="stop-btn">■  Stop</button>
+
+  <!-- Add clips — one consolidated menu instead of five separate buttons (#71) -->
+  <div class="toolbar-sep"></div>
+  <div class="toolbar-shape-wrap">
+    <button class="btn btn-add" id="add-clip-btn">+ Add ▾</button>
+    <div class="menu-dropdown" id="add-clip-menu">
+      <div class="menu-dropdown-item" data-add="narration"><span>Narration</span></div>
+      <div class="menu-dropdown-item" data-add="code"><span>Code block</span></div>
+      <div class="menu-dropdown-item" data-add="graph"><span>Graph</span></div>
+      <div class="menu-dropdown-item" data-add="audio"><span>Audio</span></div>
+      <div class="menu-dropdown-item separator"></div>
+      <div class="menu-dropdown-item" data-shape="rectangle"><span>Shape · Rectangle</span></div>
+      <div class="menu-dropdown-item" data-shape="circle"><span>Shape · Circle</span></div>
+      <div class="menu-dropdown-item" data-shape="triangle"><span>Shape · Triangle</span></div>
+      <div class="menu-dropdown-item" data-shape="polygon"><span>Shape · Polygon</span></div>
+      <div class="menu-dropdown-item" data-shape="arrow"><span>Shape · Arrow</span></div>
+      <div class="menu-dropdown-item" data-shape="star"><span>Shape · Star</span></div>
+      <div class="menu-dropdown-item" data-shape="line"><span>Shape · Line</span></div>
+      <div class="menu-dropdown-item separator"></div>
+      <div class="menu-dropdown-item" data-add="sfx"><span>Sound effect…</span></div>
+    </div>
+  </div>
+
+  <!-- Timeline tools -->
+  <div class="toolbar-sep"></div>
+  <div id="bg-color-picker" title="Canvas background color"></div>
+  <button class="btn btn-tool" id="move-btn"       title="Move tool">✥</button>
+  <button class="btn btn-tool" id="razor-btn"      title="Razor tool (R)">✂</button>
+  <button class="btn btn-tool" id="undo-btn"       title="Undo (Ctrl+Z)" disabled>↶</button>
+  <button class="btn btn-tool" id="redo-btn"       title="Redo (Ctrl+Shift+Z)" disabled>↷</button>
+
+
+  <button class="btn btn-tool" id="theme-toggle" title="Toggle light/dark theme">☾</button>
+
+  <!-- Render + WS indicator -->
+  <div class="toolbar-sep"></div>
+  <button class="btn btn-render" id="render-btn">⬤  Render</button>
+  <span id="ws-dot" title="WebSocket disconnected"></span>
+
+</div>
+
+<!-- ── Workspace ─────────────────────────────────────────────────────────── -->
+<div id="workspace">
+
+  <!-- Media bin (contents built by mediaBin.js) -->
+  <div id="media-bin" role="region" aria-label="Media bin — drop files here to upload"></div>
+
+  <!-- Canvas -->
+  <div id="canvas-frame">
+    <canvas id="canvas-widget" role="img" aria-label="Video preview canvas"></canvas>
+    <div id="motion-mode-badge" class="motion-badge hidden"></div>
+  </div>
+
+  <!-- Properties -->
+  <div id="props-panel">
+    <div id="props-header">properties</div>
+    <div id="props-scroll">
+      <div id="props-inner">
+        <div class="props-placeholder" id="props-placeholder">No clip selected</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+
+<div id="timeline-resize-handle"></div>
+<div id="timeline-container">
+  <canvas id="timeline-canvas" role="application"
+    aria-label="Timeline — drag to marquee-select, Shift or Ctrl-click to multi-select, Alt-drag to pan"></canvas>
+</div>
+
+
+
+<!-- ── Status bar ────────────────────────────────────────────────────────── -->
+<div id="status-bar">
+  <span id="status-text">&nbsp;</span>
+</div>
+
+<!-- ── Render toast ──────────────────────────────────────────────────────── -->
+<div id="render-toast"></div>
+
+<!-- ── Snap preset modal ─────────────────────────────────────────────────── -->
+<div id="snap-modal-overlay">
+  <div id="snap-modal">
+    <h3>Snap to preset</h3>
+    <div id="snap-options"></div>
+    <span id="snap-modal-cancel">Cancel</span>
+  </div>
+</div>
+
+<!-- ── Advanced text editor modal ───────────────────────────────────────── -->
+<div id="advtext-modal-overlay">
+  <div id="advtext-modal">
+    <iframe id="advtext-iframe" src="animationwindow.html" title="Advanced Text Options"></iframe>
+  </div>
+</div>
+
+<!-- ── Canvas context menu (right-click a clip — #28) ───────────────────── -->
+<div id="canvas-context-menu"></div>
+
+<!-- ── Confirm dialog ────────────────────────────────────────────────────── -->
+<div id="confirm-overlay">
+  <div id="confirm-box">
+    <p id="confirm-msg">You have unsaved changes. Discard and continue?</p>
+    <div class="confirm-btns">
+      <button class="btn" id="confirm-no">No</button>
+      <button class="btn" id="confirm-yes">Yes</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function() {
+    var saved = localStorage.getItem('vidkit-theme');
+    if (saved) document.documentElement.setAttribute('data-theme', saved);
+  })();
+</script>
+
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

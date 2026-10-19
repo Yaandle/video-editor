@@ -1,7 +1,5 @@
-// See easing_parity.test.mjs for why this stub is needed and why it must
-// come before a dynamic import() rather than a (hoisted) static import.
-globalThis.window ??= { addEventListener() {} };
-const { computeLayerReorder, hasOverlappingClip } = await import('../app.js');
+// The layer maths lives in the DOM-free model module (frontend/model.js).
+const { computeLayerReorder, hasOverlappingClip } = await import('../model.js');
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

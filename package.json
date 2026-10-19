@@ -1,0 +1,12 @@
+{
+  "name": "vidkit-studio",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Renderer modules are plain ES modules (no build step); Node runs their pure parts for events, schemas and tests.",
+  "scripts": {
+    "test": "node --test \"frontend/tests/*.test.mjs\"",
+    "events": "node studio/js/bridge.mjs events"
+  },
+  "engines": { "node": ">=18" }
+}

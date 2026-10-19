@@ -3,193 +3,229 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>vidkit — untitled</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<!-- Same family list as animationwindow.html's "Advanced Text Options" font
-     picker. Those names are only usable by the canvas (via ctx.font) once
-     they're loaded into *this* document — loading them solely inside the
-     advanced-text iframe left the main canvas falling back to a default
-     font whenever a narration clip picked a non-system font family. -->
-<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Playfair+Display:ital,wght@0,600;1,600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<title>vidkit studio</title>
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-<!-- ── Menu bar ─────────────────────────────────────────────────────────── -->
-<div id="menubar">
-  <div class="menu-item" data-menu="file">
-    File
-    <div class="menu-dropdown">
-      <div class="menu-dropdown-item" data-action="new"><span>New</span><span class="menu-shortcut">Ctrl+N</span></div>
-      <div class="menu-dropdown-item" data-action="open"><span>Open…</span><span class="menu-shortcut">Ctrl+O</span></div>
-      <div class="menu-dropdown-item" data-action="save"><span>Save</span><span class="menu-shortcut">Ctrl+S</span></div>
-      <div class="menu-dropdown-item" data-action="save-as"><span>Save As…</span><span class="menu-shortcut">Ctrl+Shift+S</span></div>
-      <div class="menu-dropdown-item" data-action="canvas-resize"><span>Canvas Size…</span></div>
-      <div class="menu-dropdown-item separator"></div>
-      <div class="menu-dropdown-item" data-action="render"><span>Render…</span><span class="menu-shortcut">Ctrl+R</span></div>
-      <div class="menu-dropdown-item separator"></div>
-      <div class="menu-dropdown-item" data-action="quit"><span>Quit</span><span class="menu-shortcut">Ctrl+Q</span></div>
-    </div>
-  </div>
-  <div class="menu-item" data-menu="clip">
-    Clip
-    <div class="menu-dropdown">
-      <div class="menu-dropdown-item" data-action="add-narration">Add narration</div>
-      <div class="menu-dropdown-item" data-action="add-code">Add code block</div>
-      <div class="menu-dropdown-item" data-action="add-graph">Add graph</div>
-      <div class="menu-dropdown-item" data-action="add-audio">Add audio</div>
-      <div class="menu-dropdown-item" data-action="add-image">Add image</div>
-      <div class="menu-dropdown-item separator"></div>
-      <div class="menu-dropdown-item" data-action="delete"><span>Delete selected</span><span class="menu-shortcut">Del</span></div>
-      <div class="menu-dropdown-item" data-action="duplicate"><span>Duplicate selected</span><span class="menu-shortcut">Ctrl+D</span></div>
-      <div class="menu-dropdown-item separator"></div>
-      <div class="menu-dropdown-item" data-action="bring-front"><span>Bring to Front</span><span class="menu-shortcut">Ctrl+Shift+]</span></div>
-      <div class="menu-dropdown-item" data-action="bring-forward"><span>Bring Forward</span><span class="menu-shortcut">Ctrl+]</span></div>
-      <div class="menu-dropdown-item" data-action="send-backward"><span>Send Backward</span><span class="menu-shortcut">Ctrl+[</span></div>
-      <div class="menu-dropdown-item" data-action="send-back"><span>Send to Back</span><span class="menu-shortcut">Ctrl+Shift+[</span></div>
-      <div class="menu-dropdown-item separator"></div>
-      <div class="menu-dropdown-item" data-action="cut"><span>Cut</span><span class="menu-shortcut">Ctrl+X</span></div>
-      <div class="menu-dropdown-item" data-action="copy"><span>Copy</span><span class="menu-shortcut">Ctrl+C</span></div>
-      <div class="menu-dropdown-item" data-action="paste"><span>Paste</span><span class="menu-shortcut">Ctrl+V</span></div>
-    </div>
-  </div>
-</div>
+<header id="topbar">
+  <div class="brand">vidkit<span>studio</span></div>
 
-<!-- ── Toolbar ───────────────────────────────────────────────────────────── -->
-<div id="toolbar">
-
-  <!-- Project name -->
-  <input id="project-name-lbl" type="text" value="untitled" spellcheck="false" autocomplete="off" />
-
-  <div id="toolbar-spacer"></div>
-
-  <!-- Timecode -->
-  <span id="timecode-lbl">0:00.000</span>
-
-  <!-- Transport -->
-  <div class="toolbar-sep"></div>
-  <button class="btn btn-play" id="play-btn">▶  Play</button>
-  <button class="btn btn-stop" id="stop-btn">■  Stop</button>
-
-  <!-- Add clips — one consolidated menu instead of five separate buttons (#71) -->
-  <div class="toolbar-sep"></div>
-  <div class="toolbar-shape-wrap">
-    <button class="btn btn-add" id="add-clip-btn">+ Add ▾</button>
-    <div class="menu-dropdown" id="add-clip-menu">
-      <div class="menu-dropdown-item" data-add="narration"><span>Narration</span></div>
-      <div class="menu-dropdown-item" data-add="code"><span>Code block</span></div>
-      <div class="menu-dropdown-item" data-add="graph"><span>Graph</span></div>
-      <div class="menu-dropdown-item" data-add="audio"><span>Audio</span></div>
-      <div class="menu-dropdown-item separator"></div>
-      <div class="menu-dropdown-item" data-shape="rectangle"><span>Shape · Rectangle</span></div>
-      <div class="menu-dropdown-item" data-shape="circle"><span>Shape · Circle</span></div>
-      <div class="menu-dropdown-item" data-shape="triangle"><span>Shape · Triangle</span></div>
-      <div class="menu-dropdown-item" data-shape="polygon"><span>Shape · Polygon</span></div>
-      <div class="menu-dropdown-item" data-shape="arrow"><span>Shape · Arrow</span></div>
-      <div class="menu-dropdown-item" data-shape="star"><span>Shape · Star</span></div>
-      <div class="menu-dropdown-item" data-shape="line"><span>Shape · Line</span></div>
-      <div class="menu-dropdown-item separator"></div>
-      <div class="menu-dropdown-item" data-add="sfx"><span>Sound effect…</span></div>
-    </div>
-  </div>
-
-  <!-- Timeline tools -->
-  <div class="toolbar-sep"></div>
-  <div id="bg-color-picker" title="Canvas background color"></div>
-  <button class="btn btn-tool" id="move-btn"       title="Move tool">✥</button>
-  <button class="btn btn-tool" id="razor-btn"      title="Razor tool (R)">✂</button>
-  <button class="btn btn-tool" id="undo-btn"       title="Undo (Ctrl+Z)" disabled>↶</button>
-  <button class="btn btn-tool" id="redo-btn"       title="Redo (Ctrl+Shift+Z)" disabled>↷</button>
-
-
-  <button class="btn btn-tool" id="theme-toggle" title="Toggle light/dark theme">☾</button>
-
-  <!-- Render + WS indicator -->
-  <div class="toolbar-sep"></div>
-  <button class="btn btn-render" id="render-btn">⬤  Render</button>
-  <span id="ws-dot" title="WebSocket disconnected"></span>
-
-</div>
-
-<!-- ── Workspace ─────────────────────────────────────────────────────────── -->
-<div id="workspace">
-
-  <!-- Media bin (contents built by mediaBin.js) -->
-  <div id="media-bin" role="region" aria-label="Media bin — drop files here to upload"></div>
-
-  <!-- Canvas -->
-  <div id="canvas-frame">
-    <canvas id="canvas-widget" role="img" aria-label="Video preview canvas"></canvas>
-    <div id="motion-mode-badge" class="motion-badge hidden"></div>
-  </div>
-
-  <!-- Properties -->
-  <div id="props-panel">
-    <div id="props-header">properties</div>
-    <div id="props-scroll">
-      <div id="props-inner">
-        <div class="props-placeholder" id="props-placeholder">No clip selected</div>
+  <nav class="menus" aria-label="Main menu">
+    <div class="menu" data-menu="file">
+      <button type="button">File</button>
+      <div class="dropdown">
+        <button data-action="new">New project…<kbd>Ctrl+N</kbd></button>
+        <button data-action="open">Open…<kbd>Ctrl+O</kbd></button>
+        <button data-action="save">Save<kbd>Ctrl+S</kbd></button>
+        <button data-action="save-as">Save as…<kbd>Ctrl+Shift+S</kbd></button>
+        <hr>
+        <button data-action="settings">Project settings…</button>
+        <button data-action="storyboard">Storyboard from script…</button>
       </div>
     </div>
-  </div>
-
-</div>
-
-
-<div id="timeline-resize-handle"></div>
-<div id="timeline-container">
-  <canvas id="timeline-canvas" role="application"
-    aria-label="Timeline — drag to marquee-select, Shift or Ctrl-click to multi-select, Alt-drag to pan"></canvas>
-</div>
-
-
-
-<!-- ── Status bar ────────────────────────────────────────────────────────── -->
-<div id="status-bar">
-  <span id="status-text">&nbsp;</span>
-</div>
-
-<!-- ── Render toast ──────────────────────────────────────────────────────── -->
-<div id="render-toast"></div>
-
-<!-- ── Snap preset modal ─────────────────────────────────────────────────── -->
-<div id="snap-modal-overlay">
-  <div id="snap-modal">
-    <h3>Snap to preset</h3>
-    <div id="snap-options"></div>
-    <span id="snap-modal-cancel">Cancel</span>
-  </div>
-</div>
-
-<!-- ── Advanced text editor modal ───────────────────────────────────────── -->
-<div id="advtext-modal-overlay">
-  <div id="advtext-modal">
-    <iframe id="advtext-iframe" src="animationwindow.html" title="Advanced Text Options"></iframe>
-  </div>
-</div>
-
-<!-- ── Canvas context menu (right-click a clip — #28) ───────────────────── -->
-<div id="canvas-context-menu"></div>
-
-<!-- ── Confirm dialog ────────────────────────────────────────────────────── -->
-<div id="confirm-overlay">
-  <div id="confirm-box">
-    <p id="confirm-msg">You have unsaved changes. Discard and continue?</p>
-    <div class="confirm-btns">
-      <button class="btn" id="confirm-no">No</button>
-      <button class="btn" id="confirm-yes">Yes</button>
+    <div class="menu" data-menu="edit">
+      <button type="button">Edit</button>
+      <div class="dropdown">
+        <button data-action="undo">Undo<kbd>Ctrl+Z</kbd></button>
+        <button data-action="redo">Redo<kbd>Ctrl+Shift+Z</kbd></button>
+        <hr>
+        <button data-action="cut">Cut<kbd>Ctrl+X</kbd></button>
+        <button data-action="copy">Copy<kbd>Ctrl+C</kbd></button>
+        <button data-action="paste">Paste at playhead<kbd>Ctrl+V</kbd></button>
+        <button data-action="duplicate">Duplicate<kbd>Ctrl+D</kbd></button>
+        <button data-action="split">Split at playhead<kbd>S</kbd></button>
+        <button data-action="delete">Delete<kbd>Del</kbd></button>
+        <hr>
+        <button data-action="snap-clip">Snap selection to beat<kbd>Shift+B</kbd></button>
+        <button data-action="bring-front">Bring to front<kbd>Ctrl+Shift+]</kbd></button>
+        <button data-action="send-back">Send to back<kbd>Ctrl+Shift+[</kbd></button>
+      </div>
     </div>
+    <div class="menu" data-menu="add">
+      <button type="button">Add</button>
+      <div class="dropdown" id="add-menu"></div>
+    </div>
+    <div class="menu" data-menu="render">
+      <button type="button">Render</button>
+      <div class="dropdown">
+        <button data-action="render">Render…<kbd>Ctrl+R</kbd></button>
+        <button data-action="draft-range">Draft preview of range<kbd>Ctrl+Shift+R</kbd></button>
+        <button data-action="queue">Render queue<kbd>Q</kbd></button>
+        <hr>
+        <button data-action="validate">Check project (schema + beat grid)</button>
+      </div>
+    </div>
+    <div class="menu" data-menu="help">
+      <button type="button">Help</button>
+      <div class="dropdown">
+        <button data-action="shortcuts">Keyboard shortcuts<kbd>?</kbd></button>
+      </div>
+    </div>
+  </nav>
+
+  <input id="project-name" type="text" value="untitled" spellcheck="false" autocomplete="off" aria-label="Project name">
+  <div class="spacer"></div>
+
+  <div class="transport">
+    <button class="btn icon" id="btn-start" title="Go to start (Home)" data-icon="skip-back"></button>
+    <button class="btn icon primary" id="btn-play" title="Play / pause (Space)" data-icon="play"></button>
+    <button class="btn icon" id="btn-stop" title="Stop (Esc)" data-icon="stop"></button>
+    <span id="timecode">00:00.000</span>
+    <span id="beatcode">Bar 1 · 1</span>
   </div>
+
+  <div class="toolgroup">
+    <button class="btn icon on" id="tool-select" title="Select / move (V)" data-icon="cursor"></button>
+    <button class="btn icon" id="tool-razor" title="Razor (C)" data-icon="scissors"></button>
+    <button class="btn icon" id="tool-crop" title="Crop media" data-icon="crop"></button>
+    <button class="btn icon" id="tool-motion" title="Motion path: click to add a stop at the playhead" data-icon="path"></button>
+  </div>
+  <div class="toolgroup optional">
+    <button class="btn icon" id="btn-undo" title="Undo (Ctrl+Z)" data-icon="arrow-counter-clockwise" disabled></button>
+    <button class="btn icon" id="btn-redo" title="Redo (Ctrl+Shift+Z)" data-icon="arrow-clockwise" disabled></button>
+  </div>
+  <div class="toolgroup">
+    <button class="btn" id="btn-textstudio" title="Open Text Studio for the selected text" data-icon="text-aa">Text Studio</button>
+    <button class="btn" id="btn-draft" title="Draft-render the in/out range (Ctrl+Shift+R)" data-icon="lightning">Draft</button>
+    <button class="btn primary" id="btn-render" title="Render (Ctrl+R)" data-icon="film-strip">Render</button>
+    <button class="btn icon" id="queue-btn" title="Render queue (Q)" data-icon="list-checks"></button>
+  </div>
+</header>
+
+<main id="workspace">
+  <aside id="library" class="panel" aria-label="Library">
+    <div class="tabs" role="tablist">
+      <button class="on" data-tab="scenes">Scenes</button>
+      <button data-tab="media">Media</button>
+      <button data-tab="sounds">Sounds</button>
+    </div>
+    <div class="panel-body" id="lib-scenes"></div>
+    <div class="panel-body hidden" id="lib-media"></div>
+    <div class="panel-body hidden" id="lib-sounds"></div>
+  </aside>
+
+  <section id="stage" aria-label="Preview">
+    <div id="canvas-frame">
+      <canvas id="canvas-widget" role="img" aria-label="Preview — the same renderer as export"></canvas>
+      <div id="stage-badge" class="hidden"></div>
+    </div>
+    <div id="stage-bar">
+      <button class="btn sm" id="stage-fit" data-icon="corners-out">Fit</button>
+      <button class="btn sm" id="stage-grid" data-icon="layout">Grid</button>
+      <button class="btn sm" id="stage-safe" data-icon="square">Safe area</button>
+      <span class="spacer"></span>
+      <span class="readout" id="stage-readout">1920×1080 · 30 fps · 120 BPM</span>
+    </div>
+  </section>
+
+  <aside id="inspector" class="panel" aria-label="Inspector">
+    <div class="panel-head"><h2>Inspector</h2><span class="chip" id="insp-kind">—</span></div>
+    <div class="panel-body" id="props-inner" style="padding:0"></div>
+  </aside>
+</main>
+
+<div id="timeline-resize-handle" title="Drag to resize the timeline"></div>
+<section id="timeline-container" aria-label="Timeline">
+  <div id="timeline-bar">
+    <button class="btn sm on" id="tl-snap" title="Snap to beat grid (B)" data-icon="metronome">Beat snap</button>
+    <button class="btn sm" id="tl-in" title="Set in point (I)">In</button>
+    <button class="btn sm" id="tl-out" title="Set out point (O)">Out</button>
+    <button class="btn sm" id="tl-clear" title="Clear range (Alt+X)">Clear</button>
+    <span class="readout" id="tl-range">No range — I / O to mark one</span>
+    <span class="spacer"></span>
+    <button class="btn sm icon" id="tl-zoom-out" title="Zoom out (-)" data-icon="magnifying-glass-minus"></button>
+    <button class="btn sm icon" id="tl-zoom-in" title="Zoom in (+)" data-icon="magnifying-glass-plus"></button>
+  </div>
+  <div id="timeline-wrap"><canvas id="timeline-canvas" role="application" aria-label="Timeline"></canvas></div>
+</section>
+
+<footer id="statusbar">
+  <span><i class="dot" id="srv-dot"></i><span id="srv-text">server</span></span>
+  <span id="status-text">Ready.</span>
+  <span id="autosave-text">autosave on</span>
+  <span id="llm-text">LLM —</span>
+</footer>
+
+<div id="queue" class="hidden" aria-label="Render queue">
+  <div class="dlg-head"><h2>Render queue</h2><button class="btn sm icon" id="queue-close" data-icon="x"></button></div>
+  <div id="queue-list"><div class="job"><span class="meta">Nothing rendered yet.</span></div></div>
 </div>
 
-<script>
-  (function() {
-    var saved = localStorage.getItem('vidkit-theme');
-    if (saved) document.documentElement.setAttribute('data-theme', saved);
-  })();
-</script>
+<div id="toasts" aria-live="polite"></div>
+<div id="ctxmenu" role="menu"></div>
 
+<dialog id="open-dlg">
+  <div class="dlg-head"><h2>Open project</h2><button class="btn sm icon" data-close data-icon="x"></button></div>
+  <div class="dlg-body" id="open-list"></div>
+</dialog>
+
+<dialog id="new-dlg">
+  <div class="dlg-head"><h2>New project</h2><button class="btn sm icon" data-close data-icon="x"></button></div>
+  <div class="dlg-body">
+    <div class="field"><label>Name</label><input type="text" id="new-name" value="untitled"></div>
+    <div class="field"><label>Frame</label>
+      <div class="seg" id="new-frame"><button data-v="1920x1080" class="on">16:9</button><button data-v="1080x1920">9:16</button><button data-v="1080x1080">1:1</button><button data-v="1080x1350">4:5</button></div></div>
+    <div class="grid-2">
+      <div class="field"><label>Frame rate</label><div class="seg" id="new-fps"><button data-v="30" class="on">30</button><button data-v="60">60</button><button data-v="24">24</button></div></div>
+      <div class="field"><label>Tempo (BPM)</label><input type="number" id="new-bpm" value="120" min="40" max="240"></div>
+    </div>
+    <p class="hint">The tempo must give a whole number of frames per beat: 120 BPM at 30 fps = 15 frames per beat. Cuts and hits snap to that grid.</p>
+    <label class="toggle"><input type="checkbox" id="new-template" checked> Start from the six-scene template</label>
+  </div>
+  <div class="dlg-foot"><button class="btn" data-close>Cancel</button><button class="btn primary" id="new-create">Create</button></div>
+</dialog>
+
+<dialog id="settings-dlg">
+  <div class="dlg-head"><h2>Project settings</h2><button class="btn sm icon" data-close data-icon="x"></button></div>
+  <div class="dlg-body" id="settings-body"></div>
+  <div class="dlg-foot"><button class="btn" data-close>Cancel</button><button class="btn primary" id="settings-apply">Apply</button></div>
+</dialog>
+
+<dialog id="render-dlg">
+  <div class="dlg-head"><h2>Render</h2><button class="btn sm icon" data-close data-icon="x"></button></div>
+  <div class="dlg-body">
+    <div class="field"><label>Preset</label>
+      <div class="seg" id="render-preset"><button data-v="1080p30" class="on">1080p30</button><button data-v="1080p60">1080p60</button><button data-v="vertical">9:16</button><button data-v="720p30">720p</button></div></div>
+    <label class="toggle"><input type="checkbox" id="render-draft"> Draft (half size, fast encode)</label>
+    <label class="toggle"><input type="checkbox" id="render-range"> Only the in/out range</label>
+    <p class="hint" id="render-info"></p>
+  </div>
+  <div class="dlg-foot"><button class="btn" data-close>Cancel</button><button class="btn primary" id="render-go" data-icon="film-strip">Queue render</button></div>
+</dialog>
+
+<dialog id="storyboard-dlg">
+  <div class="dlg-head"><h2>Storyboard from script</h2><button class="btn sm icon" data-close data-icon="x"></button></div>
+  <div class="dlg-body">
+    <p class="hint">Paste a script. Each idea becomes a scene on the beat grid. Markers from text_to_video still work: [VisualiseCode]…[/VisualiseCode] and [VisualiseGraph:bar]Mon:3, Tue:5[/VisualiseGraph].</p>
+    <textarea id="sb-script" rows="10" placeholder="Most render pipelines record the screen in real time…"></textarea>
+    <label class="toggle"><input type="checkbox" id="sb-llm" checked> <span id="sb-llm-label">Use the local model</span></label>
+    <div id="sb-result"></div>
+  </div>
+  <div class="dlg-foot"><button class="btn" data-close>Cancel</button><button class="btn" id="sb-generate" data-icon="magic-wand">Generate</button><button class="btn primary" id="sb-open" disabled>Open as new project</button></div>
+</dialog>
+
+<dialog id="shortcuts-dlg">
+  <div class="dlg-head"><h2>Keyboard shortcuts</h2><button class="btn sm icon" data-close data-icon="x"></button></div>
+  <div class="dlg-body" id="shortcuts-body"></div>
+</dialog>
+
+<dialog id="confirm-dlg">
+  <div class="dlg-head"><h2 id="confirm-title">Are you sure?</h2></div>
+  <div class="dlg-body"><p id="confirm-msg"></p></div>
+  <div class="dlg-foot"><button class="btn" id="confirm-no">Cancel</button><button class="btn primary" id="confirm-yes">Continue</button></div>
+</dialog>
+
+<dialog id="player-dlg">
+  <div class="dlg-head"><h2 id="player-title">Preview</h2><button class="btn sm icon" data-close data-icon="x"></button></div>
+  <video id="player-video" controls></video>
+  <div class="dlg-foot"><span class="hint" id="player-meta"></span><a class="btn" id="player-open" target="_blank" data-icon="download-simple">Open file</a></div>
+</dialog>
+
+<dialog id="textstudio-dlg">
+  <iframe id="textstudio-frame" title="Text Studio"></iframe>
+</dialog>
 
 <script type="module" src="app.js"></script>
 </body>

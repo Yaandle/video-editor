@@ -118,5 +118,5 @@ Retired to `/legacy` (moved, not deleted): moviepy export path (`websocket_serve
 | Playwright browsers | `chromium-1248`, `chromium_headless_shell-1248`, `ffmpeg-1013` in `%LOCALAPPDATA%\ms-playwright` |
 | ffmpeg | 8.0.1 essentials (gyan.dev) at `D:\Downloads\…\bin` — not on PATH |
 | GPU | GeForce GTX 1660 SUPER, 6 GB (NVENC capable) |
-| Local LLM | `llama-server.exe` via winget on PATH; model `F:\dev\local_llms\models\Qwen2.5-7B-Instruct\qwen2.5-7b-instruct-q4_k_m-0000{1,2}-of-00002.gguf` present. `F:\dev\local_llms\llama.cpp` and `env` are empty, and **no existing scripts that load a model were found** anywhere under `F:\dev` — so the integration uses the llama.cpp server that is actually installed. |
+| Local LLM | `llama-server.exe` via winget on PATH; model `<models dir>\Qwen2.5-7B-Instruct\qwen2.5-7b-instruct-q4_k_m-0000{1,2}-of-00002.gguf` present. `<llama.cpp dir>` and `env` are empty, and **no existing scripts that load a model were found** anywhere on the machine — so the integration uses the llama.cpp server that is actually installed. |
 | Reference board image | **Not attached** to the prompt. Palette values in `design/tokens.json` are hand-set to the named colours and marked `unsampled`; `design/sample_palette.py` re-samples them from the board once it is dropped into `design/reference/`. |

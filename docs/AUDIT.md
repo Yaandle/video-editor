@@ -1,7 +1,7 @@
 # Audit — video-editor (vidkit) + text_to_video
 
-Date: 2026-10-19. Scope: every source file in `F:\dev\video-editor\video-editor`
-(base) and `F:\dev\video-editor\text_to_video` (donor). Venvs, caches, uploads
+Date: 2026-10-19. Scope: every source file in `<repo>`
+(base) and `<donor repo>` (donor). Venvs, caches, uploads
 and rendered media were inventoried, not read.
 
 ---

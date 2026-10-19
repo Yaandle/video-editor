@@ -1,0 +1,22 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8765
+  },
+  "ffmpeg": {
+    "dir": null
+  },
+  "render": {
+    "workers": 4,
+    "chunk_seconds": 1.0
+  },
+  "llm": {
+    "enabled": true,
+    "model_path": "models/qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf",
+    "server_exe": "llama-server",
+    "port": 8089,
+    "ctx": 4096,
+    "n_gpu_layers": 99,
+    "temperature": 0.2
+  }
+}

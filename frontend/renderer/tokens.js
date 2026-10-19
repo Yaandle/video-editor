@@ -79,7 +79,11 @@ export function layoutGrid(frame) {
     columns: g.columns, margin, gutter, baseline, colW,
     colX,
     /** x and width of `n` columns starting at column i (0-based). */
-    span: (i, n) => ({ x: colX(i), w: n * colW + (n - 1) * gutter }),
+    span: (i, n) => {
+      // Clamp to the grid so a 12-column layout degrades to full width on a 6-column portrait frame.
+      const i2 = Math.min(i, g.columns - 1), n2 = Math.max(1, Math.min(n, g.columns - i2));
+      return { x: colX(i2), w: n2 * colW + (n2 - 1) * gutter };
+    },
     /** Snap a y value down to the baseline grid. */
     row: (y) => Math.round(y / baseline) * baseline,
     top: margin,

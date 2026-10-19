@@ -18,7 +18,7 @@ from pathlib import Path
 
 from . import paths
 
-DEFAULT_LLM_MODEL = str(Path("F:/dev/local_llms/models/Qwen2.5-7B-Instruct/qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf"))
+DEFAULT_LLM_MODEL = str(Path("models/qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf"))  # override in config.json / VIDKIT_LLM_MODEL
 
 DEFAULTS: dict = {
     "server": {"host": "127.0.0.1", "port": 8765},

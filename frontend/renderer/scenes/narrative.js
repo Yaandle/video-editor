@@ -5,7 +5,8 @@
 // with CSS keyframes + setTimeout, so its captured frames were not repeatable).
 
 import { register } from '../registry.js';
-import { color, type as typeRole, onColor } from '../tokens.js';
+import { color, border, shadow as shadowTok, type as typeRole, onColor } from '../tokens.js';
+import { box, frame as frameRect } from '../draw.js';
 import { sp, settle } from '../motion.js';
 import { textBlock, gridLines, tint } from '../kit.js';
 import { layoutText } from '../text.js';
@@ -125,5 +126,68 @@ register({
     const c = clock(clip, env);
     const n = String(env.props.headline).split('\n').length;
     return landingEvents(Array.from({ length: n }, (_, i) => ({ ...c.land(1 + i, 'slam'), role: 'headline', sound: i ? 'pop' : 'impact', gain_db: -6 })));
+  },
+});
+
+register({
+  type: 'scene.screenshot',
+  kind: 'scene',
+  label: 'Screenshot feature',
+  category: 'Scenes',
+  description: 'Kicker, headline and deck on the left; a framed screenshot slams in from the right (stacked below the text in portrait).',
+  duration: 4,
+  schema: {
+    kicker: { type: 'text', default: '01 — Feature', label: 'Kicker', maxLength: 32 },
+    headline: { type: 'text', default: 'Say what it\n[[does.]]', label: 'Headline', multiline: true, maxLength: 60 },
+    deck: { type: 'text', default: 'One supporting sentence.', label: 'Deck', multiline: true, maxLength: 160 },
+    image: { type: 'asset', default: 'assets/images/film-editing-02.jpg', label: 'Screenshot' },
+    background: { type: 'color', default: 'paper', label: 'Background' },
+  },
+  assets: (clip, props) => [props?.image].filter(Boolean),
+  render(ctx, clip, lt, env) {
+    const p = env.props, u = env.u, F = env.frame, g = env.grid;
+    const c = clock(clip, env);
+    ctx.fillStyle = color(p.background);
+    ctx.fillRect(0, 0, F.w, F.h);
+    gridLines(ctx, env, p.background);
+    const ink = onColor(p.background);
+    const P = F.h > F.w;
+    const ex = exitP(env, clip);
+    const l1 = c.land(1, 'slam');
+    textBlock(ctx, env, { name: 'kicker', text: p.kicker, role: 'label', case: 'upper', x: g.margin, y: (P ? 150 : 196) * u, color: ink, bg: p.background, lt, duration: clip.duration, enter: { unit: 'char', from: 'rise', preset: 'snappy' }, exit: { to: 'fade', length: 0.3 } });
+    const r = textBlock(ctx, env, {
+      name: 'headline', text: p.headline, role: 'h1', x: g.margin, y: (P ? 200 : 260) * u, maxWidth: P ? g.span(0, 6).w : g.span(0, 5).w, color: ink, highlight: 'lime', accent: 'cobalt',
+      bg: p.background, lt, duration: clip.duration, enter: { unit: 'line', from: 'mask', preset: 'slam', stagger: c.beat, delay: l1.start - clip.start }, exit: { to: 'mask', length: 0.32 },
+    });
+    textBlock(ctx, env, {
+      name: 'deck', text: p.deck, role: 'body', x: g.margin, y: Math.min(F.h - 260 * u, (P ? 200 : 260) * u + r.box.h + 56 * u), maxWidth: P ? g.span(0, 6).w : g.span(0, 4).w,
+      color: ink, bg: p.background, lt, duration: clip.duration, enter: { unit: 'line', from: 'rise', preset: 'soft', delay: c.B(3.5) - clip.start }, exit: { to: 'fade', length: 0.3 },
+    });
+    // Screenshot: framed, hard shadow, slams in from the right on beat 2, contained in its slot.
+    const img = env.image(p.image);
+    const slot = P
+      ? { x: g.margin, y: F.h * 0.5, w: F.w - g.margin * 2, h: F.h * 0.38 }
+      : { x: g.colX(6), y: 150 * u, w: F.w - g.colX(6) - g.margin, h: F.h - 150 * u - 120 * u };
+    const L = c.land(2, 'slam');
+    const k = Math.max(0, sp(env.t - L.start, 'slam'));
+    if (img && k > 0) {
+      const sw = img.naturalWidth || img.width, sh = img.naturalHeight || img.height;
+      const fit = Math.min(slot.w / sw, slot.h / sh);
+      const dw = sw * fit, dh = sh * fit;
+      const dx = slot.x + (slot.w - dw) / 2 + (F.w - slot.x) * (1 - k) + F.w * ex, dy = slot.y + (slot.h - dh) / 2;
+      box(ctx, dx, dy, dw, dh, { fill: color('paper'), shadow: shadowTok(F, 'video-lg') });
+      ctx.drawImage(img, dx, dy, dw, dh);
+      frameRect(ctx, dx, dy, dw, dh, border(F), color('ink'));
+      env.box({ kind: 'image', role: 'screenshot', name: 'screenshot', x: dx, y: dy, w: dw, h: dh, settled: env.t - L.start > settle('slam') && !ex });
+    }
+    env.animating();
+  },
+  events(clip, env) {
+    const c = clock(clip, env);
+    const n = String(env.props.headline).split('\n').length;
+    return landingEvents([
+      ...Array.from({ length: n }, (_, i) => ({ ...c.land(1 + i, 'slam'), role: 'headline', sound: i ? 'pop' : 'impact', gain_db: -6 })),
+      { ...c.land(2, 'slam'), role: 'screenshot', sound: 'impact', gain_db: -5 },
+    ]);
   },
 });

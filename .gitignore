@@ -24,7 +24,10 @@ renders/
 backend/uploads/
 media/uploads/
 media/.trash/
-reports/doctor.json
+reports/
+media/
+!docs/media/
+!docs/media/showcase.mp4
 
 # Local tools copied in by doctor (ffmpeg build is ~190 MB; doctor re-creates it)
 tools/
@@ -49,3 +52,13 @@ desktop.ini
 
 # Logs
 *.log
+
+# Machine-local config (copy config.example.json to config.json)
+config.json
+# Node / models / secrets
+node_modules/
+*.gguf
+*.pem
+*.key
+# All user projects stay local; only the shipped showcase example is tracked
+!projects/showcase.json

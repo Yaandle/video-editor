@@ -54,10 +54,11 @@ register({
     const ex = exitP(env, clip);
 
     // Block: lands on beat 1, bleeds off the right edge (grid break #1).
+    const P = F.h > F.w; // portrait: stack headline, block, deck vertically
     const lb = c.land(1, 'slam');
     const e = env.t - lb.start;
     if (e > 0) {
-      const bx0 = g.colX(7), by = 236 * u, bh = 560 * u, bw = F.w - bx0 + 80 * u;
+      const bx0 = P ? g.margin : g.colX(7), by = (P ? 1010 : 236) * u, bh = (P ? 420 : 560) * u, bw = F.w - bx0 + 80 * u;
       const bx = bx0 + (F.w - bx0 + 120 * u) * (1 - sp(e, 'slam')) + (F.w * 0.7) * ex;
       box(ctx, bx, by, bw, bh, { fill: color(p.block), shadow: shadowTok(F, 'video-lg') });
       hatch(ctx, bx, by + bh - 132 * u, bw, 132 * u, { color: color('ink'), gap: 22 * u, width: 4 * u });
@@ -71,13 +72,13 @@ register({
       enter: { unit: 'char', from: 'rise', preset: 'snappy', delay: 0.04 }, exit: { to: 'fade', length: 0.32 },
     });
     textBlock(ctx, env, {
-      name: 'headline', text: p.headline, role: 'hero', x: g.margin, y: 296 * u, maxWidth: g.span(0, 12).w,
+      name: 'headline', text: p.headline, role: P ? 'display' : 'hero', x: g.margin, y: 296 * u, maxWidth: g.span(0, 12).w,
       color: 'ink', highlight: 'lime', bg: p.background, lt: env.t - clip.start, duration: clip.duration,
       enter: beatLines(c, clip, 2), exit: EXIT,
     });
     const deckStart = c.B(4.5) - clip.start;
     textBlock(ctx, env, {
-      name: 'deck', text: p.deck, role: 'body', x: g.margin, y: 776 * u, maxWidth: g.span(0, 6).w,
+      name: 'deck', text: p.deck, role: 'body', x: g.margin, y: (P ? 1500 : 776) * u, maxWidth: g.span(0, P ? 4 : 6).w,
       color: 'ink', bg: p.background, lt, duration: clip.duration,
       enter: { unit: 'line', from: 'rise', preset: 'soft', delay: deckStart }, exit: { to: 'fade', length: 0.32 },
     });
@@ -87,7 +88,7 @@ register({
     const es = env.t - ls.start;
     if (es > 0) {
       const r = 132 * u;
-      const cx = 1666 * (F.w / 1920), cy = 806 * u;
+      const cx = P ? F.w - 190 * u : 1666 * (F.w / 1920), cy = (P ? 1430 : 806) * u;
       const s = Math.max(0, sp(es, 'wobble', 'scale')) * (1 - ex);
       const lab = typeRole('label', F, { font: 'mono-bold', weight: 700 });
       ctx.save();
@@ -526,12 +527,13 @@ register({
     const c = clock(clip, env);
     bg(ctx, env, p.background);
     const exit = p.hold_last ? null : EXIT;
+    const P = F.h > F.w; // portrait: headline, arrow, button, ticker stack down the frame
     textBlock(ctx, env, {
       name: 'kicker', text: p.kicker, role: 'label', case: 'upper', x: g.margin, y: 176 * u, color: 'ink', bg: p.background,
       lt, duration: clip.duration, enter: { unit: 'char', from: 'rise', preset: 'snappy' }, exit: p.hold_last ? null : { to: 'fade' },
     });
     textBlock(ctx, env, {
-      name: 'headline', text: p.headline, role: 'hero', x: g.margin, y: 222 * u, maxWidth: g.span(0, 10).w,
+      name: 'headline', text: p.headline, role: P ? 'display' : 'hero', x: g.margin, y: 222 * u, maxWidth: g.span(0, 12).w,
       color: 'ink', accent: 'cobalt', bg: p.background, lt, duration: clip.duration, enter: beatLines(c, clip, 1), exit,
     });
     // Button + boxed arrow land on beats 3 and 4, then press on beats 5 and 6.
@@ -548,7 +550,7 @@ register({
       const w = tw + padX * 2 + r2.size * 1.1, h = r2.size * 0.74 + padY * 2;
       const d = press(c.B(5));
       const x = g.margin + sh.x * d;
-      const y = 700 * u + 160 * u * (1 - sp(eb, 'slam')) + sh.y * d;
+      const y = (P ? 1120 : 700) * u + 160 * u * (1 - sp(eb, 'slam')) + sh.y * d;
       box(ctx, x, y, w, h, { fill: color('ink'), stroke: color('ink'), strokeW: bwid, shadow: { x: sh.x * (1 - d), y: sh.y * (1 - d), color: color('cobalt') } });
       setFont(ctx, r2);
       ctx.fillStyle = color('lime');
@@ -561,8 +563,8 @@ register({
     if (ea > 0) {
       const s = 196 * u;
       const d = press(c.B(6));
-      const ax = g.colX(10) + 20 * u + sh.x * d;
-      const ay = 316 * u + sh.y * d;
+      const ax = (P ? g.margin : g.colX(10) + 20 * u) + sh.x * d;
+      const ay = (P ? 760 : 610) * u + sh.y * d;
       const k = Math.max(0, sp(ea, 'slam', 'scale'));
       ctx.save();
       ctx.translate(ax + s / 2, ay + s / 2); ctx.scale(k, k); ctx.rotate((8 * (1 - sp(ea, 'slam', 'rotation')) * Math.PI) / 180); ctx.translate(-(ax + s / 2), -(ay + s / 2));
@@ -572,7 +574,7 @@ register({
       reportBox(env, { name: 'arrow', x: ax, y: ay, w: s, h: s, settled: ea > settle('slam') && d < 0.01 });
     }
     // Ticker: tilted band, always moving (grid break).
-    const th = 96 * u, ty = 868 * u;
+    const th = 96 * u, ty = (P ? 1560 : 868) * u;
     const grow = Math.min(1, Math.max(0, sp(lt - 0.1, 'snappy', 'scale')));
     if (grow > 0) {
       const tr = typeRole('label', F, { font: 'mono-bold', weight: 700, size: 34 });
@@ -584,7 +586,7 @@ register({
       env.box({ kind: 'text', role: 'label', name: 'ticker', x: 0, y: ty + th * 0.32, w: F.w, h: tr.size * 0.78, fg: color('paper'), bg: color('ink'), size: tr.size, text: p.ticker.join(' '), bleed: true, gridBreak: true });
     }
     textBlock(ctx, env, {
-      name: 'credits', text: p.credits, role: 'label', x: g.colX(6), y: 742 * u, maxWidth: g.span(6, 6).w, color: 'ink', bg: p.background,
+      name: 'credits', text: p.credits, role: 'label', x: P ? g.margin : g.colX(6), y: (P ? 1400 : 742) * u, maxWidth: P ? g.span(0, 6).w : g.span(6, 6).w, color: 'ink', bg: p.background,
       lt, duration: clip.duration, enter: { unit: 'block', from: 'rise', preset: 'snappy', delay: c.B(5.5) - clip.start }, exit: null,
     });
     env.animating();

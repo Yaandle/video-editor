@@ -412,24 +412,38 @@ register({
 
     const lab = typeRole('label', env.frame);
     const s = sceneIndexAt(env.project, env.t);
-    const linkX = (i) => g.colX(4 + i);
-    // Active-link box slides between columns on each cut.
-    const from = linkX(Math.max(0, s.prev - 1)), to = linkX(Math.max(0, s.idx - 1));
-    const k = Math.min(1.04, sp(s.since, 'snappy', 'position'));
-    const bxW = g.colW + g.gutter * 0.5;
-    if (p.links.length) {
-      box(ctx, lerp(from, to, k) - 14 * u, H * 0.22, bxW, H * 0.56, { fill: color('lime'), stroke: color('ink'), strokeW: bw * 0.6 });
-    }
-    setFont(ctx, lab);
-    p.links.slice(0, Math.max(0, g.columns - 6)).forEach((l, i) => {
-      ctx.fillStyle = color('ink');
-      ctx.fillText(l.toUpperCase(), linkX(i), H / 2 + lab.size * 0.36);
-    });
+    // Links are spread over the free span between the brand and the counter, so any
+    // number of scenes (and portrait frames) get a link each.
     const fmt = (n) => String(n).padStart(2, '0');
     const counter = typeRole('label', env.frame, { font: 'mono-bold', weight: 700 });
     const txt = `${fmt(s.idx)} / ${fmt(s.total)}`;
     setFont(ctx, counter);
     const cw = ctx.measureText(txt).width;
+    setFont(ctx, brand);
+    const bwid = ctx.measureText(p.brand).width;
+    const x0 = g.margin + bwid + 40 * u, x1 = W - g.margin - cw - 40 * u;
+    const n = p.links.length;
+    setFont(ctx, lab);
+    const natural = (g.colW + g.gutter);
+    const step = n ? Math.min(natural, (x1 - x0) / n) : natural;
+    const linkX = (i) => x0 + i * step;
+    // Active-link box slides between links on each cut.
+    const from = linkX(Math.max(0, s.prev - 1)), to = linkX(Math.max(0, s.idx - 1));
+    const k = Math.min(1.04, sp(s.since, 'snappy', 'position'));
+    const bxW = step - 10 * u;
+    if (n && x1 > x0) {
+      box(ctx, lerp(from, to, k) - 8 * u, H * 0.22, bxW, H * 0.56, { fill: color('lime'), stroke: color('ink'), strokeW: bw * 0.6 });
+    }
+    setFont(ctx, lab);
+    // Labels are centred in equal slots. If any label would not fit its slot (portrait frames),
+    // every link falls back to its number so the strip stays consistent.
+    const labels = p.links.map((l) => l.toUpperCase());
+    const fits = labels.every((l) => ctx.measureText(l).width <= bxW - 16 * u);
+    if (x1 > x0) labels.forEach((l, i) => {
+      const t = fits ? l : fmt(i + 1);
+      ctx.fillStyle = color('ink');
+      ctx.fillText(t, linkX(i) - 8 * u + (bxW - ctx.measureText(t).width) / 2, H / 2 + lab.size * 0.36);
+    });
     rollNumber(ctx, txt, `${fmt(s.prev)} / ${fmt(s.total)}`, W - g.margin - cw, H / 2 - counter.size * 0.42, counter, s.since, color('ink'));
     ctx.restore();
     env.box({ kind: 'text', role: 'label', x: W - g.margin - cw, y: H / 2 - counter.size * 0.4, w: cw, h: counter.size * 0.74, fg: color('ink'), bg: color(p.fill), size: counter.size, text: txt, settled: s.since > 0.3 });

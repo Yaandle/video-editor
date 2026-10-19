@@ -74,7 +74,7 @@ A CLI / PyQt pipeline: prompt text with markers → ElevenLabs TTS → MoviePy v
 | B5 | **text_to_video's "deterministic" capture is not deterministic.** `narrative_visualiser.html` animates with CSS `animation` + `setTimeout`; Playwright screenshots catch whatever wall-clock state the page is in. `code_visualiser` records video in real time (`record_video_dir`, `wait_for_timeout(duration+2s)`). | `narrative_visualiser.html` `renderActiveLine`, `code_visualiser._capture_video_with_browser` | Frame content depends on machine load; re-renders differ. |
 | B6 | **text_to_video `main.py` cannot run.** `config.py` was overwritten with the editor's config; `main.py`/`graph_visualiser.py` need `VIDEO_WIDTH`, `FPS`, `OUTPUT_DIR`, `ELEVENLABS_API_KEY`, `GRAPH_VIS_*`, `FONT_PATH_ARIAL`… | `config.py` (55 lines, none of those names) | AttributeError on import. |
 | B7 | **Encoding damage in the working tree.** Uncommitted `frontend/app.js` and `canvas.js` were re-saved as UTF-8-with-BOM after being decoded as cp1252: `—` → `â€”`, `×` → `Ã—`, `·` → `Â·`, `…` → `â€¦`. Several of these are user-visible strings (crop badge, zoom badge, clip labels, canvas-size presets). Backend `.py` files have the same damage in comments. | `git diff frontend/canvas.js` | Garbled UI text. |
-| B8 | **ffmpeg/ffprobe not on PATH.** PATH points at `C:\Users\Bozzy\Downloads\ffmpeg-8.0.1-essentials_build\…\bin`, which no longer exists; the build now lives at `D:\Downloads\ffmpeg-8.0.1-essentials_build\…\bin`. | `which ffmpeg` fails | Anything shelling out to ffmpeg fails. |
+| B8 | **ffmpeg/ffprobe not on PATH.** PATH points at `<user>\Downloads\ffmpeg-8.0.1-essentials_build\…\bin`, which no longer exists; the build now lives at `<elsewhere>\ffmpeg-8.0.1-essentials_build\…\bin`. | `which ffmpeg` fails | Anything shelling out to ffmpeg fails. |
 | B9 | **The venv was moved from E:.** `videoeditor_venv\Scripts\activate.bat` sets `VIRTUAL_ENV=E:\video-editor\…`; the `.exe` launchers (`pip.exe`, `uvicorn.exe`, `pytest.exe`) point at E:. `python.exe -m …` still works. | `pyvenv.cfg`, `activate.bat` | `uvicorn main:app` / `pytest` as documented fail. |
 | B10 | Hard-coded separators and drive assumptions: `text_anim` font list (`C:/Windows/Fonts/consola.ttf`), `main.py` builds `file:///` URLs by string replace. | — | Fragile on other machines/drives. |
 | B11 | Offline-first violated: `editor.html` and `animationwindow.html` load 7 families from `fonts.googleapis.com` at runtime; export (PIL) can't use them at all. | `<link href="https://fonts.googleapis.com/…">` | No fonts offline; preview/export mismatch. |
@@ -112,7 +112,7 @@ Retired to `/legacy` (moved, not deleted): moviepy export path (`websocket_serve
 
 | Item | State |
 |---|---|
-| Python | 3.14.1 (`C:\Users\Bozzy\AppData\Local\Programs\Python\Python314`) |
+| Python | 3.14.1 (`<user>\AppData\Local\Programs\Python\Python314`) |
 | venv | `videoeditor_venv` (moved from E:, `python.exe -m` works); has fastapi, uvicorn, playwright 1.62, numpy 2.5, pillow 12.2, pydantic 2.13 |
 | Node | 24.14.0 |
 | Playwright browsers | `chromium-1248`, `chromium_headless_shell-1248`, `ffmpeg-1013` in `%LOCALAPPDATA%\ms-playwright` |

@@ -116,6 +116,28 @@ register({
   },
 });
 
+/** Calendar glyph (header band, binder rings, 3x3 date grid with one lime "booked" cell) inside a box of side `w`. */
+function drawCalendarIcon(ctx, x, y, w, bw) {
+  const ink = color('ink');
+  const hh = w * 0.22;
+  ctx.fillStyle = color('paper');
+  ctx.fillRect(x, y + w * 0.08, w, w * 0.92);
+  ctx.fillStyle = ink;
+  ctx.fillRect(x, y + w * 0.08, w, hh);
+  ctx.fillRect(x + w * 0.2, y, bw, w * 0.2);
+  ctx.fillRect(x + w * 0.8 - bw, y, bw, w * 0.2);
+  const gx = x + w * 0.1, gy = y + w * 0.08 + hh + w * 0.07, cell = w * 0.2, gap = w * 0.05, ch = cell * 0.72;
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
+    const px = gx + c * (cell + gap), py = gy + r * (ch + gap);
+    ctx.fillStyle = r === 1 && c === 1 ? color('lime') : 'rgba(0,0,0,0)';
+    if (r === 1 && c === 1) ctx.fillRect(px, py, cell, ch);
+    ctx.strokeStyle = ink; ctx.lineWidth = Math.max(2, bw * 0.5);
+    ctx.strokeRect(px, py, cell, ch);
+  }
+  ctx.strokeStyle = ink; ctx.lineWidth = bw;
+  ctx.strokeRect(x, y + w * 0.08, w, w * 0.92);
+}
+
 // ── 2. Beat grid ──────────────────────────────────────────────────────────────
 register({
   type: 'scene.beat-grid',
@@ -521,6 +543,7 @@ register({
     credits: { type: 'text', default: 'Photos: Wikimedia Commons, CC BY / BY-SA. Credits in assets/MANIFEST.json', label: 'Credits', maxLength: 120 },
     background: { type: 'color', default: 'lime', label: 'Background' },
     hold_last: { type: 'bool', default: true, label: 'Hold to the end (no exit)' },
+    icon: { type: 'enum', options: ['arrow', 'calendar'], default: 'arrow', label: 'Corner icon' },
   },
   render(ctx, clip, lt, env) {
     const p = env.props, u = env.u, F = env.frame, g = env.grid;
@@ -569,7 +592,8 @@ register({
       ctx.save();
       ctx.translate(ax + s / 2, ay + s / 2); ctx.scale(k, k); ctx.rotate((8 * (1 - sp(ea, 'slam', 'rotation')) * Math.PI) / 180); ctx.translate(-(ax + s / 2), -(ay + s / 2));
       box(ctx, ax, ay, s, s, { fill: color('orange'), stroke: color('ink'), strokeW: bwid, shadow: { x: sh.x * (1 - d), y: sh.y * (1 - d), color: color('ink') } });
-      drawArrow(ctx, ax + s * 0.18, ay + s * 0.18, s * 0.64, { dir: 'up-right', color: color('ink'), weight: 0.17 });
+      if (p.icon === 'calendar') drawCalendarIcon(ctx, ax + s * 0.16, ay + s * 0.16, s * 0.68, bwid);
+      else drawArrow(ctx, ax + s * 0.18, ay + s * 0.18, s * 0.64, { dir: 'up-right', color: color('ink'), weight: 0.17 });
       ctx.restore();
       reportBox(env, { name: 'arrow', x: ax, y: ay, w: s, h: s, settled: ea > settle('slam') && d < 0.01 });
     }

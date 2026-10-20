@@ -4,10 +4,13 @@ Beat-locked motion graphics, rendered offline. Every frame is a pure function of
 time, so the preview and the exported video are the same renderer, and the same
 project always renders the same pixels.
 
-<video src="docs/media/showcase.mp4" controls muted loop playsinline width="100%"></video>
+<p align="center">
+  <a href="docs/media/showcase.mp4"><img src="docs/media/showcase.gif" alt="vidkit studio showcase: beat-locked motion graphics" width="100%"></a>
+</p>
 
-*([docs/media/showcase.mp4](docs/media/showcase.mp4) — the 24 s showcase, rendered from
-[projects/showcase.json](projects/showcase.json) with `render.bat projects\showcase.json --preset 1080p30`.)*
+*Click the preview for the full-quality 1080p [showcase.mp4](docs/media/showcase.mp4). It's the 24 s showcase,
+rendered from [projects/showcase.json](projects/showcase.json) with
+`render.bat projects\showcase.json --preset 1080p30`.*
 
 ## Quick start (Windows)
 

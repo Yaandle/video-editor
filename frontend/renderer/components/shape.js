@@ -59,7 +59,7 @@ register({
     points: { type: 'number', min: 2, max: 24, step: 1, default: 5, label: 'Star points' },
     inner_ratio: { type: 'number', min: 0.1, max: 0.95, step: 0.01, default: 0.5, label: 'Star inner ratio' },
   },
-  label: (clip) => `shape · ${clip.props?.kind ?? 'rectangle'}`,
+  clipLabel: (clip) => `shape · ${clip.props?.kind ?? 'rectangle'}`,
   render(ctx, clip, lt, env) {
     const p = env.props;
     const u = unit(env.frame);

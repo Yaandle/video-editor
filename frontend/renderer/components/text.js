@@ -3,11 +3,12 @@
 // Text Studio (frontend/textstudio.html) edits exactly these props.
 
 import { register } from '../registry.js';
-import { layoutText } from '../text.js';
+import { layoutText, plain } from '../text.js';
 import { textBlock } from '../kit.js';
 import { type as typeRole, color, unit, shadow as shadowTok, border } from '../tokens.js';
 import { box } from '../draw.js';
-import { sp, arrival, staggerStep, peak, settle, arrivalFrames } from '../motion.js';
+import { sp, arrival, staggerStep, peak, settle } from '../motion.js';
+import { landing } from '../kit.js';
 
 /**
  * Beat-locked schedule. With `hit` on and a beat grid, each line/block lands on
@@ -18,18 +19,16 @@ import { sp, arrival, staggerStep, peak, settle, arrivalFrames } from '../motion
 export function scheduleText(clip, p, beat, fps) {
   const natural = { delay: p.anim_delay ?? 0, stagger: p.anim_stagger || staggerStep(p.anim_unit) };
   if (!p.hit || !beat || !beat.valid || !['line', 'block'].includes(p.anim_unit) || p.anim_from === 'none' || p.anim_from === 'type') return natural;
-  const lead = arrivalFrames(fps, p.anim_preset) / fps;
-  const want = clip.start + natural.delay + lead;
-  const k = Math.ceil((want - beat.offset) / beat.step - 1e-6);
-  const firstHit = beat.offset + k * beat.step;
+  const first = landing(clip.start + natural.delay, p.anim_preset, beat, fps);
   const steps = Math.max(1, Math.round((p.anim_stagger || beat.step) / beat.step));
-  return { delay: firstHit - lead - clip.start, stagger: steps * beat.step };
+  return { delay: first.start - clip.start, stagger: steps * beat.step };
 }
 
 const ROLES = ['hero', 'display', 'h1', 'h2', 'body', 'label', 'micro'];
 const FROMS = ['none', 'rise', 'drop', 'left', 'right', 'scale', 'mask', 'tilt', 'type'];
 const EXITS = ['none', 'drop', 'rise', 'left', 'right', 'mask', 'fade'];
 const PRESETS = ['snappy', 'slam', 'soft', 'quick', 'wobble'];
+const TYPE_CPS = 28;
 
 /** Text style preset library — Text Studio and the properties panel apply these. */
 export const TEXT_STYLES = {
@@ -63,7 +62,7 @@ register({
     style: { type: 'enum', options: ['custom', ...Object.keys(TEXT_STYLES)], default: 'headline-slam', label: 'Style preset' },
     role: { type: 'enum', options: ROLES, default: 'display', label: 'Size' },
     font: { type: 'enum', options: ['auto', 'display', 'body', 'mono', 'code'], default: 'auto', label: 'Font' },
-    weight: { type: 'number', min: 100, max: 900, step: 50, default: 0, label: 'Weight (0 = role)' },
+    weight: { type: 'number', min: 0, max: 900, step: 50, default: 0, label: 'Weight (0 = role)' },
     size_px: { type: 'number', min: 0, max: 600, step: 1, default: 0, label: 'Size override px (0 = ramp)' },
     color: { type: 'color', default: 'ink', label: 'Colour' },
     accent: { type: 'color', default: 'cobalt', label: 'Accent {{…}}' },
@@ -88,7 +87,7 @@ register({
     hit: { type: 'bool', default: true, label: 'Impact on landing' },
     sfx: { type: 'bool', default: true, label: 'Sound effects' },
   },
-  label(clip) { return `"${String(clip.props?.text ?? '').replace(/\n/g, ' ').slice(0, 26)}"`; },
+  clipLabel(clip) { return `"${String(clip.props?.text ?? '').replace(/\n/g, ' ').slice(0, 26)}"`; },
 
   render(ctx, clip, lt, env) {
     const p = env.props;
@@ -108,7 +107,7 @@ register({
     const sched = scheduleText(clip, p, env.beat, env.settings.fps);
     const enter = p.anim_from === 'none' ? null : {
       unit: p.anim_unit, from: p.anim_from, preset: p.anim_preset,
-      stagger: sched.stagger, delay: sched.delay, cps: 28,
+      stagger: sched.stagger, delay: sched.delay, cps: TYPE_CPS,
     };
     const exit = p.exit_to === 'none' ? null : { to: p.exit_to, preset: p.exit_preset };
 
@@ -129,6 +128,7 @@ register({
           shadow: p.plate === 'shadow-box' ? shadowTok(env.frame) : null,
         });
         ctx.restore();
+        env.box({ kind: 'box', name: 'plate', x: px, y: py, w: pw * grow * shrink, h: ph });
       }
       if (enter || exit) env.animating();
     }
@@ -152,14 +152,10 @@ register({
     const p = env.props;
     if (p.anim_from === 'none') return [];
     const out = [];
-    const text = String(p.text ?? '');
+    const text = plain(p.text);
     const unitName = p.anim_unit;
-    const counts = {
-      block: 1,
-      line: text.split('\n').length,
-      word: text.replace(/\[\[|\]\]|\{\{|\}\}/g, '').split(/\s+/).filter(Boolean).length,
-      char: text.replace(/\[\[|\]\]|\{\{|\}\}|\s/g, '').length,
-    };
+    const words = text.split(/\s+/).filter(Boolean);
+    const counts = { block: 1, line: text.split('\n').length, word: words.length, char: text.replace(/\s/g, '').length };
     const sched = scheduleText(clip, p, env.beat, env.fps);
     const step = sched.stagger;
     const preset = p.anim_preset;
@@ -169,15 +165,12 @@ register({
     out.push({ kind: 'motion', role: 'text-enter', start: t0, peak: last + peak(preset), settle: last + settle(preset), preset });
     if (!p.sfx) return out;
     if (p.anim_from === 'type') {
-      const words = counts.word;
-      const chars = counts.char;
-      // one soft tick per word, on the frame its first letter types
+      // one soft tick per word, on the frame its first letter types (drawTypewriter skips spaces too)
       let idx = 0;
-      for (const w of text.split(/\s+/).filter(Boolean)) {
-        out.push({ kind: 'cue', t: t0 + idx / 28, sound: 'tick', gain_db: -16 });
+      for (const w of words) {
+        out.push({ kind: 'cue', t: t0 + idx / TYPE_CPS, sound: 'tick', gain_db: -16 });
         idx += w.length;
       }
-      if (!words || !chars) return out;
       return out;
     }
     const hitty = p.hit && (preset === 'slam' || preset === 'snappy') && ['mask', 'rise', 'drop', 'tilt', 'scale', 'left', 'right'].includes(p.anim_from);

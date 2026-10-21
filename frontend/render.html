@@ -10,12 +10,14 @@
 </head>
 <body>
 <canvas id="frame" width="1920" height="1080"></canvas>
+<script type="importmap">{ "imports": { "#renderer/": "/renderer/", "#vendor/": "/vendor/" } }</script>
 <script type="module">
 // Headless harness driven by studio/render/engine.py. Time is the only input:
 // __seek(t) quantizes t to a frame, decodes whatever that frame needs, renders
 // synchronously and returns the renderer's frame report. The engine waits for
 // a paint and captures the viewport.
 import { createRenderer } from './renderer/core.js';
+import { glSupported, glInfo } from './renderer/gl.js';
 
 const canvas = document.getElementById('frame');
 const ctx = canvas.getContext('2d', { alpha: false });
@@ -29,7 +31,8 @@ window.__load = async (project, opts = {}) => {
   renderer = await createRenderer({ mode: 'export', base: opts.base ?? '/', tokens: opts.tokens });
   await renderer.load(project, { width: W, height: H });
   fps = project.settings.fps;
-  return { ok: true, errors: renderer.errors, fonts: [...document.fonts].map((f) => `${f.family}:${f.weight}:${f.status}`) };
+  const gl = glSupported() ? glInfo() : null;
+  return { ok: true, errors: renderer.errors, gl, fonts: [...document.fonts].filter((f) => !f.family.includes('@w')).map((f) => `${f.family}:${f.weight}:${f.status}`) };
 };
 
 window.__seek = async (t) => {

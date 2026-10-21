@@ -1,9 +1,10 @@
 // kit.js — helpers shared by components and scenes: token-driven text blocks
 // that report their boxes, tinted grid lines, and colour utilities. Pure.
 
-import { layoutText, drawText, isAllCaps, plain } from './text.js';
+import { layoutText, drawText, isAllCaps, plain, entranceSpan } from './text.js';
+export { setFont } from './text.js';
 import { type as typeRole, color, layoutGrid, unit, contrast, onColor } from './tokens.js';
-import { arrivalFrames } from './motion.js';
+import { arrivalFrames, settle, exitLength } from './motion.js';
 
 /** Flat mix of two colours (still a flat fill — used for grid hairlines). */
 export function tint(a, b, amt) {
@@ -44,6 +45,10 @@ export function textBlock(ctx, env, o) {
     stroke: o.stroke, shadow: o.shadow,
   });
   const inkLeft = left + Math.min(...lay.lines.map((l) => l.offset));
+  // Settled = this block's own staggered entrance has landed and its exit has not begun.
+  const lt = o.lt ?? 1e9;
+  const entering = !!(o.enter && o.enter.from !== 'none' && lt < entranceSpan(lay.unitCount, o.enter) + settle(o.enter.preset ?? 'snappy'));
+  const exiting = !!(o.exit && o.exit.to !== 'none' && o.duration !== undefined && lt > o.duration - (o.exit.length ?? exitLength()));
   const box = {
     kind: 'text', role: o.role ?? 'body', name: o.name, text: plain(o.text ?? ''),
     x: inkLeft, y: o.y, w: lay.width, h: lay.height,
@@ -52,6 +57,7 @@ export function textBlock(ctx, env, o) {
     size: r.size, lines: lay.lines.length, overflow: lay.overflow,
     gridBreak: !!o.gridBreak, bleed: !!o.bleed,
     allCaps: isAllCaps(o.text ?? ''),
+    ...(entering || exiting ? { settled: false } : {}),
   };
   env.box(box);
   if (box.allCaps && ['hero', 'display', 'h1', 'h2'].includes(box.role)) env.warn(`all-caps ${box.role}: "${box.text.slice(0, 30)}"`);

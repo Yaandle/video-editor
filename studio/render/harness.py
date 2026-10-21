@@ -13,7 +13,7 @@ import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .. import paths
+from .. import config, paths
 from . import vframes
 
 ORIGIN = "http://vidkit.local"
@@ -22,13 +22,18 @@ PAINT_BARRIER = "() => new Promise(r => requestAnimationFrame(() => requestAnima
 MIME = {".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".html": "text/html",
         ".css": "text/css", ".svg": "image/svg+xml", ".ttf": "font/ttf", ".woff2": "font/woff2", ".otf": "font/otf",
         ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif",
-        ".mp4": "video/mp4", ".wav": "audio/wav", ".mp3": "audio/mpeg"}
+        ".mp4": "video/mp4", ".wav": "audio/wav", ".mp3": "audio/mpeg", ".glsl": "text/plain"}
 
-ROOTS = {"assets": paths.ASSETS, "design": paths.DESIGN, "media": paths.MEDIA, "projects": paths.PROJECTS}
+ROOTS = {"assets": paths.ASSETS, "design": paths.DESIGN, "media": paths.MEDIA, "projects": paths.PROJECTS, "styles": paths.STYLES}
 
 
 class HarnessError(RuntimeError):
     pass
+
+
+def launch_args() -> list[str]:
+    """Chromium flags for capture: stable text rasterisation plus the GL setup doctor chose."""
+    return ["--disable-lcd-text", "--font-render-hinting=none", "--force-color-profile=srgb", *config.gl_args()]
 
 
 def resolve_url(url: str) -> Path | None:

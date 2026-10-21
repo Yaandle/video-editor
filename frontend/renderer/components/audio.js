@@ -18,5 +18,5 @@ register({
     fade_out: { type: 'number', min: 0, max: 10, step: 0.05, default: 0.05, label: 'Fade out s' },
     duck_music: { type: 'bool', default: true, label: 'Duck music under this' },
   },
-  label: (clip) => `audio · ${String(clip.src ?? '').split('/').pop()}`,
+  clipLabel: (clip) => `audio · ${String(clip.src ?? '').split('/').pop()}`,
 });

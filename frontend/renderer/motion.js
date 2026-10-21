@@ -189,6 +189,12 @@ export function envelope(lt, duration, enter, exit, frame = { w: 1920, h: 1080 }
   return { dx, dy, scale, rot, alpha, entering, exiting };
 }
 
+/** 0 → 1 exit progress over the last `len` seconds of a clip (critically damped, no overshoot). */
+export function exitProgress(lt, duration, len = 0.4, preset = 'quick', delay = 0) {
+  const x = lt - (duration - len) - delay;
+  return x > 0 ? clamp01(sp(x, preset, 'position')) : 0;
+}
+
 /** Continuous drift for ambient "never dead" motion (closed form, linear in t). */
 export function drift(t, speedPxPerSec) { return t * speedPxPerSec; }
 

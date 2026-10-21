@@ -21,7 +21,8 @@ from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 PRESETS = Literal["snappy", "slam", "soft", "quick", "wobble"]
-SOUNDS = Literal["kick", "snare", "clap", "hat", "tick", "click", "pop", "whoosh", "riser", "impact", "subdrop"]
+STYLE_ID = r"^[a-z0-9][a-z0-9\-]{0,40}$"
+SOUND_ID = r"^[a-z0-9][a-z0-9.\-]{0,60}$"
 
 
 class Strict(BaseModel):
@@ -38,7 +39,18 @@ class Settings(Strict):
     beat_lock: bool = True
     duration: float = Field(..., gt=0, le=36000)
     background: str = "paper"
-    style_pack: str = "neo-brutal"
+    style: str = Field("neo-brutal", pattern=STYLE_ID)
+    style_params: dict = Field(default_factory=dict)
+    seed: int = Field(1, ge=0, le=2**31 - 1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def rename_style_pack(cls, data):
+        # schema v1 before style packs called this field style_pack
+        if isinstance(data, dict) and "style_pack" in data:
+            data = dict(data)
+            data.setdefault("style", data.pop("style_pack"))
+        return data
 
     @model_validator(mode="after")
     def whole_frames(self):
@@ -113,6 +125,8 @@ class Clip(Strict):
     src: Optional[str] = None
     source_start: float = Field(0.0, ge=0)
     speed: float = Field(1.0, ge=0.1, le=8)
+    style: Optional[str] = Field(None, pattern=STYLE_ID)
+    style_params: dict = Field(default_factory=dict)
     props: dict = Field(default_factory=dict)
 
     @field_validator("src")
@@ -125,7 +139,7 @@ class Clip(Strict):
 
 class Cue(Strict):
     t: float = Field(..., ge=0)
-    sound: SOUNDS
+    sound: str = Field(..., pattern=SOUND_ID)   # a core voice or "<pack>.<voice>" (checked against studio.audio)
     gain_db: float = Field(-6, ge=-60, le=12)
     length: Optional[float] = Field(None, gt=0, le=10)
     ends_at: Optional[float] = None
@@ -133,7 +147,7 @@ class Cue(Strict):
 
 
 class Music(Strict):
-    preset: Literal["brutal-bounce"] = "brutal-bounce"
+    preset: str = Field("brutal-bounce", pattern=SOUND_ID)   # "brutal-bounce" or "<pack>.<bed>" (checked against studio.audio)
     seed: int = 7
     gain_db: float = Field(-2, ge=-60, le=12)
     end_hit: bool = True
@@ -164,6 +178,17 @@ class Project(Strict):
             if c.id in seen:
                 raise ValueError(f"duplicate clip id '{c.id}'")
             seen.add(c.id)
+        return self
+
+    @model_validator(mode="after")
+    def known_sounds(self):
+        from .audio import catalogue
+        voices, beds = catalogue.voices(), catalogue.beds()
+        for cue in self.audio.cues:
+            if cue.sound not in voices:
+                raise ValueError(f"unknown sound '{cue.sound}' (known: {', '.join(sorted(voices))})")
+        if self.audio.music and self.audio.music.preset not in beds:
+            raise ValueError(f"unknown music preset '{self.audio.music.preset}' (known: {', '.join(sorted(beds))})")
         return self
 
 
@@ -312,7 +337,7 @@ def migrate_v0(old: dict, name: str | None = None) -> dict:
         "schema": "vidkit.project", "version": 1, "name": name or old.get("name") or "untitled",
         "settings": {"width": w, "height": h, "fps": int(old.get("fps", 30)), "bpm": None, "subdivision": 1, "beat_offset": 0,
                      "beat_lock": False, "duration": max(dur if dur > 0 else end, 0.1), "background": old.get("background_color") or "#000000",
-                     "style_pack": "neo-brutal"},
+                     "style": "neo-brutal"},
         "tracks": tracks, "clips": clips,
         "audio": {"music": None, "auto_sfx": False, "sfx_gain_db": 0, "target_lufs": -14, "cues": []},
         "meta": {"migrated_from": "vkit-v0", "migrated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "migration_notes": notes},

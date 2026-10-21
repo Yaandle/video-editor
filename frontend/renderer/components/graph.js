@@ -5,7 +5,8 @@
 import { register } from '../registry.js';
 import { color, border, shadow as shadowTok, unit, type as typeRole } from '../tokens.js';
 import { box } from '../draw.js';
-import { sp, arrivalFrames, peak, settle } from '../motion.js';
+import { sp, peak, settle } from '../motion.js';
+import { landing } from '../kit.js';
 
 export function parseData(str) {
   return String(str ?? '').split(',').map((s) => s.trim()).filter(Boolean).map((pair) => {
@@ -24,17 +25,10 @@ export function niceTick(range, divisions = 4) {
 
 function schedule(clip, p, n, beat, fps) {
   // Bar i lands on grid line i+1 after the clip starts (or every `stagger` s without a grid).
-  const lead = arrivalFrames(fps, 'slam') / fps;
   const out = [];
   for (let i = 0; i < n; i++) {
-    let hit;
-    if (beat?.valid) {
-      const k0 = Math.ceil((clip.start + lead - beat.offset) / beat.step - 1e-6);
-      hit = beat.offset + (k0 + i * Math.max(1, Math.round(p.stagger / beat.step))) * beat.step;
-    } else {
-      hit = clip.start + lead + i * p.stagger;
-    }
-    out.push({ hit, start: hit - lead });
+    if (beat?.valid) out.push(landing(clip.start, 'slam', beat, fps, i * Math.max(1, Math.round(p.stagger / beat.step))));
+    else { const l = landing(clip.start, 'slam', null, fps); out.push({ start: l.start + i * p.stagger, hit: l.hit + i * p.stagger }); }
   }
   return out;
 }
@@ -57,7 +51,7 @@ register({
     height: { type: 'number', min: 0.2, max: 1, step: 0.01, default: 0.6, label: 'Height (frame)' },
     stagger: { type: 'number', min: 0.05, max: 2, step: 0.05, default: 0.5, label: 'Bar stagger s' },
   },
-  label: (clip) => `chart · ${clip.props?.title ?? ''}`,
+  clipLabel: (clip) => `chart · ${clip.props?.title ?? ''}`,
   render(ctx, clip, lt, env) {
     const p = env.props;
     const data = parseData(p.data);

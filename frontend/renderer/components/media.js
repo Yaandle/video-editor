@@ -75,7 +75,7 @@ register({
   duration: 4,
   schema: schema('image'),
   assets: (clip) => (clip.src ? [clip.src] : []),
-  label: (clip) => `image · ${String(clip.src ?? '').split('/').pop()}`,
+  clipLabel: (clip) => `image · ${String(clip.src ?? '').split('/').pop()}`,
   render(ctx, clip, lt, env) {
     drawMedia(ctx, clip, lt, env, clip.src ? env.image(clip.src) : null);
   },
@@ -90,7 +90,7 @@ register({
   media: 'video',
   duration: 5,
   schema: schema('video'),
-  label: (clip) => `video · ${String(clip.src ?? '').split('/').pop()}`,
+  clipLabel: (clip) => `video · ${String(clip.src ?? '').split('/').pop()}`,
   render(ctx, clip, lt, env) {
     const st = (clip.source_start ?? 0) + Math.max(0, lt) * (clip.speed ?? 1);
     const el = clip.src ? env.videoFrame(clip.src, st) : null;

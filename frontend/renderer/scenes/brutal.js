@@ -7,17 +7,10 @@ import { register } from '../registry.js';
 import { color, border, shadow as shadowTok, type as typeRole, onColor } from '../tokens.js';
 import { box, frame as frameRect, hatch, dots, sticker as drawSticker, imageCover, arrow as drawArrow, ticker as drawTicker, rule } from '../draw.js';
 import { sp, fade, lerp, spring, params, settle, peak, staggerStep } from '../motion.js';
-import { textBlock, gridLines, reportBox, tint } from '../kit.js';
+import { textBlock, gridLines, reportBox, tint, setFont } from '../kit.js';
 import { clock, exitP, landingEvents } from './helpers.js';
 
 const EXIT = { to: 'mask', preset: 'quick', length: 0.32 };
-
-function setFont(ctx, r) {
-  ctx.font = r.font;
-  if ('letterSpacing' in ctx) ctx.letterSpacing = `${r.tracking * r.size}px`;
-  ctx.textBaseline = 'alphabetic';
-  ctx.textAlign = 'left';
-}
 
 function bg(ctx, env, fill) {
   ctx.fillStyle = color(fill);
@@ -267,13 +260,14 @@ register({
       setFont(ctx, lab);
       ctx.fillStyle = color('ink');
       ctx.fillText(preset.toUpperCase(), x + pad, y + pad + lab.size * 0.78);
+      const labW = ctx.measureText(preset.toUpperCase()).width;
       const pr = params(preset);
       const ptxt = `k ${pr.stiffness} · c ${pr.damping}${pr.mass !== 1 ? ` · m ${pr.mass}` : ''}`;
       const pw = ctx.measureText(ptxt).width;
       ctx.fillStyle = color('ink-soft');
       ctx.fillText(ptxt, x + w - pad - pw, y + pad + lab.size * 0.78);
       rule(ctx, x, y + pad * 2 + lab.size, w, bw * 0.6, color('ink'));
-      env.box({ kind: 'text', role: 'label', name: `lab${i}`, x: x + pad, y: y + pad, w: w - pad * 2, h: lab.size * 0.78, fg: color('ink'), bg: color('white'), size: lab.size, text: preset, settled: appear > settle('snappy') && !drop });
+      env.box({ kind: 'text', role: 'label', name: `lab${i}`, x: x + pad, y: y + pad, w: labW, h: lab.size * 0.78, fg: color('ink'), bg: color('white'), size: lab.size, text: preset, settled: appear > settle('snappy') && !drop });
 
       // Plot: value vs time over a 0.9 s window, drawn up to "now".
       const L = c.land(3 + i, preset);
@@ -355,7 +349,7 @@ register({
     const pyy = py + F.h * 0.55 * (1 - sp(ep, 'soft')) + F.h * ex;
     imageCover(ctx, env.image(p.image), px, pyy, pw, ph, { focusX: 0.5, focusY: p.focus_y, zoom: 1.08 + 0.025 * lt });
     frameRect(ctx, px, pyy, pw + 40 * u, ph, border(F), color('ink'));
-    reportBox(env, { name: 'photo', x: px, y: pyy, w: pw, h: ph, bleed: true, settled: ep > settle('soft') && !ex });
+    env.box({ kind: 'image', name: 'photo', x: px, y: pyy, w: pw, h: ph, bleed: true, settled: ep > settle('soft') && !ex });
     // Credit tag on the photo (required attribution, readable: paper on ink).
     const cr = typeRole('label', F);
     setFont(ctx, cr);
@@ -464,6 +458,7 @@ register({
       ctx.translate(x + w / 2, y + h / 2); ctx.rotate(rot); ctx.translate(-(x + w / 2), -(y + h / 2));
       box(ctx, x, y, w, h, { fill: color('white'), shadow: shadowTok(F, 'video-lg') });
       imageCover(ctx, env.image(card.image), x, y, w, imgH, { focusY: 0.45 });
+      env.box({ kind: 'image', name: `card${i}-photo`, x, y, w, h: imgH });
       ctx.fillStyle = color('ink');
       ctx.fillRect(x, y + imgH, w, bw);
       let cy = y + imgH + pad;

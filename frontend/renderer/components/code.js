@@ -76,7 +76,7 @@ register({
     cps: { type: 'number', min: 2, max: 400, step: 1, default: 45, label: 'Chars per second' },
     font_px: { type: 'number', min: 8, max: 80, step: 1, default: 30, label: 'Code size px' },
   },
-  label: (clip) => `code · ${clip.props?.title ?? ''}`,
+  clipLabel: (clip) => `code · ${clip.props?.title ?? ''}`,
   render(ctx, clip, lt, env) {
     const p = env.props;
     const u = unit(env.frame);

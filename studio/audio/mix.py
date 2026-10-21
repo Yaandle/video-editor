@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 
 from .. import config, paths
-from . import music, synth
+from . import catalogue, music, synth
 from .synth import SR
 
 LIMIT_LINEAR = 0.80          # alimiter ceiling ≈ −1.9 dBFS sample peak → true peak under −1 dBTP
@@ -74,7 +74,14 @@ def cue_signal(cue: dict, idx: int) -> tuple[np.ndarray, float]:
         return synth.whoosh(seed=seed), cue["t"] - 0.12      # whoosh peaks into the motion
     if sound == "impact":
         return synth.impact(seed=seed, size=1.0), cue["t"]
-    return synth.voice(sound, seed=seed), cue["t"]
+    if sound in synth.VOICES:
+        return synth.voice(sound, seed=seed), cue["t"]
+    # Style-pack voice ("<pack>.<name>"): risers end on their cut, others may lead in.
+    sig = catalogue.voice(sound, seed=seed, pitch=cue.get("pitch"), length=cue.get("length"))
+    if cue.get("ends_at") is not None:
+        return sig, float(cue["ends_at"]) - len(sig) / SR
+    lead = float(getattr(catalogue.voices()[sound], "lead", 0.0))
+    return sig, cue["t"] - lead
 
 
 def build_timeline(project: dict, events: dict) -> tuple[np.ndarray, dict]:
@@ -120,8 +127,8 @@ def build_timeline(project: dict, events: dict) -> tuple[np.ndarray, dict]:
     if a.get("music"):
         m = a["music"]
         cuts = [c["t"] for c in events.get("cuts", []) if c.get("edge") == "in"]
-        bed = music.render_bed(dur, float(s.get("bpm") or 120), cuts, seed=int(m.get("seed", 7)),
-                               end_hit=bool(m.get("end_hit", True)), offset=float(s.get("beat_offset", 0)))
+        bed = catalogue.bed(m.get("preset", "brutal-bounce"), duration=dur, bpm=float(s.get("bpm") or 120), sections=cuts,
+                            seed=int(m.get("seed", 7)), end_hit=bool(m.get("end_hit", True)), offset=float(s.get("beat_offset", 0)))
         # smooth the duck so it never clicks
         k = int(0.08 * SR)
         if k > 1 and duck.min() < 1:
@@ -159,10 +166,10 @@ def measure(raw: bytes) -> dict:
     }
 
 
-def _limit(x: np.ndarray, gain_db: float) -> np.ndarray:
+def _limit(x: np.ndarray, gain_db: float, ceiling: float = LIMIT_LINEAR) -> np.ndarray:
     raw = (x * db(gain_db)).astype(np.float32).tobytes()
     r = _ff(["-f", "f32le", "-ar", str(SR), "-ac", "2", "-i", "-",
-             "-af", f"alimiter=limit={LIMIT_LINEAR}:attack=4:release=60:level=false:latency=true",
+             "-af", f"alimiter=limit={ceiling:.4f}:attack=4:release=60:level=false:latency=true",
              "-f", "f32le", "-ar", str(SR), "-ac", "2", "-"], input_bytes=raw)
     if r.returncode != 0:
         raise RuntimeError(f"limiter failed: {r.stderr.decode(errors='replace')[-400:]}")
@@ -176,7 +183,9 @@ def master_timeline(project: dict, events: dict) -> tuple[np.ndarray, dict]:
     """Full-timeline master at the target loudness (cached by its inputs)."""
     a = project.get("audio") or {}
     target = float(a.get("target_lufs", -14))
-    key_src = json.dumps({"p": {k: project[k] for k in ("settings", "clips", "tracks", "audio")}, "e": events, "v": 3}, sort_keys=True)
+    key_src = json.dumps({"p": {k: project[k] for k in ("settings", "clips", "tracks", "audio")}, "e": events, "v": 4}, sort_keys=True)
+    for f in sorted(list((paths.ROOT / "studio" / "audio").glob("*.py")) + list(paths.STYLES.glob("*/sound.py"))):
+        key_src += f"|{f.name}:{hashlib.sha1(f.read_bytes()).hexdigest()[:12]}"
     srcs = sorted({str(c.get("src")) for c in project["clips"] if c.get("src") and c["type"] in ("audio", "video")})
     for sname in srcs:
         sp = paths.ROOT / sname.lstrip("/")
@@ -199,7 +208,16 @@ def master_timeline(project: dict, events: dict) -> tuple[np.ndarray, dict]:
         if m1["integrated_lufs"] is not None and abs(target - m1["integrated_lufs"]) > 0.3:
             gain += target - m1["integrated_lufs"]       # second pass: the limiter ate some level
             out = _limit(raw, gain)
-        stats = {"pre_master": m0, "master_gain_db": round(gain, 2)}
+        # True-peak guard: hard-edged material (square waves, clicks) overshoots between
+        # samples. Lower the ceiling by the measured excess until the true peak is safe.
+        ceiling = LIMIT_LINEAR
+        for _ in range(3):
+            tp = measure(out.tobytes())["true_peak_dbtp"]
+            if tp is None or tp <= TP_MAX - 0.2:
+                break
+            ceiling *= db(-(tp - (TP_MAX - 0.3)))
+            out = _limit(raw, gain, ceiling)
+        stats = {"pre_master": m0, "master_gain_db": round(gain, 2), "limiter_ceiling": round(ceiling, 4)}
     stats.update(info)
     cache.parent.mkdir(parents=True, exist_ok=True)
     out.astype(np.float32).tofile(cache)

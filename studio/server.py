@@ -21,6 +21,7 @@ import uuid
 import wave
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -34,7 +35,26 @@ from .render import vframes
 from .render.engine import Job, RenderError, render
 
 paths.ensure_dirs()
-app = FastAPI(title="vidkit studio")
+
+
+@asynccontextmanager
+async def _lifespan(_app):
+    global _loop
+    _loop = asyncio.get_running_loop()
+    yield
+
+
+app = FastAPI(title="vidkit studio", lifespan=_lifespan)
+
+
+@app.middleware("http")
+async def _revalidate(request, call_next):
+    """Code, tokens and pack files must never be served stale (the preview is the export
+    renderer); they revalidate by ETag on every load. Media and renders cache normally."""
+    resp = await call_next(request)
+    if not request.url.path.startswith(("/media/", "/renders/", "/assets/images/")):
+        resp.headers.setdefault("Cache-Control", "no-cache")
+    return resp
 RECENT = paths.PROJECTS / "recent.json"
 _clients: set[WebSocket] = set()
 _loop: asyncio.AbstractEventLoop | None = None
@@ -227,11 +247,35 @@ def audio_preview(project: dict = Body(...)):
         master, stats = mix.master_timeline(data, events)
     except Exception as e:
         return _error("audio_failed", f"Could not build the audio preview: {e}", 422)
-    pcm = (master.clip(-1, 1) * 32767).astype("<i2").tobytes()
+    return Response(_wav(master), media_type="audio/wav", headers={"X-Integrated-LUFS": str(stats.get("pre_master", {}).get("integrated_lufs"))})
+
+
+def _wav(data) -> bytes:
+    from .audio import mix
+    pcm = (data.clip(-1, 1) * 32767).astype("<i2").tobytes()
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
         w.setnchannels(2); w.setsampwidth(2); w.setframerate(mix.SR); w.writeframes(pcm)
-    return Response(buf.getvalue(), media_type="audio/wav", headers={"X-Integrated-LUFS": str(stats.get("pre_master", {}).get("integrated_lufs"))})
+    return buf.getvalue()
+
+
+@app.get("/api/audio/voices")
+def audio_voices():
+    from .audio import catalogue
+    core = sorted(k for k in catalogue.voices() if "." not in k)
+    return core + sorted(k for k in catalogue.voices() if "." in k)
+
+
+@app.get("/api/audio/voice")
+def audio_voice(name: str):
+    """One synthesized voice as WAV, at a moderate level, for the Sounds tab."""
+    from .audio import catalogue
+    try:
+        sig = catalogue.voice(name, seed=1)
+    except KeyError as e:
+        return _error("unknown_sound", str(e), 404)
+    peak = float(abs(sig).max()) or 1.0
+    return Response(_wav(sig * (0.5 / peak)), media_type="audio/wav")
 
 
 # ── Render queue ──────────────────────────────────────────────────────────────
@@ -364,22 +408,54 @@ def llm_captions(body: dict = Body(...)):
     return sb.chunk_captions(str(body.get("text", "")), int(body.get("max_words", 6)))
 
 
-@app.on_event("startup")
-async def _startup():
-    global _loop
-    _loop = asyncio.get_running_loop()
+@app.post("/api/llm/order")
+def llm_order(body: dict = Body(...)):
+    from .llm import storyboard as sb
+    return sb.suggest_order([str(t) for t in body.get("titles", [])])
+
+
+@app.post("/api/llm/suggest-style")
+def llm_suggest_style(body: dict = Body(...)):
+    from .llm import styles as st
+    return st.suggest_style(str(body.get("script", "")), _styles_info())
+
+
+@app.post("/api/llm/kinetic-copy")
+def llm_kinetic_copy(body: dict = Body(...)):
+    from .llm import styles as st
+    return st.kinetic_copy(str(body.get("text", "")), int(body.get("beats", 8)))
+
+
+# ── Style packs ───────────────────────────────────────────────────────────────
+
+_styles_cache: dict = {}
+
+
+def _styles_info() -> list[dict]:
+    stamp = max((p.stat().st_mtime_ns for p in paths.STYLES.glob("*/*") if p.is_file()), default=0)
+    if _styles_cache.get("stamp") != stamp:
+        _styles_cache.update(stamp=stamp, data=jsbridge.call("styles"))
+    return _styles_cache["data"]
+
+
+@app.get("/api/styles")
+def styles():
+    return _styles_info()
 
 
 # Static last, so /api routes win.
 app.mount("/assets", StaticFiles(directory=paths.ASSETS), name="assets")
 app.mount("/design", StaticFiles(directory=paths.DESIGN), name="design")
+app.mount("/styles", StaticFiles(directory=paths.STYLES, html=True), name="styles")
 app.mount("/media", StaticFiles(directory=paths.MEDIA), name="media")
 app.mount("/renders", StaticFiles(directory=paths.RENDERS), name="renders")
 app.mount("/", StaticFiles(directory=paths.FRONTEND, html=True), name="frontend")
 
 
 def main(argv=None) -> int:
+    import sys
     import uvicorn
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(prog="python -m studio.server")
     ap.add_argument("--port", type=int, default=config.get("server", "port"))
     ap.add_argument("--host", default=config.get("server", "host"))

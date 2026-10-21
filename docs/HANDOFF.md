@@ -83,6 +83,37 @@ git-ignored.
    and halftone were scored before later renderer fixes), then write the score
    table.
 
+## Done: footy-ml video revision (2026-10-21)
+
+`projects/footy-ml.json` (60 s, tracked through a `.gitignore` exception) now
+shows each ML stage instead of only stating it. Headlines are unchanged, and
+every visual is built from the project's own deck text:
+
+| time | section | visual |
+|---|---|---|
+| 5 s | the rule | flow: build it → break it on purpose → fix it → close it |
+| 10 s | stage 1, logistic regression | equation: p(break) = σ(w₁Δv + w₂θ + w₃s + b), weighted sum highlighted |
+| 20 s | stage 2, genetic algorithm | flow: population → fitness test → keep the best → mutate |
+| 25 s | stage 2, what went wrong | code diff of the fitness and apply bugs |
+| 30 s | stage 3, MLP | 5-8-8-1 network with activation pulses |
+| 35 s | stage 3, what went wrong | flow: new skeleton → clips broke → rebuilt all 24 → re-test baseline |
+| 40 s | stage 4, deep Q-learning | Q-learning update equation, reward as the highlighted term |
+| 45 s | stage 4, the expected trap | reward design as a diff |
+| 50 s | where it's heading | plot: buzzing joint vs. with a settling step |
+
+- Render: `renders/footy-ml/footy-ml_1080p30.mp4` (1800 frames, −14.1 LUFS,
+  −1.9 dBTP, 0 ms A/V drift).
+- Critique: 9.87/10, PASS (motion, beat, layout and finish at 1.00); 96 hits
+  on the grid.
+- The original project is preserved in git history (it was untracked before
+  this commit) and in the session scratchpad.
+- Fixed along the way:
+  - diagram flow labels now shrink to fit their boxes;
+  - the critique's determinism check now separates Chromium's one-level
+    alpha-blend rounding (which depends on render history; layout was
+    verified identical) from real differences.
+- Not touched: `projects/aflvideo.json` (the older AFL edit).
+
 ## Done: code, graph and maths visuals (2026-10-21)
 
 Requested by the session working on the Aussie-rules ML video. All on `dev`,

@@ -8,7 +8,7 @@ const CLIP_ENVELOPE = {
   id: '', type: 'text', name: null, layer: 0, start: 0, duration: 4,
   x: 0.5, y: 0.5, scale_x: 1, scale_y: 1, rotation: 0, opacity: 1,
   crop: null, keyframes: [], keyframe_mode: 'spring', enter: null, exit: null,
-  src: null, source_start: 0, speed: 1, props: {},
+  src: null, source_start: 0, speed: 1, style: null, style_params: {}, props: {},
 };
 
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
@@ -23,8 +23,8 @@ export class Clip {
   get visual() { return this.def?.visual !== false; }
   label() {
     const d = this.def;
-    if (d?.label && typeof d.label === 'function') return d.label(this);
-    return this.name || d?.label || this.type;
+    const base = this.name || (d?.clipLabel ? d.clipLabel(this) : d?.label) || this.type;
+    return this.style ? `${base} · ${this.style}` : base;
   }
   toDict() {
     const out = {};
@@ -35,7 +35,7 @@ export class Clip {
 
 export const DEFAULT_SETTINGS = {
   width: 1920, height: 1080, fps: 30, bpm: 120, subdivision: 1, beat_offset: 0, beat_lock: true,
-  duration: 24, background: 'paper', style_pack: 'neo-brutal',
+  duration: 24, background: 'paper', style: 'neo-brutal', style_params: {}, seed: 1,
 };
 
 export class Project {

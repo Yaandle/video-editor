@@ -1,0 +1,183 @@
+{
+  "schema": "vidkit.project",
+  "version": 1,
+  "name": "dither-demo",
+  "settings": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "bpm": 120,
+    "subdivision": 1,
+    "beat_offset": 0,
+    "beat_lock": true,
+    "duration": 8,
+    "background": "paper",
+    "style": "dither",
+    "style_params": {
+      "inks": "tri",
+      "matrix": "bayer8",
+      "pixel": "3",
+      "contrast": 1.2,
+      "reveal": "develop",
+      "reveal_beats": 2,
+      "level_punch": 0.55
+    },
+    "seed": 5
+  },
+  "tracks": [
+    {
+      "index": 0,
+      "name": "Credit"
+    },
+    {
+      "index": 1,
+      "name": "Type"
+    },
+    {
+      "index": 2,
+      "name": "Mark"
+    },
+    {
+      "index": 3,
+      "name": "Photo"
+    }
+  ],
+  "clips": [
+    {
+      "id": "photo",
+      "type": "image",
+      "layer": 3,
+      "start": 0,
+      "duration": 8,
+      "x": 0.745,
+      "y": 0.5,
+      "src": "assets/images/barbican-02.jpg",
+      "exit": {
+        "preset": "quick",
+        "to": "right",
+        "length": 0.4
+      },
+      "props": {
+        "fit": "cover",
+        "box_w": 0.51,
+        "box_h": 1.0,
+        "focus_x": 0.5,
+        "focus_y": 0.4,
+        "frame": "none"
+      }
+    },
+    {
+      "id": "headline",
+      "type": "text",
+      "layer": 1,
+      "start": 0.5,
+      "duration": 7.5,
+      "x": 0.06,
+      "y": 0.2,
+      "props": {
+        "text": "Three inks.\n{{No grey.}}",
+        "style": "custom",
+        "role": "display",
+        "color": "ink",
+        "accent": "orange",
+        "width": 0.42,
+        "anim_unit": "line",
+        "anim_from": "mask",
+        "anim_preset": "slam",
+        "exit_to": "mask",
+        "hit": true
+      }
+    },
+    {
+      "id": "deck",
+      "type": "text",
+      "layer": 1,
+      "start": 2,
+      "duration": 6,
+      "x": 0.06,
+      "y": 0.52,
+      "props": {
+        "text": "Bayer 8×8, locked to the pixel grid.",
+        "style": "custom",
+        "role": "h2",
+        "color": "ink",
+        "width": 0.36,
+        "anim_unit": "word",
+        "anim_from": "rise",
+        "anim_preset": "snappy",
+        "exit_to": "fade",
+        "hit": false
+      }
+    },
+    {
+      "id": "star",
+      "type": "shape",
+      "layer": 2,
+      "start": 2.866667,
+      "duration": 5.133333,
+      "x": 0.17,
+      "y": 0.8,
+      "enter": {
+        "preset": "slam",
+        "from": "scale",
+        "delay": 0,
+        "hit": true,
+        "rotate": 0.6
+      },
+      "exit": {
+        "preset": "quick",
+        "to": "drop",
+        "length": 0.4
+      },
+      "props": {
+        "kind": "star",
+        "size": 250,
+        "fill": "orange",
+        "stroke": "ink",
+        "stroke_width": 8,
+        "shadow": true,
+        "points": 8,
+        "inner_ratio": 0.62
+      }
+    },
+    {
+      "id": "credit",
+      "type": "text",
+      "layer": 0,
+      "start": 0,
+      "duration": 8,
+      "x": 0.505,
+      "y": 0.925,
+      "style": "neo-brutal",
+      "props": {
+        "text": "Photo: Daniel Case, CC BY-SA 3.0",
+        "style": "custom",
+        "role": "micro",
+        "font": "mono",
+        "color": "paper",
+        "width": 0.3,
+        "plate": "box",
+        "plate_fill": "ink",
+        "anim_from": "none",
+        "exit_to": "none",
+        "hit": false,
+        "sfx": false
+      }
+    }
+  ],
+  "audio": {
+    "music": {
+      "preset": "dither.bitcrush",
+      "seed": 5,
+      "gain_db": -3,
+      "end_hit": true
+    },
+    "auto_sfx": true,
+    "sfx_gain_db": 0,
+    "target_lufs": -14,
+    "cues": []
+  },
+  "meta": {
+    "title": "Dithering — style pack demo"
+  }
+}

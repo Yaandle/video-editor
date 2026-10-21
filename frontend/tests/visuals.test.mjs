@@ -66,3 +66,34 @@ test('diagram: layers and stages land on grid lines in order', () => {
   assert.ok(onGrid(steady.hit) && steady.hit > land[3].hit);
   assert.deepEqual(diagram.sizes('3, 5, x, 40'), [3, 5, 1, 16]);
 });
+
+const math = await import('../renderer/components/math.js');
+// A fake 2D context: every glyph is 0.5 em wide (size parsed from ctx.font).
+const fake = { font: '10px x', measureText(s) { const px = parseFloat(this.font.match(/([\d.]+)px/)[1]); return { width: [...s].length * px * 0.5 }; } };
+
+test('math: | splits terms; scripts, fractions, Greek and big operators parse', () => {
+  const { terms } = math.parseTex('\sigma(x) | = | \frac{1}{1 + e^{-x}}');
+  assert.equal(terms.length, 3);
+  assert.equal(terms[0].items[0].text, 'σ');
+  assert.equal(terms[2].items[0].k, 'frac');
+  const ws = math.parseTex('\sum_{i=1}^{n} w_i').terms[0].items;
+  assert.equal(ws[0].k, 'scripts');
+  assert.equal(ws[0].base.k, 'bigop');
+  assert.ok(ws[0].sub && ws[0].sup);
+  assert.throws(() => math.parseTex('\nope{x}'), /unknown command/);
+  for (const t of Object.values(math.TEMPLATES)) assert.ok(math.parseTex(t).terms.length >= 3, t);
+});
+
+test('math: fractions stand taller than a symbol; scripts add width', () => {
+  const sym = math.measure(fake, { k: 'sym', text: 'x' }, 100);
+  const frac = math.measure(fake, math.parseTex('\frac{1}{x}').terms[0].items[0], 100);
+  assert.ok(frac.asc > sym.asc && frac.desc > sym.desc);
+  const sup = math.measure(fake, math.parseTex('x^2').terms[0].items[0], 100);
+  assert.ok(sup.w > sym.w);
+});
+
+test('math: terms and the highlight land on grid lines', () => {
+  const s = math.termSchedule({ start: 0 }, { start_beat: 1, beats_per_term: 1 }, 3, beat, 30);
+  assert.deepEqual(s.map((l) => l.hit), [0.5, 1, 1.5]);
+  assert.deepEqual(math.highlights('3, 0, x, 1'), [3, 1]);
+});

@@ -91,6 +91,20 @@ export function landing(earliest, preset, beat, fps, stepsLater = 0) {
   return { start: hit - lead, hit };
 }
 
+/**
+ * Spring that *lands* on beat `n` counted from the clip start (fractions allowed:
+ * 0.5 = half a beat), snapped to the nearest grid line and never earlier than
+ * the spring can arrive. Returns { start, hit }.
+ */
+export function landOnBeat(clipStart, n, preset, beat, fps) {
+  const lead = arrivalFrames(fps, preset) / fps;
+  if (!beat || !beat.valid) { const hit = Math.max(clipStart + lead, clipStart + n * 0.5); return { start: hit - lead, hit }; }
+  let k = Math.round((clipStart + n * beat.beat - beat.offset) / beat.step);
+  while (beat.offset + k * beat.step < clipStart + lead - 1e-9) k++;
+  const hit = beat.offset + k * beat.step;
+  return { start: hit - lead, hit };
+}
+
 /** Grid line `n` steps after the clip start (n = 0 → the clip start itself). */
 export function onBeat(clipStart, n, beat) {
   if (!beat || !beat.valid) return clipStart + n * 0.5;

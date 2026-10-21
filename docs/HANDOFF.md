@@ -83,16 +83,28 @@ git-ignored.
    and halftone were scored before later renderer fixes), then write the score
    table.
 
-## In progress: code, graph and maths visuals
+## Done: code, graph and maths visuals (2026-10-21)
 
-Requested by the session working on the Aussie-rules ML video. Plan and
-progress are tracked below. Each milestone is committed when done.
+Requested by the session working on the Aussie-rules ML video. All on `dev`,
+`npm test` 47/47, motion lint clean. New tests are in
+`frontend/tests/visuals.test.mjs`.
 
-- [ ] Code: beat-locked line reveal, focus/highlight of line ranges, diff
-  (+/−) styling, ported and upgraded from `legacy/` and `components/code.js`.
-- [ ] Graph: animated line and bar charts, a function plot (y = f(x) drawn
-  on), node/arrow diagrams (neural-net layers, flow of stages).
-- [ ] Maths: equation templates (fractions, Σ, σ(x) = 1/(1+e^−x), w·x+b, sub-
-  and superscripts, Greek), term-by-term reveal and highlight.
-- [ ] Registry entries with schema defaults, `projects/math-code-demo.json`,
-  unit tests, `npm test`.
+| type | what it does | key props |
+|---|---|---|
+| `code` (upgraded) | Lines land one per beat (or type in); line ranges come into focus while the rest dims; `+`/`-` diff bars with gutter markers; `$ prompt` line; operator colouring from the legacy tokenizer | `reveal` lines/type/none, `start_beat`, `beats_per_line`, `focus` "3-5, 8", `focus_beat`, `diff`, `prompt` |
+| `plot` (new) | y = f(x) drawn on: the pen starts and arrives on grid lines; up to two curves; a marker on the pen; points land on beats | `fn`, `fn2` (safe parser `expr.js`: sigmoid, relu, exp, sin…, implicit products), `x_min..y_max`, `points`, `draw_beat`, `draw_beats` |
+| `diagram` (new) | `network`: layers land per beat, edges grow, then activation pulses travel input → output. `flow`: stage boxes land per beat with arrows drawing on, and a focus steps along | `mode`, `layers` "4, 6, 6, 2", `layer_labels`, `in_labels`, `out_labels`, `stages`, `start_beat`, `beats_per_step`, `pulses`, `highlight` |
+| `math` (new) | Equations in a small TeX-like language (`rac`, `\sum_{}^{}`, `^`/`_`, Greek, `\cdot`, `\leftarrow`, `\partial`, `\hat`, `\hl`). `\|` splits terms, which land one per beat; highlight plates on chosen terms | `template` (sigmoid, neuron, weighted-sum, mse, gradient-step, softmax) or `tex`, `size`, `start_beat`, `beats_per_term`, `highlight` "3", `highlight_beat`, `caption` |
+| `graph` (unchanged) | Animated bar and line charts | `data` "label:value, …", `chart` bar/line |
+
+- Helper: `kit.landOnBeat(clipStart, n, preset, beat, fps)` lands a spring
+  exactly on beat *n* from the clip start.
+- Demo: `projects/math-code-demo.json` (24 s, all 35 hits on the grid; it has
+  a `.gitignore` exception).
+- Render it with `render.bat projects\math-code-demo.json --preset 1080p30`.
+  It was checked with harness frame captures, not rendered to mp4, because
+  `renders/` was being used by another session.
+- Known limits:
+  - the maths layout has no `\sqrt` or matrices yet;
+  - flow mode is a single row (fine up to about 6 stages);
+  - curve labels can collide when two curves end at the same point.

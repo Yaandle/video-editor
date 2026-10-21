@@ -34,3 +34,35 @@ test('code: tokenizer colours operators and 0b/0o literals (legacy vidkit rules)
   assert.ok(kinds.includes('op'));
   assert.equal(kinds.filter((k) => k === 'number').length, 2);
 });
+
+const { compile, parse } = await import('../renderer/expr.js');
+const plot = await import('../renderer/components/plot.js');
+const diagram = await import('../renderer/components/diagram.js');
+
+test('expr: safe parser handles functions, implicit products and precedence', () => {
+  const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} != ${b}`);
+  near(compile('sigmoid(0)').f(0), 0.5);
+  near(compile('1/(1+e^(-x))').f(1), 1 / (1 + Math.exp(-1)));
+  near(compile('2x^2 - 3').f(2), 5);
+  near(compile('-x^2').f(3), -9);          // unary minus binds looser than ^
+  near(compile('2^3^2').f(0), 512);        // right-associative
+  near(compile('max(0, x)').f(-4), 0);
+  near(compile('σ(x)').f(0), 0.5);
+  assert.match(compile('alert(1)').error, /unknown name/);
+  assert.throws(() => parse('1 +'));
+});
+
+test('plot: the pen starts and arrives on grid lines', () => {
+  const s = plot.drawSchedule({ start: 0 }, { draw_beat: 1, draw_beats: 3 }, beat, 30);
+  assert.ok(onGrid(s.start) && onGrid(s.end), `${s.start} ${s.end}`);
+  assert.equal(s.at(s.start), 0);
+  assert.ok(s.at(s.end) > 0.99 && s.at(s.end + 1) === 1);
+  assert.ok(plot.sample('1/x', -1, 1, 4).some((q) => !Number.isFinite(q.y)));
+});
+
+test('diagram: layers and stages land on grid lines in order', () => {
+  const { land, steady } = diagram.buildSchedule({ start: 2 }, { start_beat: 1, beats_per_step: 1 }, 4, beat, 30);
+  assert.deepEqual(land.map((l) => l.hit), [2.5, 3, 3.5, 4]);
+  assert.ok(onGrid(steady.hit) && steady.hit > land[3].hit);
+  assert.deepEqual(diagram.sizes('3, 5, x, 40'), [3, 5, 1, 16]);
+});

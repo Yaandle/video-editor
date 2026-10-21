@@ -63,3 +63,4 @@ node_modules/
 # All user projects stay local; only the shipped showcase example is tracked
 !projects/showcase.json
 !projects/math-code-demo.json
+!projects/footy-ml.json

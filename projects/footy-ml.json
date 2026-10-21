@@ -1,0 +1,673 @@
+{
+  "schema": "vidkit.project",
+  "version": 1,
+  "name": "footy-ml",
+  "settings": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "bpm": 120,
+    "subdivision": 1,
+    "beat_offset": 0,
+    "beat_lock": true,
+    "duration": 60,
+    "background": "paper",
+    "style": "neo-brutal"
+  },
+  "tracks": [
+    {
+      "index": 0,
+      "name": "Chrome",
+      "hidden": false,
+      "muted": false,
+      "locked": false
+    },
+    {
+      "index": 1,
+      "name": "Overlays",
+      "hidden": false,
+      "muted": false,
+      "locked": false
+    },
+    {
+      "index": 2,
+      "name": "Scenes",
+      "hidden": false,
+      "muted": false,
+      "locked": false
+    }
+  ],
+  "clips": [
+    {
+      "id": "nav",
+      "type": "nav-bar",
+      "layer": 0,
+      "start": 0,
+      "duration": 60,
+      "props": {
+        "brand": "footy/ml",
+        "links": [
+          "Intro",
+          "Rule",
+          "1",
+          "1!",
+          "2",
+          "2!",
+          "3",
+          "3!",
+          "4",
+          "4!",
+          "Next",
+          "End"
+        ]
+      }
+    },
+    {
+      "id": "footer",
+      "type": "footer-bar",
+      "layer": 0,
+      "start": 0,
+      "duration": 60,
+      "props": {
+        "left": "Tune, time, decide",
+        "right": "Physics picks the winner"
+      }
+    },
+    {
+      "id": "s0",
+      "type": "scene.title-slam",
+      "layer": 2,
+      "start": 0,
+      "duration": 5,
+      "props": {
+        "kicker": "Aussie Rules × ML",
+        "headline": "Four stages\nof [[footy ML.]]",
+        "deck": "How a footy game uses ML to tune, time and decide, without ever secretly picking who wins.",
+        "sticker": "PHYSICS DECIDES · PHYSICS DECIDES · "
+      }
+    },
+    {
+      "id": "s1",
+      "type": "scene.statement",
+      "layer": 2,
+      "start": 5,
+      "duration": 5,
+      "props": {
+        "kicker": "The rule",
+        "headline": "Physics decides.\n{{Never a dice roll.}}",
+        "deck": "ML tunes, times and decides, never picks the winner.",
+        "background": "paper",
+        "size": "display"
+      }
+    },
+    {
+      "id": "t1",
+      "type": "tag-strip",
+      "layer": 1,
+      "start": 5,
+      "duration": 5,
+      "y": 0.86,
+      "props": {
+        "tags": [
+          "Rule",
+          "1 · LogReg",
+          "2 · GA",
+          "3 · MLP",
+          "4 · DQN",
+          "Next"
+        ],
+        "active": [
+          0
+        ]
+      }
+    },
+    {
+      "id": "s3",
+      "type": "scene.statement",
+      "layer": 2,
+      "start": 10,
+      "duration": 5,
+      "props": {
+        "kicker": "Stage 1 — Logistic regression",
+        "headline": "The tackle model.\n[[A coach's rule of thumb.]]",
+        "deck": "",
+        "background": "paper",
+        "size": "h1"
+      }
+    },
+    {
+      "id": "t3",
+      "type": "tag-strip",
+      "layer": 1,
+      "start": 10,
+      "duration": 5,
+      "y": 0.86,
+      "props": {
+        "tags": [
+          "Rule",
+          "1 · LogReg",
+          "2 · GA",
+          "3 · MLP",
+          "4 · DQN",
+          "Next"
+        ],
+        "active": [
+          1
+        ]
+      }
+    },
+    {
+      "id": "s4",
+      "type": "scene.statement",
+      "layer": 2,
+      "start": 15,
+      "duration": 5,
+      "props": {
+        "kicker": "Stage 1 — What went wrong",
+        "headline": "2 of 8 closure\nchecks {{failed.}}",
+        "deck": "Inputs on different scales, normalised to 0–1 (baseline 62.25%). And 605 every rerun: randomness that wasn't random. Seeds fixed it.",
+        "background": "lime",
+        "size": "h1"
+      }
+    },
+    {
+      "id": "t4",
+      "type": "tag-strip",
+      "layer": 1,
+      "start": 15,
+      "duration": 5,
+      "y": 0.86,
+      "props": {
+        "tags": [
+          "Rule",
+          "1 · LogReg",
+          "2 · GA",
+          "3 · MLP",
+          "4 · DQN",
+          "Next"
+        ],
+        "active": [
+          1
+        ]
+      }
+    },
+    {
+      "id": "s5",
+      "type": "scene.statement",
+      "layer": 2,
+      "start": 20,
+      "duration": 5,
+      "props": {
+        "kicker": "Stage 2 — Genetic algorithm",
+        "headline": "Pre-season trials.\n[[Keep the best. Mutate.]]",
+        "deck": "",
+        "background": "paper",
+        "size": "h1"
+      }
+    },
+    {
+      "id": "t5",
+      "type": "tag-strip",
+      "layer": 1,
+      "start": 20,
+      "duration": 5,
+      "y": 0.86,
+      "props": {
+        "tags": [
+          "Rule",
+          "1 · LogReg",
+          "2 · GA",
+          "3 · MLP",
+          "4 · DQN",
+          "Next"
+        ],
+        "active": [
+          2
+        ]
+      }
+    },
+    {
+      "id": "s6",
+      "type": "scene.statement",
+      "layer": 2,
+      "start": 25,
+      "duration": 5,
+      "props": {
+        "kicker": "Stage 2 — What went wrong",
+        "headline": "The algorithm\n{{cheated.}}",
+        "deck": "",
+        "background": "cobalt",
+        "size": "h1"
+      }
+    },
+    {
+      "id": "t6",
+      "type": "tag-strip",
+      "layer": 1,
+      "start": 25,
+      "duration": 5,
+      "y": 0.86,
+      "props": {
+        "tags": [
+          "Rule",
+          "1 · LogReg",
+          "2 · GA",
+          "3 · MLP",
+          "4 · DQN",
+          "Next"
+        ],
+        "active": [
+          2
+        ]
+      }
+    },
+    {
+      "id": "s7",
+      "type": "scene.statement",
+      "layer": 2,
+      "start": 30,
+      "duration": 5,
+      "props": {
+        "kicker": "Stage 3 — MLP network",
+        "headline": "Film study for\n[[marking timing.]]",
+        "deck": "",
+        "background": "paper",
+        "size": "h1"
+      }
+    },
+    {
+      "id": "t7",
+      "type": "tag-strip",
+      "layer": 1,
+      "start": 30,
+      "duration": 5,
+      "y": 0.86,
+      "props": {
+        "tags": [
+          "Rule",
+          "1 · LogReg",
+          "2 · GA",
+          "3 · MLP",
+          "4 · DQN",
+          "Next"
+        ],
+        "active": [
+          3
+        ]
+      }
+    },
+    {
+      "id": "s8",
+      "type": "scene.statement",
+      "layer": 2,
+      "start": 35,
+      "duration": 5,
+      "props": {
+        "kicker": "Stage 3 — What went wrong",
+        "headline": "Legs over\nthe [[head.]]",
+        "deck": "Every marking clip broke on the new skeleton, so all 24 were rebuilt. The baseline it must beat is off by tenths of a second.",
+        "background": "orange",
+        "size": "h1"
+      }
+    },
+    {
+      "id": "t8",
+      "type": "tag-strip",
+      "layer": 1,
+      "start": 35,
+      "duration": 5,
+      "y": 0.86,
+      "props": {
+        "tags": [
+          "Rule",
+          "1 · LogReg",
+          "2 · GA",
+          "3 · MLP",
+          "4 · DQN",
+          "Next"
+        ],
+        "active": [
+          3
+        ]
+      }
+    },
+    {
+      "id": "s9",
+      "type": "scene.statement",
+      "layer": 2,
+      "start": 40,
+      "duration": 5,
+      "props": {
+        "kicker": "Stage 4 — Deep Q-learning",
+        "headline": "Match experience.\n[[Where to run off the ball.]]",
+        "deck": "",
+        "background": "paper",
+        "size": "h1"
+      }
+    },
+    {
+      "id": "t9",
+      "type": "tag-strip",
+      "layer": 1,
+      "start": 40,
+      "duration": 5,
+      "y": 0.86,
+      "props": {
+        "tags": [
+          "Rule",
+          "1 · LogReg",
+          "2 · GA",
+          "3 · MLP",
+          "4 · DQN",
+          "Next"
+        ],
+        "active": [
+          4
+        ]
+      }
+    },
+    {
+      "id": "s10",
+      "type": "scene.statement",
+      "layer": 2,
+      "start": 45,
+      "duration": 5,
+      "props": {
+        "kicker": "Stage 4 — The expected trap",
+        "headline": "Reward\n{{hacking.}}",
+        "deck": "Reward safe disposals and it handballs forever. A reward is a fitness score at scale: design and test it like a closure check.",
+        "background": "ink",
+        "size": "h1"
+      }
+    },
+    {
+      "id": "t10",
+      "type": "tag-strip",
+      "layer": 1,
+      "start": 45,
+      "duration": 5,
+      "y": 0.86,
+      "props": {
+        "tags": [
+          "Rule",
+          "1 · LogReg",
+          "2 · GA",
+          "3 · MLP",
+          "4 · DQN",
+          "Next"
+        ],
+        "active": [
+          4
+        ]
+      }
+    },
+    {
+      "id": "s11",
+      "type": "scene.statement",
+      "layer": 2,
+      "start": 50,
+      "duration": 5,
+      "props": {
+        "kicker": "Where it's heading",
+        "headline": "Animation intends.\n[[Physics decides.]]",
+        "deck": "A ragdoll lab joins the models. Along the way: one joint type flung limbs at hundreds of m/s, and bodies buzzed until a settling step.",
+        "background": "paper",
+        "size": "h1"
+      }
+    },
+    {
+      "id": "t11",
+      "type": "tag-strip",
+      "layer": 1,
+      "start": 50,
+      "duration": 5,
+      "y": 0.86,
+      "props": {
+        "tags": [
+          "Rule",
+          "1 · LogReg",
+          "2 · GA",
+          "3 · MLP",
+          "4 · DQN",
+          "Next"
+        ],
+        "active": [
+          5
+        ]
+      }
+    },
+    {
+      "id": "s12",
+      "type": "scene.outro",
+      "layer": 2,
+      "start": 55,
+      "duration": 5,
+      "props": {
+        "kicker": "The lesson",
+        "headline": "Measure what\n{{you mean.}}",
+        "button": "Build · Break · Fix",
+        "ticker": [
+          "Regression",
+          "Evolution",
+          "Networks",
+          "Q-learning",
+          "Ragdolls",
+          "Physics"
+        ],
+        "credits": "",
+        "background": "lime"
+      }
+    },
+    {
+      "id": "v_logreg",
+      "type": "math",
+      "layer": 1,
+      "start": 10,
+      "duration": 5,
+      "x": 0.055,
+      "y": 0.47,
+      "props": {
+        "template": "custom",
+        "tex": "p_{\\text{break}} | = | \\sigma( | w_1 \\Delta v + w_2 \\theta + w_3 s | + b | )",
+        "size": "h2",
+        "caption": "Δv speed difference, θ approach angle, s stamina.",
+        "start_beat": 2,
+        "beats_per_term": 1,
+        "highlight": "4",
+        "highlight_beat": 8
+      }
+    },
+    {
+      "id": "v_ga",
+      "type": "diagram",
+      "layer": 1,
+      "start": 20,
+      "duration": 5,
+      "x": 0.5,
+      "y": 0.6,
+      "props": {
+        "mode": "flow",
+        "stages": "Population, Fitness test, Keep the best, Mutate",
+        "start_beat": 2,
+        "beats_per_step": 1,
+        "pulses": true,
+        "highlight": -1,
+        "width": 0.88,
+        "height": 0.28
+      }
+    },
+    {
+      "id": "v_ga_bug",
+      "type": "code",
+      "layer": 1,
+      "start": 25,
+      "duration": 5,
+      "x": 0.5,
+      "y": 0.6,
+      "props": {
+        "code": "def fitness(weights):\n-    return score(run(paths[0], weights))\n+    return mean(score(run(p, weights)) for p in paths)\n\ndef apply(best):\n-    model.weights = best\n+    sim.tackle_model.set_weights(best)",
+        "language": "python",
+        "title": "evolve.py",
+        "prompt": "",
+        "theme": "ink",
+        "width": 0.86,
+        "reveal": "lines",
+        "start_beat": 1,
+        "beats_per_line": 1,
+        "focus": "3, 7",
+        "focus_beat": 8,
+        "diff": true,
+        "font_px": 30
+      }
+    },
+    {
+      "id": "v_mlp",
+      "type": "diagram",
+      "layer": 1,
+      "start": 30,
+      "duration": 5,
+      "x": 0.45,
+      "y": 0.62,
+      "props": {
+        "mode": "network",
+        "layers": "5, 8, 8, 1",
+        "layer_labels": "5 inputs, Hidden 8, Hidden 8, Output",
+        "in_labels": "",
+        "out_labels": "Jump",
+        "start_beat": 2,
+        "beats_per_step": 1,
+        "pulses": true,
+        "highlight": -1,
+        "width": 0.78,
+        "height": 0.4
+      }
+    },
+    {
+      "id": "v_dqn",
+      "type": "math",
+      "layer": 1,
+      "start": 40,
+      "duration": 5,
+      "x": 0.055,
+      "y": 0.5,
+      "props": {
+        "template": "custom",
+        "tex": "Q(s, a) | \\leftarrow | Q(s, a) + \\alpha [ | r | + \\gamma \\max_{a'} Q(s', a') - Q(s, a) ]",
+        "size": "h2",
+        "caption": "Reward r: marks taken and territory gained.",
+        "start_beat": 2,
+        "beats_per_term": 1,
+        "highlight": "4",
+        "highlight_beat": 7
+      }
+    },
+    {
+      "id": "v_rule",
+      "type": "diagram",
+      "layer": 1,
+      "start": 5,
+      "duration": 5,
+      "x": 0.5,
+      "y": 0.735,
+      "props": {
+        "mode": "flow",
+        "stages": "Build it, Break it on purpose, Fix it, Close it",
+        "start_beat": 2,
+        "beats_per_step": 1,
+        "pulses": true,
+        "highlight": -1,
+        "fill": "white",
+        "width": 0.9,
+        "height": 0.2
+      }
+    },
+    {
+      "id": "v_mlp_bug",
+      "type": "diagram",
+      "layer": 1,
+      "start": 35,
+      "duration": 5,
+      "x": 0.5,
+      "y": 0.735,
+      "props": {
+        "mode": "flow",
+        "stages": "New skeleton, Clips broke, Rebuilt all 24, Re-test baseline",
+        "start_beat": 2,
+        "beats_per_step": 1,
+        "pulses": true,
+        "highlight": -1,
+        "fill": "white",
+        "width": 0.9,
+        "height": 0.2
+      }
+    },
+    {
+      "id": "v_reward",
+      "type": "code",
+      "layer": 1,
+      "start": 45,
+      "duration": 5,
+      "x": 0.3,
+      "y": 0.68,
+      "props": {
+        "code": "def reward(step):\n-    return step.safe_disposals\n+    return step.marks + step.territory_gained",
+        "language": "python",
+        "title": "reward.py",
+        "prompt": "",
+        "theme": "paper",
+        "width": 0.5,
+        "reveal": "lines",
+        "start_beat": 2,
+        "beats_per_line": 1,
+        "focus": "3",
+        "focus_beat": 6,
+        "diff": true,
+        "font_px": 26
+      }
+    },
+    {
+      "id": "v_settle",
+      "type": "plot",
+      "layer": 1,
+      "start": 50,
+      "duration": 5,
+      "x": 0.3,
+      "y": 0.66,
+      "props": {
+        "fn": "exp(-0.55x) cos(5x)",
+        "fn2": "cos(5x)",
+        "label": "with settling",
+        "label2": "buzzing",
+        "title": "",
+        "x_min": 0,
+        "x_max": 10,
+        "y_min": -1.2,
+        "y_max": 1.2,
+        "points": "",
+        "color": "cobalt",
+        "color2": "orange",
+        "draw_beat": 2,
+        "draw_beats": 4,
+        "width": 0.5,
+        "height": 0.36
+      }
+    }
+  ],
+  "audio": {
+    "music": {
+      "preset": "brutal-bounce",
+      "seed": 4,
+      "gain_db": -2,
+      "end_hit": true
+    },
+    "auto_sfx": true,
+    "sfx_gain_db": 0,
+    "target_lufs": -14,
+    "cues": []
+  },
+  "meta": {
+    "title": "Four stages of ML in an Aussie Rules game",
+    "author": "Yaandle",
+    "revision": "code, graph and maths visuals added (2026-10-21)"
+  }
+}

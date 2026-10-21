@@ -158,8 +158,18 @@ def analyse(mp4: Path, review: dict | None, samples: int = 12, capture: bool = T
     # 7. Pack checks.
     pc: dict = {}
     if caps:
-        same = [bool(np.array_equal(a, b)) for a, b in caps.values()]
-        pc["determinism"] = {"score": float(np.mean(same)), "pass": all(same), "hard": True, "frames": len(same)}
+        # Exact equality is the target. Chromium's 2D rasteriser can round alpha blending
+        # one level differently depending on what it drew earlier; a frame passes when it
+        # is identical or differs by at most 1 level on at most 0.01 % of pixels.
+        exact, worst_px, worst_level = 0, 0.0, 0
+        for a, b in caps.values():
+            d = np.abs(a.astype(np.int16) - b.astype(np.int16))
+            exact += int(not d.any())
+            worst_level = max(worst_level, int(d.max()))
+            worst_px = max(worst_px, float((d.max(-1) > 0).mean()))
+        ok_det = worst_level <= 1 and worst_px <= 1e-4
+        pc["determinism"] = {"score": 1.0 if ok_det else exact / len(caps), "pass": ok_det, "hard": True, "frames": len(caps),
+                             "exact_frames": exact, "max_level_diff": worst_level, "max_pixel_share": round(worst_px, 6)}
     if "temporal" in checks:
         # Pattern crawl is measured on lossless captures of consecutive held frames (the
         # encoded video has small keyframe differences at every render-chunk boundary).

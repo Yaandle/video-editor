@@ -77,7 +77,12 @@ register({
       const gap = Math.min(110 * u, W * 0.08);
       const bwid = (W - gap * (n - 1)) / n, bh = Math.min(H, bwid * 0.75);
       const by = y0 + (H - bh) / 2;
-      const h2 = typeRole(n > 4 ? 'body' : 'h2', env.frame);
+      // Label size: the role size, shrunk until the longest word fits its box.
+      const role = typeRole(n > 4 ? 'body' : 'h2', env.frame);
+      setFont(ctx, role);
+      const longest = Math.max(...stages.flatMap((st) => st.split(/\s+/)).map((wd) => ctx.measureText(wd).width), 1);
+      const fit = Math.min(1, (bwid - bw * 6) / longest);
+      const h2 = typeRole(n > 4 ? 'body' : 'h2', env.frame, { size: Math.max(18, (role.size * fit) / u) });
       const focusIdx = p.pulses && env.t >= steady.hit ? Math.floor((env.t - steady.hit) / B) % n : -1;
       stages.forEach((name, i) => {
         const e = env.t - land[i].start;

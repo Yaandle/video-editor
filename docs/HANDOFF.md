@@ -105,8 +105,9 @@ every visual is built from the project's own deck text:
   −1.9 dBTP, 0 ms A/V drift).
 - Critique: 9.87/10, PASS (motion, beat, layout and finish at 1.00); 96 hits
   on the grid.
-- The original project is preserved in git history (it was untracked before
-  this commit) and in the session scratchpad.
+- The pre-revision project was never tracked by git, so the only copy of it is
+  in the editing session's scratchpad (`footy-ml.original.json`). The revised
+  version is the first one in git.
 - Fixed along the way:
   - diagram flow labels now shrink to fit their boxes;
   - the critique's determinism check now separates Chromium's one-level

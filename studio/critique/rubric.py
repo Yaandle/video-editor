@@ -30,7 +30,8 @@ def score(m: dict, review: dict | None) -> dict:
     s["beat"] = clamp01(1 - 0.25 * m["off_grid"])
     hc = m["hierarchy"]
     s["hierarchy"] = clamp01(0.6 * hc["size_contrast_ok"] + 0.4 * (0.5 ** hc["allcaps_headlines"]))
-    s["layout"] = clamp01(m["layout"]["safe_ok"] * (0.6 if m["layout"]["overflow"] else 1.0))
+    s["layout"] = clamp01(m["layout"]["safe_ok"] * (0.6 if m["layout"]["overflow"] else 1.0)
+                          * (0.85 if m["layout"].get("collisions") else 1.0))
     s["legibility"] = clamp01(m["legibility"]["score"])
     coh = m["cohesion"]
     s["colour"] = clamp01(coh["adherence"] / coh["min"]) if coh["min"] else 1.0

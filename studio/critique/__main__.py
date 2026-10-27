@@ -76,6 +76,7 @@ def analyse(mp4: Path, review: dict | None, samples: int = 12, capture: bool = T
     contrast_frames = contrast_ok = 0
     centred = text_total = 0
     allcaps = set()
+    collisions: set = set()
     for r in reports:
         texts = [b for b in r["boxes"] if b.get("kind") == "text" and b.get("settled", True)]
         for b in texts:
@@ -88,6 +89,20 @@ def analyse(mp4: Path, review: dict | None, samples: int = 12, capture: bool = T
             cx = b["x"] + b["w"] / 2
             if b.get("w", 0) < s["width"] * 0.9 and abs(cx - s["width"] / 2) < s["width"] * 0.02 and b.get("lines", 1) >= 1 and b.get("role") in ("hero", "display", "h1", "h2"):
                 centred += 1
+        # Collisions: a settled text box of one clip running into something another clip drew.
+        # Text wholly inside another clip's box is an overlay (a caption on a photo) and is fine.
+        others = [b for b in r["boxes"] if b.get("settled", True) and b.get("w", 0) > 0 and b.get("h", 0) > 0]
+        for b in texts:
+            for o in others:
+                if o.get("clipId") == b.get("clipId"):
+                    continue
+                if (b["x"] >= o["x"] - 2 and b["y"] >= o["y"] - 2 and b["x"] + b["w"] <= o["x"] + o["w"] + 2
+                        and b["y"] + b["h"] <= o["y"] + o["h"] + 2):
+                    continue
+                ix = min(b["x"] + b["w"], o["x"] + o["w"]) - max(b["x"], o["x"])
+                iy = min(b["y"] + b["h"], o["y"] + o["h"]) - max(b["y"], o["y"])
+                if ix > 2 and iy > 2 and ix * iy > 0.04 * b["w"] * b["h"]:
+                    collisions.add((b.get("clipId"), o.get("clipId")))
         sizes = sorted({round(b.get("size", 0)) for b in texts if b.get("size")})
         if len(sizes) >= 2:
             contrast_frames += 1
@@ -96,7 +111,8 @@ def analyse(mp4: Path, review: dict | None, samples: int = 12, capture: bool = T
             if "all-caps" in w:
                 allcaps.add(w)
     m["hierarchy"] = {"size_contrast_ok": (contrast_ok / contrast_frames) if contrast_frames else 1.0, "allcaps_headlines": len(allcaps)}
-    m["layout"] = {"safe_ok": min(1.0, ((ok / tot) if tot else 1.0) / SAFE_TEXT_MIN), "overflow": overflow, "text_boxes": tot}
+    m["layout"] = {"safe_ok": min(1.0, ((ok / tot) if tot else 1.0) / SAFE_TEXT_MIN), "overflow": overflow, "text_boxes": tot,
+                   "collisions": sorted(f"{a} × {b}" for a, b in collisions)}
 
     # Sample frames for lossless checks: settled moments spread over the render.
     idx = np.linspace(0, len(reports) - 1, num=min(samples, len(reports))).round().astype(int)
@@ -250,7 +266,7 @@ def analyse(mp4: Path, review: dict | None, samples: int = 12, capture: bool = T
     # Stills + contact sheets.
     name = mp4.stem
     out_dir = out_dir or (paths.REPORTS / f"critique_{name}")
-    stills = sheets.choose(events, reports, f0, fps, len(d), [x for a, b in frozen for x in (a, b - 1)])
+    stills = sheets.choose(events, reports, f0, fps, min(len(d), len(rgb_small)), [x for a, b in frozen for x in (a, b - 1)])
     sheet_files = sheets.write(out_dir, rgb_small, stills, f0, fps, mp4)
 
     result = {"render": paths.rel(mp4), "when": datetime.now().isoformat(timespec="seconds"), "pack": main_pack["id"],

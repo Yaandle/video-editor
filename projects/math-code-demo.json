@@ -78,7 +78,7 @@
       "layer": 1,
       "start": 6,
       "duration": 6,
-      "x": 0.7,
+      "x": 0.735,
       "y": 0.56,
       "props": {
         "fn": "sigmoid(x)",
@@ -93,7 +93,7 @@
         "points": "-2, 0, 2",
         "draw_beat": 2,
         "draw_beats": 4,
-        "width": 0.52,
+        "width": 0.46,
         "height": 0.7
       }
     },

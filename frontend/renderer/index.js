@@ -13,3 +13,5 @@ import './components/audio.js';
 import './components/brutal.js';
 import './scenes/brutal.js';
 import './scenes/narrative.js';
+import './scenes/track.js';
+import './scenes/screencast.js';

@@ -1,0 +1,49 @@
+{
+  "schema": "vidkit.project",
+  "version": 1,
+  "name": "sketch-demo",
+  "settings": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "bpm": 120,
+    "subdivision": 1,
+    "beat_offset": 0,
+    "beat_lock": true,
+    "duration": 26,
+    "background": "paper",
+    "style": "sketch",
+    "seed": 23
+  },
+  "tracks": [
+    {
+      "index": 0,
+      "name": "Page"
+    }
+  ],
+  "clips": [
+    {
+      "id": "page",
+      "type": "sketch.mlp_cue",
+      "layer": 0,
+      "start": 0,
+      "duration": 26,
+      "props": {}
+    }
+  ],
+  "audio": {
+    "music": {
+      "preset": "sketch.lofi",
+      "seed": 23,
+      "gain_db": -6,
+      "end_hit": true
+    },
+    "auto_sfx": true,
+    "sfx_gain_db": 0,
+    "target_lufs": -14,
+    "cues": []
+  },
+  "meta": {
+    "title": "Sketch notebook — style pack draft (MLP marking cue)"
+  }
+}

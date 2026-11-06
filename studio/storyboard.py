@@ -115,7 +115,7 @@ def to_project(scenes: list[dict], name: str = "storyboard", width: int = 1920, 
     return {
         "schema": "vidkit.project", "version": 1, "name": name,
         "settings": {"width": width, "height": height, "fps": fps, "bpm": bpm, "subdivision": 1, "beat_offset": 0, "beat_lock": True,
-                     "duration": total, "background": "paper", "style_pack": "neo-brutal"},
+                     "duration": total, "background": "paper", "style": "neo-brutal"},
         "tracks": [{"index": i, "name": n} for i, n in enumerate(["Chrome", "Components", "Scenes", "Backdrops"])],
         "clips": clips,
         "audio": {"music": {"preset": "brutal-bounce", "seed": 11, "gain_db": -3, "end_hit": True}, "auto_sfx": True, "sfx_gain_db": 0, "target_lufs": -14, "cues": []},

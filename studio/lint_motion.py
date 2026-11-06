@@ -17,7 +17,7 @@ from pathlib import Path
 
 from . import paths
 
-TARGETS = [paths.RENDERER, paths.FRONTEND / "render.html"]
+TARGETS = [paths.RENDERER, paths.FRONTEND / "render.html", paths.FRONTEND / "textstudio.html", paths.STYLES]
 
 JS_RULES = [
     (r"\bsetTimeout\s*\(", "setTimeout drives time — use a function of t"),
@@ -97,7 +97,7 @@ def files() -> list[Path]:
     out = []
     for t in TARGETS:
         if t.is_dir():
-            out += sorted(p for p in t.rglob("*") if p.suffix in (".js", ".mjs", ".html", ".css"))
+            out += sorted(p for p in t.rglob("*") if p.suffix in (".js", ".mjs", ".html", ".css", ".glsl"))
         elif t.is_file():
             out.append(t)
     return out

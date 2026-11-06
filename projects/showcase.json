@@ -12,7 +12,7 @@
     "beat_lock": true,
     "duration": 24,
     "background": "paper",
-    "style_pack": "neo-brutal"
+    "style": "neo-brutal"
   },
   "tracks": [
     { "index": 0, "name": "Chrome", "hidden": false, "muted": false, "locked": false },

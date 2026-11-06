@@ -6,21 +6,9 @@
 import { register, get as getType } from '../registry.js';
 import { color, border, shadow as shadowTok, unit, type as typeRole, layoutGrid, onColor } from '../tokens.js';
 import { box, frame as frameRect, sticker as drawSticker, ticker as drawTicker, arrow as drawArrow, hatch, dots, imageCover } from '../draw.js';
-import { sp, fade, lerp, arrivalFrames, peak, settle, staggerStep } from '../motion.js';
-import { textBlock, landing, reportBox } from '../kit.js';
+import { sp, fade, lerp, peak, settle, staggerStep, exitProgress as exitP } from '../motion.js';
+import { landing, reportBox, onBeat, setFont } from '../kit.js';
 
-function setFont(ctx, r, tracking = r.tracking) {
-  ctx.font = r.font;
-  if ('letterSpacing' in ctx) ctx.letterSpacing = `${tracking * r.size}px`;
-  ctx.textBaseline = 'alphabetic';
-  ctx.textAlign = 'left';
-}
-
-/** Exit progress for the last `len` seconds of a clip (quick spring, 0 → 1). */
-function exitP(lt, duration, len = 0.4, preset = 'quick') {
-  const x = lt - (duration - len);
-  return x > 0 ? Math.min(1, Math.max(0, sp(x, preset, 'position'))) : 0;
-}
 
 /** Scene clips in time order — the nav counter and active link read this. */
 function sceneClips(project) {
@@ -184,7 +172,7 @@ function pressDepth(t, pressTimes) {
   return Math.max(0, Math.min(1, d));
 }
 function pressTimes(clip, p, beat) {
-  return (p.press_beats ?? []).map((b) => clip.start + b * (beat?.beat ?? 0.5));
+  return (p.press_beats ?? []).map((b) => onBeat(clip.start, b, beat));
 }
 
 register({
@@ -408,7 +396,7 @@ register({
     ctx.fillStyle = color('ink');
     const by = H / 2 + brand.size * 0.36;
     ctx.fillText(p.brand, g.margin, by);
-    env.box({ kind: 'text', role: 'label', x: g.margin, y: by - brand.size * 0.72, w: ctx.measureText(p.brand).width, h: brand.size * 0.72, fg: color('ink'), bg: color(p.fill), size: brand.size, text: p.brand });
+    env.box({ kind: 'text', role: 'label', x: g.margin, y: by - brand.size * 0.72, w: ctx.measureText(p.brand).width, h: brand.size * 0.72, fg: color('ink'), bg: color(p.fill), size: brand.size, text: p.brand, bleed: true, settled: lt > 0.6 });
 
     const lab = typeRole('label', env.frame);
     const s = sceneIndexAt(env.project, env.t);
@@ -446,7 +434,7 @@ register({
     });
     rollNumber(ctx, txt, `${fmt(s.prev)} / ${fmt(s.total)}`, W - g.margin - cw, H / 2 - counter.size * 0.42, counter, s.since, color('ink'));
     ctx.restore();
-    env.box({ kind: 'text', role: 'label', x: W - g.margin - cw, y: H / 2 - counter.size * 0.4, w: cw, h: counter.size * 0.74, fg: color('ink'), bg: color(p.fill), size: counter.size, text: txt, settled: s.since > 0.3 });
+    env.box({ kind: 'text', role: 'label', x: W - g.margin - cw, y: H / 2 - counter.size * 0.4, w: cw, h: counter.size * 0.74, fg: color('ink'), bg: color(p.fill), size: counter.size, text: txt, settled: s.since > 0.3, bleed: true });
     reportBox(env, { x: 0, y: dy, w: W, h: H, bleed: true });
     if (lt < 0.6 || s.since < 0.35) env.animating();
   },
@@ -481,8 +469,8 @@ register({
     ctx.fillText(p.left.toUpperCase(), g.margin, by);
     const rw = ctx.measureText(p.right.toUpperCase()).width;
     ctx.fillText(p.right.toUpperCase(), W - g.margin - rw, by);
-    env.box({ kind: 'text', role: 'label', x: g.margin, y: by - lab.size * 0.72, w: ctx.measureText(p.left.toUpperCase()).width, h: lab.size * 0.72, fg: ink, bg: color(p.fill), size: lab.size, text: p.left });
-    env.box({ kind: 'text', role: 'label', x: W - g.margin - rw, y: by - lab.size * 0.72, w: rw, h: lab.size * 0.72, fg: ink, bg: color(p.fill), size: lab.size, text: p.right });
+    env.box({ kind: 'text', role: 'label', x: g.margin, y: by - lab.size * 0.72, w: ctx.measureText(p.left.toUpperCase()).width, h: lab.size * 0.72, fg: ink, bg: color(p.fill), size: lab.size, text: p.left, bleed: true });
+    env.box({ kind: 'text', role: 'label', x: W - g.margin - rw, y: by - lab.size * 0.72, w: rw, h: lab.size * 0.72, fg: ink, bg: color(p.fill), size: lab.size, text: p.right, bleed: true });
     if (p.progress) {
       const dur = env.settings.duration ?? (clip.start + clip.duration);
       ctx.fillStyle = color('lime');
@@ -535,6 +523,7 @@ register({
     ctx.translate(x + w / 2, y + h / 2); ctx.rotate(rot); ctx.translate(-(x + w / 2), -(y + h / 2));
     box(ctx, x, y, w, h, { fill: color('white'), shadow: shadowTok(env.frame, 'video-lg') });
     imageCover(ctx, env.image(p.image), x, y, w, imgH, { focusX: 0.5, focusY: 0.45 });
+    env.box({ kind: 'image', name: 'photo', x, y, w, h: imgH });
     ctx.fillStyle = color('ink');
     ctx.fillRect(x, y + imgH, w, bw);
     let cy = y + imgH + pad;

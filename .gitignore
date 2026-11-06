@@ -11,20 +11,23 @@ dist/
 build/
 *.egg
 
-# Environment
+# Environment and secrets
 .env
 .env.*
+*.pem
+*.key
 
-# Output / render artefacts
+# Machine-local config (copy config.example.json to config.json)
+config.json
+
+# Output / render artefacts (renders, critique reports, stills, uploads)
 output/
 renders/
+reports/
 *.mp4
 *.mov
 *.avi
 backend/uploads/
-media/uploads/
-media/.trash/
-reports/
 media/
 !docs/media/
 !docs/media/showcase.mp4
@@ -32,16 +35,29 @@ media/
 # Local tools copied in by doctor (ffmpeg build is ~190 MB; doctor re-creates it)
 tools/
 
-# Project saves (keep if you want to track them) — the showcase is the shipped example
+# Local LLM weights
+models/
+*.gguf
+
+# Projects: user projects, saves and autosaves stay local; only the shipped examples are tracked
 *.vkit
 projects/*.json
 !projects/showcase.json
+!projects/math-code-demo.json
+!projects/footy-ml.json
 projects/autosave/
 projects/.trash/
 
-# Editor
+# Licensed fonts for the sketch pack (The Seasons, Gotham) stay local
+styles/sketch/fonts/
+
+# Node
+node_modules/
+
+# Editors and local agent tooling
 .vscode/
 .idea/
+.claude/
 *.swp
 *~
 
@@ -52,13 +68,3 @@ desktop.ini
 
 # Logs
 *.log
-
-# Machine-local config (copy config.example.json to config.json)
-config.json
-# Node / models / secrets
-node_modules/
-*.gguf
-*.pem
-*.key
-# All user projects stay local; only the shipped showcase example is tracked
-!projects/showcase.json

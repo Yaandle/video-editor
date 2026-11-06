@@ -1,0 +1,193 @@
+{
+  "schema": "vidkit.project",
+  "version": 1,
+  "name": "math-code-demo",
+  "settings": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "bpm": 120,
+    "subdivision": 1,
+    "beat_offset": 0,
+    "beat_lock": true,
+    "duration": 24,
+    "background": "paper",
+    "style": "neo-brutal",
+    "seed": 4
+  },
+  "tracks": [
+    {
+      "index": 0,
+      "name": "Maths"
+    },
+    {
+      "index": 1,
+      "name": "Visuals"
+    },
+    {
+      "index": 2,
+      "name": "Code"
+    }
+  ],
+  "clips": [
+    {
+      "id": "code",
+      "type": "code",
+      "layer": 2,
+      "start": 0,
+      "duration": 6,
+      "x": 0.5,
+      "y": 0.5,
+      "props": {
+        "code": "def predict(x, w, b):\n-    z = sum(w * x)\n+    z = dot(w, x) + b\n    return sigmoid(z)\n\ndef sigmoid(z):\n    return 1 / (1 + exp(-z))",
+        "language": "python",
+        "title": "model.py",
+        "prompt": "python predict.py --round 12",
+        "theme": "ink",
+        "width": 0.66,
+        "reveal": "lines",
+        "start_beat": 1,
+        "beats_per_line": 1,
+        "diff": true,
+        "focus": "3, 7",
+        "focus_beat": 9,
+        "font_px": 32
+      }
+    },
+    {
+      "id": "sigmoid",
+      "type": "math",
+      "layer": 0,
+      "start": 6,
+      "duration": 6,
+      "x": 0.055,
+      "y": 0.2,
+      "props": {
+        "template": "sigmoid",
+        "size": "h1",
+        "caption": "Squashes any score into 0–1.",
+        "start_beat": 1,
+        "beats_per_term": 1,
+        "highlight": "3",
+        "highlight_beat": 8
+      }
+    },
+    {
+      "id": "curve",
+      "type": "plot",
+      "layer": 1,
+      "start": 6,
+      "duration": 6,
+      "x": 0.735,
+      "y": 0.56,
+      "props": {
+        "fn": "sigmoid(x)",
+        "fn2": "relu(x)/8",
+        "label": "σ(x)",
+        "label2": "ReLU / 8",
+        "title": "",
+        "x_min": -6,
+        "x_max": 6,
+        "y_min": -0.2,
+        "y_max": 1.2,
+        "points": "-2, 0, 2",
+        "draw_beat": 2,
+        "draw_beats": 4,
+        "width": 0.46,
+        "height": 0.7
+      }
+    },
+    {
+      "id": "wsum",
+      "type": "math",
+      "layer": 0,
+      "start": 12,
+      "duration": 6,
+      "x": 0.055,
+      "y": 0.08,
+      "props": {
+        "template": "weighted-sum",
+        "size": "h2",
+        "caption": "",
+        "start_beat": 1,
+        "beats_per_term": 1,
+        "highlight": "3",
+        "highlight_beat": 8
+      }
+    },
+    {
+      "id": "net",
+      "type": "diagram",
+      "layer": 1,
+      "start": 12,
+      "duration": 6,
+      "x": 0.5,
+      "y": 0.6,
+      "props": {
+        "mode": "network",
+        "layers": "4, 6, 6, 2",
+        "layer_labels": "Inputs, Hidden 1, Hidden 2, Output",
+        "in_labels": "Disposals, Marks, Tackles, Inside 50s",
+        "out_labels": "Win, Loss",
+        "start_beat": 2,
+        "beats_per_step": 1,
+        "pulses": true,
+        "highlight": 0,
+        "width": 0.8,
+        "height": 0.62
+      }
+    },
+    {
+      "id": "flow",
+      "type": "diagram",
+      "layer": 1,
+      "start": 18,
+      "duration": 6,
+      "x": 0.5,
+      "y": 0.3,
+      "props": {
+        "mode": "flow",
+        "stages": "Match data, Features, Train, Win chance",
+        "start_beat": 1,
+        "beats_per_step": 1,
+        "pulses": true,
+        "highlight": -1,
+        "width": 0.86,
+        "height": 0.3
+      }
+    },
+    {
+      "id": "acc",
+      "type": "graph",
+      "layer": 1,
+      "start": 18,
+      "duration": 6,
+      "x": 0.5,
+      "y": 0.73,
+      "props": {
+        "data": "R1:58, R4:61, R8:66, R12:69, R16:72",
+        "chart": "bar",
+        "title": "Tipping accuracy by round (%)",
+        "unit": "%",
+        "width": 0.86,
+        "height": 0.4,
+        "stagger": 0.5
+      }
+    }
+  ],
+  "audio": {
+    "music": {
+      "preset": "brutal-bounce",
+      "seed": 4,
+      "gain_db": -4,
+      "end_hit": true
+    },
+    "auto_sfx": true,
+    "sfx_gain_db": 0,
+    "target_lufs": -14,
+    "cues": []
+  },
+  "meta": {
+    "title": "Code, graph and maths visuals — demo"
+  }
+}

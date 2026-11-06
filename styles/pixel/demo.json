@@ -1,0 +1,214 @@
+{
+  "schema": "vidkit.project",
+  "version": 1,
+  "name": "pixel-demo",
+  "settings": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "bpm": 120,
+    "subdivision": 1,
+    "beat_offset": 0,
+    "beat_lock": true,
+    "duration": 8,
+    "background": "paper",
+    "style": "pixel",
+    "style_params": {
+      "res": "320x180",
+      "dither": true,
+      "shake": 2,
+      "flash": true
+    },
+    "seed": 8
+  },
+  "tracks": [
+    {
+      "index": 0,
+      "name": "Credit"
+    },
+    {
+      "index": 1,
+      "name": "Type"
+    },
+    {
+      "index": 2,
+      "name": "Sprites"
+    },
+    {
+      "index": 3,
+      "name": "Photo"
+    },
+    {
+      "index": 4,
+      "name": "World"
+    }
+  ],
+  "clips": [
+    {
+      "id": "world",
+      "type": "pixel.tiles",
+      "layer": 4,
+      "start": 0,
+      "duration": 8,
+      "props": {
+        "sky": 1,
+        "ground_rows": 3,
+        "clouds": 4,
+        "speed": 10,
+        "tile": 2,
+        "cloud_tone": "night"
+      }
+    },
+    {
+      "id": "headline",
+      "type": "text",
+      "layer": 1,
+      "start": 0,
+      "duration": 8,
+      "x": 0.0625,
+      "y": 0.1,
+      "props": {
+        "text": "Every frame\non the {{grid}}.",
+        "style": "custom",
+        "role": "display",
+        "color": "paper",
+        "accent": "orange",
+        "width": 0.62,
+        "anim_unit": "line",
+        "anim_from": "drop",
+        "anim_preset": "slam",
+        "exit_to": "drop",
+        "hit": true
+      }
+    },
+    {
+      "id": "player",
+      "type": "pixel.sprite",
+      "layer": 2,
+      "start": 0,
+      "duration": 8,
+      "x": 0.12,
+      "y": 0.6,
+      "props": {
+        "sprite": "player",
+        "scale": 4,
+        "anim": "walk",
+        "land_beat": 2,
+        "walk_speed": 6
+      }
+    },
+    {
+      "id": "coin1",
+      "type": "pixel.sprite",
+      "layer": 2,
+      "start": 0,
+      "duration": 8,
+      "x": 0.42,
+      "y": 0.5,
+      "props": {
+        "sprite": "coin",
+        "scale": 3,
+        "anim": "spin",
+        "land_beat": 4
+      }
+    },
+    {
+      "id": "coin2",
+      "type": "pixel.sprite",
+      "layer": 2,
+      "start": 0,
+      "duration": 8,
+      "x": 0.5,
+      "y": 0.5,
+      "props": {
+        "sprite": "coin",
+        "scale": 3,
+        "anim": "spin",
+        "land_beat": 5
+      }
+    },
+    {
+      "id": "coin3",
+      "type": "pixel.sprite",
+      "layer": 2,
+      "start": 0,
+      "duration": 8,
+      "x": 0.58,
+      "y": 0.5,
+      "props": {
+        "sprite": "coin",
+        "scale": 3,
+        "anim": "spin",
+        "land_beat": 6
+      }
+    },
+    {
+      "id": "photo",
+      "type": "image",
+      "layer": 3,
+      "start": 3.866667,
+      "duration": 4.133333,
+      "x": 0.8,
+      "y": 0.4,
+      "src": "assets/images/film-editing-03.jpg",
+      "enter": {
+        "preset": "slam",
+        "from": "right",
+        "delay": 0,
+        "hit": true
+      },
+      "exit": {
+        "preset": "quick",
+        "to": "right",
+        "length": 0.4
+      },
+      "props": {
+        "fit": "cover",
+        "box_w": 0.3,
+        "box_h": 0.42,
+        "focus_x": 0.5,
+        "focus_y": 0.5,
+        "frame": "border-shadow"
+      }
+    },
+    {
+      "id": "credit",
+      "type": "text",
+      "layer": 0,
+      "start": 3.866667,
+      "duration": 4.133333,
+      "x": 0.65,
+      "y": 0.645,
+      "style": "neo-brutal",
+      "props": {
+        "text": "Photo: Marcel Oosterwijk, CC BY-SA 2.0",
+        "style": "custom",
+        "role": "micro",
+        "font": "mono",
+        "color": "paper",
+        "width": 0.3,
+        "plate": "box",
+        "plate_fill": "ink",
+        "anim_from": "none",
+        "exit_to": "none",
+        "hit": false,
+        "sfx": false
+      }
+    }
+  ],
+  "audio": {
+    "music": {
+      "preset": "pixel.chiptune",
+      "seed": 8,
+      "gain_db": -3,
+      "end_hit": true
+    },
+    "auto_sfx": true,
+    "sfx_gain_db": 0,
+    "target_lufs": -14,
+    "cues": []
+  },
+  "meta": {
+    "title": "Pixel art — style pack demo"
+  }
+}

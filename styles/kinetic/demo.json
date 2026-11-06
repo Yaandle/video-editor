@@ -1,0 +1,140 @@
+{
+  "schema": "vidkit.project",
+  "version": 1,
+  "name": "kinetic-demo",
+  "settings": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "bpm": 120,
+    "subdivision": 1,
+    "beat_offset": 0,
+    "beat_lock": true,
+    "duration": 8,
+    "background": "paper",
+    "style": "kinetic",
+    "style_params": {
+      "punch": 0.035,
+      "tilt": 1.25
+    },
+    "seed": 11
+  },
+  "tracks": [
+    {
+      "index": 0,
+      "name": "Type"
+    },
+    {
+      "index": 1,
+      "name": "Credit"
+    },
+    {
+      "index": 2,
+      "name": "Photo"
+    }
+  ],
+  "clips": [
+    {
+      "id": "photo",
+      "type": "image",
+      "layer": 2,
+      "start": 0,
+      "duration": 8,
+      "x": 0.815,
+      "y": 0.5,
+      "src": "assets/images/letterpress-02.jpg",
+      "enter": {
+        "preset": "slam",
+        "from": "right",
+        "delay": 0.0,
+        "hit": false,
+        "sfx": true
+      },
+      "exit": {
+        "preset": "quick",
+        "to": "right",
+        "length": 0.4
+      },
+      "props": {
+        "fit": "cover",
+        "box_w": 0.27,
+        "box_h": 0.74,
+        "focus_x": 0.45,
+        "focus_y": 0.5,
+        "frame": "border-shadow"
+      }
+    },
+    {
+      "id": "credit",
+      "type": "text",
+      "layer": 1,
+      "start": 0,
+      "duration": 8,
+      "x": 0.684,
+      "y": 0.905,
+      "style": "neo-brutal",
+      "props": {
+        "text": "Photo: Michellecornelison, CC BY-SA 4.0",
+        "style": "custom",
+        "role": "micro",
+        "font": "mono",
+        "color": "ink-soft",
+        "width": 0.27,
+        "anim_from": "none",
+        "exit_to": "none",
+        "hit": false,
+        "sfx": false
+      }
+    },
+    {
+      "id": "words",
+      "type": "kinetic.type",
+      "layer": 0,
+      "start": 0,
+      "duration": 4,
+      "props": {
+        "text": "Every word\nlands\non the {{beat}}.",
+        "mode": "stack",
+        "box_x": 0.065,
+        "box_y": 0.14,
+        "box_w": 0.54,
+        "box_h": 0.72,
+        "start_beat": 1,
+        "beats_per_word": "1"
+      }
+    },
+    {
+      "id": "curve",
+      "type": "kinetic.type",
+      "layer": 0,
+      "start": 3.5,
+      "duration": 4.5,
+      "props": {
+        "text": "bends with the {{curve}}",
+        "mode": "path",
+        "path": "arc",
+        "box_x": 0.05,
+        "box_y": 0.26,
+        "box_w": 0.6,
+        "box_h": 0.46,
+        "start_beat": 1,
+        "beats_per_word": "1"
+      }
+    }
+  ],
+  "audio": {
+    "music": {
+      "preset": "kinetic.pulse",
+      "seed": 11,
+      "gain_db": -3,
+      "end_hit": true
+    },
+    "auto_sfx": true,
+    "sfx_gain_db": 0,
+    "target_lufs": -14,
+    "cues": []
+  },
+  "meta": {
+    "title": "Kinetic typography — style pack demo"
+  }
+}

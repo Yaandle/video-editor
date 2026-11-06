@@ -54,6 +54,40 @@ def place(buf: np.ndarray, sig: np.ndarray, t: float, gain: float = 1.0) -> None
     buf[max(i, 0):max(i, 0) + n] += sig[s0:s0 + n] * gain
 
 
+def steps(duration: float, bpm: float, offset: float = 0.0, stop_at: float | None = None):
+    """Every 16th-note grid step in [0, duration): (t, gstep, bar, beat_in_bar, sub). Style-pack beds sequence with this."""
+    step = 60.0 / bpm / 4
+    n = int(round(duration / step))
+    for k in range(n):
+        t = k * step
+        if stop_at is not None and t >= stop_at - 1e-6:
+            break
+        g = int(round((t - offset) / step))
+        b, sub = divmod(g, 4)
+        yield t, g, b // 4, b % 4, sub
+
+
+def sidechain(buf: np.ndarray, hits: list[float], depth: float = 0.7, rate: float = 13.0) -> np.ndarray:
+    """Duck `buf` under each hit time with a closed-form exponential recovery."""
+    n = len(buf)
+    duck = np.ones(n, np.float32)
+    for kt in hits:
+        i = int(round(kt * SR))
+        m = min(n - i, int(0.35 * SR))
+        if m <= 0 or i < 0:
+            continue
+        tt = np.arange(m) / SR
+        duck[i:i + m] = np.minimum(duck[i:i + m], (1 - depth * np.exp(-tt * rate)).astype(np.float32))
+    return buf * duck[:, None]
+
+
+def tail_fade(mix: np.ndarray, seconds: float = 0.03) -> np.ndarray:
+    f = min(len(mix), int(seconds * SR))
+    if f:
+        mix[-f:] *= np.linspace(1, 0, f, dtype=np.float32)[:, None]
+    return mix.astype(np.float32)
+
+
 def render_bed(duration: float, bpm: float, sections: list[float], seed: int = 7, end_hit: bool = True,
                offset: float = 0.0) -> np.ndarray:
     """Return an (n, 2) float array. `sections` are section start times (scene cuts)."""

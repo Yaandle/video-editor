@@ -1,0 +1,158 @@
+{
+  "schema": "vidkit.project",
+  "version": 1,
+  "name": "ascii-demo",
+  "settings": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "bpm": 120,
+    "subdivision": 1,
+    "beat_offset": 0,
+    "beat_lock": true,
+    "duration": 8,
+    "background": "paper",
+    "style": "ascii",
+    "style_params": {
+      "set": "letters",
+      "switch_to": "blocks",
+      "switch_beat": 9,
+      "cell": 16,
+      "mode": "duotone",
+      "gamma": 0.75,
+      "reveal_beats": 2
+    },
+    "seed": 9
+  },
+  "tracks": [
+    {
+      "index": 0,
+      "name": "Credit"
+    },
+    {
+      "index": 1,
+      "name": "Type"
+    },
+    {
+      "index": 2,
+      "name": "Mark"
+    },
+    {
+      "index": 3,
+      "name": "Photo"
+    }
+  ],
+  "clips": [
+    {
+      "id": "photo",
+      "type": "image",
+      "layer": 3,
+      "start": 0,
+      "duration": 8,
+      "x": 0.79,
+      "y": 0.5,
+      "src": "assets/images/metronome-01.jpg",
+      "exit": {
+        "preset": "quick",
+        "to": "right",
+        "length": 0.4
+      },
+      "props": {
+        "fit": "cover",
+        "box_w": 0.34,
+        "box_h": 0.9,
+        "focus_x": 0.5,
+        "focus_y": 0.45,
+        "frame": "none"
+      }
+    },
+    {
+      "id": "headline",
+      "type": "text",
+      "layer": 1,
+      "start": 0.5,
+      "duration": 7.5,
+      "x": 0.055,
+      "y": 0.17,
+      "props": {
+        "text": "Every pixel\nis a {{letter}}.",
+        "style": "custom",
+        "role": "hero",
+        "color": "ink",
+        "accent": "orange",
+        "width": 0.6,
+        "anim_unit": "line",
+        "anim_from": "mask",
+        "anim_preset": "slam",
+        "exit_to": "mask",
+        "hit": true
+      }
+    },
+    {
+      "id": "dot",
+      "type": "shape",
+      "layer": 2,
+      "start": 2.866667,
+      "duration": 5.133333,
+      "x": 0.12,
+      "y": 0.79,
+      "enter": {
+        "preset": "slam",
+        "from": "scale",
+        "delay": 0,
+        "hit": true
+      },
+      "exit": {
+        "preset": "quick",
+        "to": "drop",
+        "length": 0.4
+      },
+      "props": {
+        "kind": "circle",
+        "size": 240,
+        "fill": "orange",
+        "stroke_width": 0,
+        "shadow": false
+      }
+    },
+    {
+      "id": "credit",
+      "type": "text",
+      "layer": 0,
+      "start": 0,
+      "duration": 8,
+      "x": 0.632,
+      "y": 0.925,
+      "style": "neo-brutal",
+      "props": {
+        "text": "Photo: Vincent Quach, CC BY-SA 3.0",
+        "style": "custom",
+        "role": "micro",
+        "font": "mono",
+        "color": "paper",
+        "width": 0.3,
+        "plate": "box",
+        "plate_fill": "ink",
+        "anim_from": "none",
+        "exit_to": "none",
+        "hit": false,
+        "sfx": false
+      }
+    }
+  ],
+  "audio": {
+    "music": {
+      "preset": "ascii.terminal",
+      "seed": 9,
+      "gain_db": -3,
+      "end_hit": true
+    },
+    "auto_sfx": true,
+    "sfx_gain_db": 0,
+    "target_lufs": -14,
+    "cues": []
+  },
+  "meta": {
+    "title": "ASCII art — style pack demo"
+  }
+}

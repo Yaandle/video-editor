@@ -12,12 +12,11 @@
 //   visual: true,                      // false for audio-only clips
 //   render(ctx, clip, lt, env),        // draw at clip-local time lt (pure)
 //   events(clip, env) -> [{ t, kind: 'cue'|'hit'|'motion', ... }],   // pure, DOM-free
-//   label(clip) -> string              // timeline label
+//   clipLabel(clip) -> string          // timeline label (label is the type name)
 // }
 
 const TYPES = new Map();
 const PACKS = new Map();
-const PASSES = new Map();
 
 const PROP_TYPES = new Set(['text', 'number', 'bool', 'enum', 'color', 'asset', 'list', 'object']);
 
@@ -108,24 +107,120 @@ export function jsonSchema(type) {
 /** Catalogue for the editor's Add menu and the LLM storyboard prompt. */
 export function catalogue() {
   return all().map((d) => ({
-    type: d.type, kind: d.kind, label: d.label ?? d.type, category: d.category,
+    type: d.type, kind: d.kind, label: d.label ?? d.type, category: d.category, pack: d.pack ?? null,
     description: d.description ?? '', duration: d.duration, llm: d.llm !== false,
     props: jsonSchema(d.type),
   }));
 }
 
-// ── Style packs + pass pipeline ───────────────────────────────────────────────
-// A style pack = { id, label, tokens?: partial tokens override, passes: [{ id, params }],
-//                  sound?: profile name for studio/audio }. Passes are pure functions
-// (srcCanvas, dstCtx, t, params, env) => void, run in order after the scene draw.
+// ── Style packs ───────────────────────────────────────────────────────────────
+// A style pack is one folder, styles/<id>/, whose index.js default-exports:
+//   { id, label, description, tokens,            // tokens.json (palette, type, springs, sfx, music)
+//     schema,                                    // style_params the pack accepts (same prop types as clips)
+//     overrides: { [clipType]: render },          // re-skin existing components in this look
+//     eventOverrides: { [clipType]: events },      // …and their timing/sounds when the look changes them
+//     treatment: {                               // how any content is rendered in this look
+//       native(params, frame) -> { w, h } | null,  // low-res native buffer (pixel art, ASCII…)
+//       holdFrames,                              // animate on twos (paper cutout)
+//       perClip,                                 // as the project style, still one layer per clip
+//       transform(params, env) -> { dx, dy, rot, scale },   // transformAll: also on the pack's own types
+//       cpu(canvas, params, env),                // in-place CPU pass (palette quantize)
+//       passes(params, env) -> [GL passes],      // gl.js runPasses
+//       blend,                                   // composite op for the finished layer
+//       animating(params, env) -> bool,          // the treatment itself is moving (reveals, jolts)
+//     },
+//     load(api) }                                // async: shaders, textures, fonts (browser only)
+// Pack components register themselves with types "<id>.<name>".
+// The loader (styles.js) imports the folder on demand, so adding a pack touches nothing else.
 
-export function registerStylePack(pack) { PACKS.set(pack.id, { passes: [], ...pack }); }
-export const stylePack = (id) => PACKS.get(id) ?? PACKS.get('neo-brutal') ?? null;
+export const DEFAULT_STYLE = 'neo-brutal';
+export const MAX_PACKS_PER_SCENE = 2;
+
+export function registerStylePack(pack) {
+  if (!pack?.id) throw new Error('registerStylePack(): missing id');
+  for (const [k, s] of Object.entries(pack.schema ?? {})) {
+    if (!PROP_TYPES.has(s.type)) throw new Error(`style ${pack.id}: param ${k} has unknown type ${s.type}`);
+  }
+  const full = { label: pack.id, description: '', schema: {}, overrides: {}, eventOverrides: {}, treatment: null, tokens: {}, ...pack };
+  PACKS.set(pack.id, full);
+  return full;
+}
+export const stylePack = (id) => PACKS.get(id ?? DEFAULT_STYLE) ?? null;
 export const stylePacks = () => [...PACKS.values()];
+export const hasStylePack = (id) => PACKS.has(id);
 
-export function registerPass(id, fn) { PASSES.set(id, fn); }
-export const pass = (id) => PASSES.get(id) ?? null;
+/** Pack params: pack schema defaults ← overrides, type-checked like clip props. */
+export function styleParams(id, params) {
+  const pack = stylePack(id);
+  const value = {}, errors = [];
+  if (!pack) return { value, errors: [`unknown style "${id}"`] };
+  for (const [k, s] of Object.entries(pack.schema)) value[k] = structuredCloneSafe(s.default);
+  for (const [k, v] of Object.entries(params ?? {})) {
+    const s = pack.schema[k];
+    if (!s) { errors.push(`style ${id}: unknown param "${k}"`); continue; }
+    const err = checkProp(s, v);
+    if (err) errors.push(`style ${id}.${k}: ${err}`); else value[k] = v;
+  }
+  return { value, errors };
+}
 
-// The identity pass and default pack ship with the core so the pipeline is always exercised.
-registerPass('identity', (src, dst) => { dst.drawImage(src, 0, 0); });
-registerStylePack({ id: 'neo-brutal', label: 'Neo-brutal', passes: [{ id: 'identity', params: {} }], sound: 'neo-brutal' });
+/** The pack a clip is drawn in: its own `style`, else the project's. (A clip styled with
+ *  DEFAULT_STYLE under a pixel-treated project look is drawn on top, untreated.) */
+export function clipStyle(clip, settings) {
+  return clip.style ?? settings?.style ?? DEFAULT_STYLE;
+}
+
+/** Pack ids a project needs: project style, clip styles, and "<pack>.<name>" clip types. */
+export function stylesUsed(project) {
+  const ids = new Set();
+  const s = project.settings ?? {};
+  if (s.style) ids.add(s.style);
+  for (const c of project.clips ?? []) {
+    if (c.style) ids.add(c.style);
+    const prefix = String(c.type).split('.')[0];
+    if (prefix !== 'scene' && String(c.type).includes('.')) ids.add(prefix);
+  }
+  ids.delete(DEFAULT_STYLE);
+  return [...ids];
+}
+
+/**
+ * At most MAX_PACKS_PER_SCENE distinct non-default looks may be on screen at
+ * once (project style + clip styles + pack components). Checked at every
+ * moment a clip starts, which is where the set can grow.
+ */
+export function checkStyles(project) {
+  const errors = [];
+  const s = project.settings ?? {};
+  const clips = project.clips ?? [];
+  const lookOf = (c) => {
+    if (c.style) return c.style;
+    const prefix = String(c.type).split('.')[0];
+    return prefix !== 'scene' && String(c.type).includes('.') ? prefix : null;
+  };
+  for (const t of [...new Set(clips.map((c) => c.start))]) {
+    const looks = new Set(s.style && s.style !== DEFAULT_STYLE ? [s.style] : []);
+    for (const c of clips) {
+      if (c.start <= t + 1e-9 && t < c.start + c.duration - 1e-9) {
+        const l = lookOf(c);
+        if (l && l !== DEFAULT_STYLE) looks.add(l);
+      }
+    }
+    if (looks.size > MAX_PACKS_PER_SCENE) {
+      errors.push(`at ${t.toFixed(2)} s ${looks.size} style packs are on screen (${[...looks].join(', ')}); the limit is ${MAX_PACKS_PER_SCENE} per scene`);
+    }
+  }
+  for (const id of new Set(clips.map((c) => c.style).filter(Boolean).concat(s.style ? [s.style] : []))) {
+    if (!PACKS.has(id)) errors.push(`unknown style "${id}"`);
+  }
+  for (const c of clips) {
+    if (c.style_params && Object.keys(c.style_params).length) {
+      errors.push(...styleParams(clipStyle(c, s), c.style_params).errors.map((m) => `clip ${c.id}: ${m}`));
+    }
+  }
+  if (s.style_params && Object.keys(s.style_params).length) errors.push(...styleParams(s.style, s.style_params).errors);
+  return [...new Set(errors)];
+}
+
+// The default look ships with the core: no treatment, the neo-brutal tokens as they are.
+registerStylePack({ id: DEFAULT_STYLE, label: 'Neo-brutal', description: 'Flat fills, thick ink borders, hard offset shadows.' });

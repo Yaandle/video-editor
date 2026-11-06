@@ -7,17 +7,10 @@ import { register } from '../registry.js';
 import { color, border, shadow as shadowTok, type as typeRole, onColor } from '../tokens.js';
 import { box, frame as frameRect, hatch, dots, sticker as drawSticker, imageCover, arrow as drawArrow, ticker as drawTicker, rule } from '../draw.js';
 import { sp, fade, lerp, spring, params, settle, peak, staggerStep } from '../motion.js';
-import { textBlock, gridLines, reportBox, tint } from '../kit.js';
+import { textBlock, gridLines, reportBox, tint, setFont } from '../kit.js';
 import { clock, exitP, landingEvents } from './helpers.js';
 
 const EXIT = { to: 'mask', preset: 'quick', length: 0.32 };
-
-function setFont(ctx, r) {
-  ctx.font = r.font;
-  if ('letterSpacing' in ctx) ctx.letterSpacing = `${r.tracking * r.size}px`;
-  ctx.textBaseline = 'alphabetic';
-  ctx.textAlign = 'left';
-}
 
 function bg(ctx, env, fill) {
   ctx.fillStyle = color(fill);
@@ -115,6 +108,28 @@ register({
     ]).concat([{ kind: 'cue', t: c.B(4.5), sound: 'whoosh', gain_db: -16 }]);
   },
 });
+
+/** Calendar glyph (header band, binder rings, 3x3 date grid with one lime "booked" cell) inside a box of side `w`. */
+function drawCalendarIcon(ctx, x, y, w, bw) {
+  const ink = color('ink');
+  const hh = w * 0.22;
+  ctx.fillStyle = color('paper');
+  ctx.fillRect(x, y + w * 0.08, w, w * 0.92);
+  ctx.fillStyle = ink;
+  ctx.fillRect(x, y + w * 0.08, w, hh);
+  ctx.fillRect(x + w * 0.2, y, bw, w * 0.2);
+  ctx.fillRect(x + w * 0.8 - bw, y, bw, w * 0.2);
+  const gx = x + w * 0.1, gy = y + w * 0.08 + hh + w * 0.07, cell = w * 0.2, gap = w * 0.05, ch = cell * 0.72;
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
+    const px = gx + c * (cell + gap), py = gy + r * (ch + gap);
+    ctx.fillStyle = r === 1 && c === 1 ? color('lime') : 'rgba(0,0,0,0)';
+    if (r === 1 && c === 1) ctx.fillRect(px, py, cell, ch);
+    ctx.strokeStyle = ink; ctx.lineWidth = Math.max(2, bw * 0.5);
+    ctx.strokeRect(px, py, cell, ch);
+  }
+  ctx.strokeStyle = ink; ctx.lineWidth = bw;
+  ctx.strokeRect(x, y + w * 0.08, w, w * 0.92);
+}
 
 // ── 2. Beat grid ──────────────────────────────────────────────────────────────
 register({
@@ -245,13 +260,14 @@ register({
       setFont(ctx, lab);
       ctx.fillStyle = color('ink');
       ctx.fillText(preset.toUpperCase(), x + pad, y + pad + lab.size * 0.78);
+      const labW = ctx.measureText(preset.toUpperCase()).width;
       const pr = params(preset);
       const ptxt = `k ${pr.stiffness} · c ${pr.damping}${pr.mass !== 1 ? ` · m ${pr.mass}` : ''}`;
       const pw = ctx.measureText(ptxt).width;
       ctx.fillStyle = color('ink-soft');
       ctx.fillText(ptxt, x + w - pad - pw, y + pad + lab.size * 0.78);
       rule(ctx, x, y + pad * 2 + lab.size, w, bw * 0.6, color('ink'));
-      env.box({ kind: 'text', role: 'label', name: `lab${i}`, x: x + pad, y: y + pad, w: w - pad * 2, h: lab.size * 0.78, fg: color('ink'), bg: color('white'), size: lab.size, text: preset, settled: appear > settle('snappy') && !drop });
+      env.box({ kind: 'text', role: 'label', name: `lab${i}`, x: x + pad, y: y + pad, w: labW, h: lab.size * 0.78, fg: color('ink'), bg: color('white'), size: lab.size, text: preset, settled: appear > settle('snappy') && !drop });
 
       // Plot: value vs time over a 0.9 s window, drawn up to "now".
       const L = c.land(3 + i, preset);
@@ -333,7 +349,7 @@ register({
     const pyy = py + F.h * 0.55 * (1 - sp(ep, 'soft')) + F.h * ex;
     imageCover(ctx, env.image(p.image), px, pyy, pw, ph, { focusX: 0.5, focusY: p.focus_y, zoom: 1.08 + 0.025 * lt });
     frameRect(ctx, px, pyy, pw + 40 * u, ph, border(F), color('ink'));
-    reportBox(env, { name: 'photo', x: px, y: pyy, w: pw, h: ph, bleed: true, settled: ep > settle('soft') && !ex });
+    env.box({ kind: 'image', name: 'photo', x: px, y: pyy, w: pw, h: ph, bleed: true, settled: ep > settle('soft') && !ex });
     // Credit tag on the photo (required attribution, readable: paper on ink).
     const cr = typeRole('label', F);
     setFont(ctx, cr);
@@ -442,6 +458,7 @@ register({
       ctx.translate(x + w / 2, y + h / 2); ctx.rotate(rot); ctx.translate(-(x + w / 2), -(y + h / 2));
       box(ctx, x, y, w, h, { fill: color('white'), shadow: shadowTok(F, 'video-lg') });
       imageCover(ctx, env.image(card.image), x, y, w, imgH, { focusY: 0.45 });
+      env.box({ kind: 'image', name: `card${i}-photo`, x, y, w, h: imgH });
       ctx.fillStyle = color('ink');
       ctx.fillRect(x, y + imgH, w, bw);
       let cy = y + imgH + pad;
@@ -521,6 +538,7 @@ register({
     credits: { type: 'text', default: 'Photos: Wikimedia Commons, CC BY / BY-SA. Credits in assets/MANIFEST.json', label: 'Credits', maxLength: 120 },
     background: { type: 'color', default: 'lime', label: 'Background' },
     hold_last: { type: 'bool', default: true, label: 'Hold to the end (no exit)' },
+    icon: { type: 'enum', options: ['arrow', 'calendar'], default: 'arrow', label: 'Corner icon' },
   },
   render(ctx, clip, lt, env) {
     const p = env.props, u = env.u, F = env.frame, g = env.grid;
@@ -569,7 +587,8 @@ register({
       ctx.save();
       ctx.translate(ax + s / 2, ay + s / 2); ctx.scale(k, k); ctx.rotate((8 * (1 - sp(ea, 'slam', 'rotation')) * Math.PI) / 180); ctx.translate(-(ax + s / 2), -(ay + s / 2));
       box(ctx, ax, ay, s, s, { fill: color('orange'), stroke: color('ink'), strokeW: bwid, shadow: { x: sh.x * (1 - d), y: sh.y * (1 - d), color: color('ink') } });
-      drawArrow(ctx, ax + s * 0.18, ay + s * 0.18, s * 0.64, { dir: 'up-right', color: color('ink'), weight: 0.17 });
+      if (p.icon === 'calendar') drawCalendarIcon(ctx, ax + s * 0.16, ay + s * 0.16, s * 0.68, bwid);
+      else drawArrow(ctx, ax + s * 0.18, ay + s * 0.18, s * 0.64, { dir: 'up-right', color: color('ink'), weight: 0.17 });
       ctx.restore();
       reportBox(env, { name: 'arrow', x: ax, y: ay, w: s, h: s, settled: ea > settle('slam') && d < 0.01 });
     }

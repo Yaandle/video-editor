@@ -1,0 +1,218 @@
+{
+  "schema": "vidkit.project",
+  "version": 1,
+  "name": "halftone-demo",
+  "settings": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "bpm": 120,
+    "subdivision": 1,
+    "beat_offset": 0,
+    "beat_lock": true,
+    "duration": 8,
+    "background": "paper",
+    "style": "neo-brutal",
+    "seed": 3
+  },
+  "tracks": [
+    {
+      "index": 0,
+      "name": "Credit"
+    },
+    {
+      "index": 1,
+      "name": "Type"
+    },
+    {
+      "index": 2,
+      "name": "Disc"
+    },
+    {
+      "index": 3,
+      "name": "Print"
+    },
+    {
+      "index": 4,
+      "name": "Mount"
+    }
+  ],
+  "clips": [
+    {
+      "id": "mount",
+      "type": "block",
+      "layer": 4,
+      "start": 0,
+      "duration": 8,
+      "x": 0.7,
+      "y": 0.5,
+      "exit": {
+        "preset": "quick",
+        "to": "right",
+        "length": 0.4
+      },
+      "props": {
+        "w": 980,
+        "h": 940,
+        "fill": "white",
+        "border": true,
+        "shadow": true,
+        "from": "right"
+      }
+    },
+    {
+      "id": "print",
+      "type": "image",
+      "layer": 3,
+      "start": 0.5,
+      "duration": 7.5,
+      "x": 0.7,
+      "y": 0.5,
+      "src": "assets/images/skate-02.jpg",
+      "style": "halftone",
+      "style_params": {
+        "mode": "cmyk",
+        "cell": 10,
+        "reveal": "sweep",
+        "reveal_beats": 2,
+        "misregister": 1.5,
+        "jolt": 7
+      },
+      "exit": {
+        "preset": "quick",
+        "to": "right",
+        "length": 0.4
+      },
+      "props": {
+        "fit": "cover",
+        "box_w": 0.465,
+        "box_h": 0.81,
+        "focus_x": 0.5,
+        "focus_y": 0.55,
+        "frame": "none"
+      }
+    },
+    {
+      "id": "headline",
+      "type": "text",
+      "layer": 1,
+      "start": 1,
+      "duration": 7,
+      "x": 0.06,
+      "y": 0.2,
+      "style": "halftone",
+      "style_params": {
+        "mode": "cmyk",
+        "cell": 7,
+        "reveal": "grow",
+        "misregister": 1.25,
+        "jolt": 4
+      },
+      "props": {
+        "text": "Printed\nin {{dots}}.",
+        "style": "custom",
+        "role": "display",
+        "color": "ink",
+        "accent": "orange",
+        "width": 0.36,
+        "anim_unit": "line",
+        "anim_from": "mask",
+        "anim_preset": "slam",
+        "exit_to": "mask",
+        "hit": true
+      }
+    },
+    {
+      "id": "deck",
+      "type": "text",
+      "layer": 1,
+      "start": 2.5,
+      "duration": 5.5,
+      "x": 0.06,
+      "y": 0.62,
+      "props": {
+        "text": "Photos, type and shapes, screened in four colours.",
+        "style": "custom",
+        "role": "body",
+        "color": "ink",
+        "width": 0.26,
+        "anim_unit": "line",
+        "anim_from": "rise",
+        "anim_preset": "soft",
+        "exit_to": "fade",
+        "hit": false
+      }
+    },
+    {
+      "id": "disc",
+      "type": "shape",
+      "layer": 2,
+      "start": 2.866667,
+      "duration": 5.133333,
+      "x": 0.33,
+      "y": 0.8,
+      "style": "halftone",
+      "style_params": {
+        "mode": "single",
+        "ink": "cobalt",
+        "angle": 15,
+        "cell": 13,
+        "reveal": "grow"
+      },
+      "enter": {
+        "preset": "slam",
+        "from": "scale",
+        "delay": 0,
+        "hit": true
+      },
+      "exit": {
+        "preset": "quick",
+        "to": "drop",
+        "length": 0.4
+      },
+      "props": {
+        "kind": "circle",
+        "size": 230,
+        "fill": "ink",
+        "stroke_width": 0,
+        "shadow": false
+      }
+    },
+    {
+      "id": "credit",
+      "type": "text",
+      "layer": 0,
+      "start": 0.5,
+      "duration": 7.5,
+      "x": 0.467,
+      "y": 0.925,
+      "props": {
+        "text": "Photo: Missvain, CC BY 4.0",
+        "style": "custom",
+        "role": "micro",
+        "font": "mono",
+        "color": "ink-soft",
+        "width": 0.3,
+        "anim_from": "none",
+        "exit_to": "none",
+        "hit": false,
+        "sfx": false
+      }
+    }
+  ],
+  "audio": {
+    "music": {
+      "preset": "halftone.press",
+      "seed": 3,
+      "gain_db": -3,
+      "end_hit": true
+    },
+    "auto_sfx": true,
+    "sfx_gain_db": 0,
+    "target_lufs": -14,
+    "cues": []
+  },
+  "meta": {
+    "title": "Halftone dots — style pack demo"
+  }
+}

@@ -9,10 +9,7 @@ import subprocess
 from pathlib import Path
 
 from . import config, paths
-
-
-def _exe(name: str) -> str:
-    return name + (".exe" if os.name == "nt" else "")
+from .config import _exe
 
 
 def run(cmd: list[str], timeout: float = 60) -> subprocess.CompletedProcess:

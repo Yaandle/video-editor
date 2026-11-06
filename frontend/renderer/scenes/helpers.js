@@ -1,6 +1,6 @@
 // helpers.js — beat scheduling + exits shared by scene modules.
 
-import { arrivalFrames, sp, settle, peak } from '../motion.js';
+import { arrivalFrames, settle, peak, exitProgress } from '../motion.js';
 
 /** Beat clock for a scene clip: times are project seconds. */
 export function clock(clip, env) {
@@ -18,8 +18,7 @@ export function clock(clip, env) {
 
 /** 0 → 1 exit progress over the last `len` seconds (quick, critically damped). */
 export function exitP(env, clip, len = 0.32, delay = 0) {
-  const x = env.t - (clip.start + clip.duration - len) - delay;
-  return x > 0 ? Math.min(1, Math.max(0, sp(x, 'quick', 'position'))) : 0;
+  return exitProgress(env.t - clip.start, clip.duration, len, 'quick', delay);
 }
 
 /** Motion + hit events for a list of landings (for collectEvents). */

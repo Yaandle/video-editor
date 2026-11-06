@@ -1,0 +1,18 @@
+{
+  "schema": "vidkit.project",
+  "version": 1,
+  "name": "bauhaus-demo",
+  "settings": {
+    "width": 1920, "height": 1080, "fps": 30, "bpm": 120, "subdivision": 1, "beat_offset": 0, "beat_lock": true,
+    "duration": 8, "background": "paper", "style": "bauhaus", "seed": 19
+  },
+  "tracks": [{ "index": 0, "name": "Composition" }],
+  "clips": [
+    {
+      "id": "comp", "type": "bauhaus.composition", "layer": 0, "start": 0, "duration": 8,
+      "props": { "preset": "construct", "title": "Form follows rhythm.", "caption": "Studie 01 · 120 BPM", "land_beat": 1, "hold_moves": true, "background": "paper" }
+    }
+  ],
+  "audio": { "music": { "preset": "bauhaus.marimba", "seed": 19, "gain_db": -3, "end_hit": true }, "auto_sfx": true, "sfx_gain_db": 0, "target_lufs": -14, "cues": [] },
+  "meta": { "title": "Bauhaus shapes — style pack demo" }
+}

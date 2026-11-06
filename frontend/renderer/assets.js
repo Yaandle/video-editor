@@ -40,11 +40,55 @@ export async function loadFonts(tokens) {
   await document.fonts.ready;
   for (const [role, f] of Object.entries(tokens.fonts ?? {})) {
     const w = String(f.weight ?? '400').split(' ')[0];
-    if (!document.fonts.check(`${f.style ?? 'normal'} ${w} 16px "${f.family}"`)) {
+    const spec = `${f.style ?? 'normal'} ${w} 16px "${f.family}"`;
+    // A page may also declare the family in CSS (the editor does); load() pulls
+    // in every matching face so check() is not failed by an idle CSS duplicate.
+    await document.fonts.load(spec).catch(() => {});
+    if (!document.fonts.check(spec)) {
       throw new Error(`font not usable after load: ${f.family} (${role})`);
     }
   }
   return loaded;
+}
+
+/** One extra font file (style packs): registers `family` and waits until it is usable. */
+export async function loadFontFile(family, path, desc = {}) {
+  if (typeof FontFace === 'undefined') return null;
+  const face = new FontFace(family, `url("${url(path)}")`, desc);
+  try { await face.load(); } catch { throw new Error(`font missing: ${family} from ${path}`); }
+  document.fonts.add(face);
+  return face;
+}
+
+// ── Variable-font width ───────────────────────────────────────────────────────
+// Canvas only accepts keyword font-stretch values (7 steps). A FontFace whose
+// `stretch` descriptor is a single percentage is rendered at that wdth (the
+// requested value is clamped into the descriptor range), so one face per
+// whole-percent step gives continuous width animation from a single file.
+
+const WIDTHS = new Map();   // family -> { min, max, step }
+
+export async function loadWidthInstances(family, path, o = {}) {
+  if (typeof FontFace === 'undefined' || WIDTHS.has(family)) return;
+  const min = o.min ?? 62, max = o.max ?? 125, step = o.step ?? 1;
+  const res = await fetch(url(path));
+  if (!res.ok) throw new Error(`font missing: ${family} from ${path}`);
+  const buf = await res.arrayBuffer();
+  const faces = [];
+  for (let w = min; w <= max + 1e-9; w += step) {
+    const face = new FontFace(`${family}@w${Math.round(w)}`, buf, { weight: o.weight ?? '100 900', stretch: `${Math.round(w)}%`, ...(o.style ? { style: o.style } : {}) });
+    faces.push(face.load().then((f) => document.fonts.add(f)));
+  }
+  await Promise.all(faces);
+  WIDTHS.set(family, { min, max, step });
+}
+
+/** Family name rendering `family` at width `wdth` (% of normal); the base family when no instances are loaded. */
+export function widthFamily(family, wdth) {
+  const r = WIDTHS.get(family);
+  if (!r) return family;
+  const w = Math.max(r.min, Math.min(r.max, r.min + Math.round((wdth - r.min) / r.step) * r.step));
+  return `${family}@w${Math.round(w)}`;
 }
 
 export async function loadImage(path) {

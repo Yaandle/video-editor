@@ -83,8 +83,15 @@ def _hash_files(files) -> str:
 
 
 def renderer_hash() -> str:
+    """Everything that can change pixels: renderer code, harness, tokens, vendored libs and every style pack file."""
     files = [p for p in paths.RENDERER.rglob("*.js")] + [paths.FRONTEND / "render.html", paths.TOKENS]
-    return _hash_files(files)[:24]
+    if (paths.FRONTEND / "vendor").is_dir():
+        files += [p for p in (paths.FRONTEND / "vendor").rglob("*") if p.is_file()]
+    if paths.STYLES.is_dir():
+        files += [p for p in paths.STYLES.rglob("*") if p.is_file() and "__pycache__" not in p.parts
+                  and p.suffix not in (".md", ".py") and p.name != "preview.html"]
+    h = _hash_files(files)
+    return hashlib.sha256((h + "|" + json.dumps(config.gl_args())).encode()).hexdigest()[:24]
 
 
 def _asset_refs(clip: dict) -> list[str]:
@@ -142,7 +149,7 @@ def _slim(rep: dict) -> dict:
         return round(v, 1) if isinstance(v, float) else v
     boxes = [{k: r(v) for k, v in b.items() if k != "container" or v} for b in rep.get("boxes", [])]
     return {"frame": rep["frame"], "t": rep["t"], "animating": rep.get("animating", False), "boxes": boxes,
-            "warnings": rep.get("warnings", []), "clips": rep.get("clips", [])}
+            "warnings": rep.get("warnings", []), "clips": rep.get("clips", []), "styles": rep.get("styles", [])}
 
 
 async def _render_chunk(h: harness.Page, project: dict, preset, fa: int, fb: int, dest: Path, encoder: str,
@@ -201,7 +208,7 @@ async def _capture(project: dict, preset, todo: list[tuple[int, int, Path]], wor
 
     async with async_playwright() as pw:
         async def worker(wi: int):
-            browser = await pw.chromium.launch(args=["--disable-lcd-text", "--font-render-hinting=none", "--force-color-profile=srgb"])
+            browser = await pw.chromium.launch(args=harness.launch_args())
             try:
                 h = await harness.open_page(browser, preset.width, preset.height)
                 await harness.load_project(h, project, preset.width, preset.height)

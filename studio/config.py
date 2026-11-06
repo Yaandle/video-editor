@@ -23,7 +23,7 @@ DEFAULT_LLM_MODEL = str(Path("models/qwen2.5-7b-instruct-q4_k_m-00001-of-00002.g
 DEFAULTS: dict = {
     "server": {"host": "127.0.0.1", "port": 8765},
     "ffmpeg": {"dir": None},
-    "render": {"workers": 4, "chunk_seconds": 1.0},
+    "render": {"workers": 4, "chunk_seconds": 1.0, "gl": "swiftshader"},
     "llm": {
         "enabled": True,
         "model_path": DEFAULT_LLM_MODEL,
@@ -77,6 +77,21 @@ def save_key(section: str, key: str, value) -> None:
 
 def get(section: str, key: str):
     return load()[section][key]
+
+
+# Chromium flag sets for WebGL in headless capture. doctor probes them all and
+# stores the fastest one that renders identical pixels twice in render.gl.
+GL_FLAGS = {
+    "swiftshader": ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
+    "d3d11": ["--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist"],
+    "gl": ["--use-angle=gl", "--enable-gpu", "--ignore-gpu-blocklist"],
+    "vulkan": ["--use-angle=vulkan", "--enable-gpu", "--ignore-gpu-blocklist"],
+    "default": [],
+}
+
+
+def gl_args() -> list[str]:
+    return list(GL_FLAGS.get(load()["render"].get("gl") or "swiftshader", GL_FLAGS["swiftshader"]))
 
 
 # ── ffmpeg resolution ──────────────────────────────────────────────────────────

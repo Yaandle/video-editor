@@ -41,9 +41,10 @@ export function isAllCaps(text) {
   return letters.length >= 4 && letters === letters.toUpperCase();
 }
 
-function setFont(ctx, spec) {
+/** Apply a font spec or resolved type role ({ font, size, tracking }) to ctx, left/alphabetic. */
+export function setFont(ctx, spec, tracking = spec.tracking) {
   ctx.font = spec.font;
-  if ('letterSpacing' in ctx) ctx.letterSpacing = `${(spec.tracking ?? 0) * spec.size}px`;
+  if ('letterSpacing' in ctx) ctx.letterSpacing = `${(tracking ?? 0) * spec.size}px`;
   ctx.textBaseline = 'alphabetic';
   ctx.textAlign = 'left';
 }
@@ -69,12 +70,18 @@ export function layoutText(ctx, spec) {
 
   // Tokenize into words that remember their run styling; \n forces a break.
   const words = [];
+  let prevRun = '';
   for (const run of parseRich(text)) {
     const parts = run.text.split(/(\n| )/);
+    // A run that starts mid-word ("{{dots}}." → "."): glue its first part to the
+    // previous word, so markup never inserts a space.
+    let glue = words.length > 0 && !words[words.length - 1].br && parts[0] !== '' && !/\s$/.test(prevRun);
+    prevRun = run.text;
     for (const p of parts) {
-      if (p === ' ' || p === '') continue;
-      if (p === '\n') { words.push({ br: true }); continue; }
-      words.push({ text: p, highlight: !!run.highlight, accent: !!run.accent });
+      if (p === ' ' || p === '') { glue = false; continue; }
+      if (p === '\n') { words.push({ br: true }); glue = false; continue; }
+      words.push({ text: p, highlight: !!run.highlight, accent: !!run.accent, glue });
+      glue = false;
     }
   }
 
@@ -85,9 +92,10 @@ export function layoutText(ctx, spec) {
     if (w.br) { flush(); continue; }
     const ww = ctx.measureText(w.text).width;
     if (ww > maxWidth) overflow = true;
-    if (cur.length && curW + space + ww > maxWidth) flush();
+    const gap = w.glue ? 0 : space;
+    if (cur.length && !w.glue && curW + gap + ww > maxWidth) flush();
     cur.push({ ...w, w: ww });
-    curW += (cur.length > 1 ? space : 0) + ww;
+    curW += (cur.length > 1 ? gap : 0) + ww;
   }
   if (cur.length || !lines.length) flush();
 
@@ -95,7 +103,7 @@ export function layoutText(ctx, spec) {
   const outLines = lines.map((line, li) => {
     let x = 0;
     const ws = line.map((w, wi) => {
-      if (wi > 0) x += space;
+      if (wi > 0 && !w.glue) x += space;
       const chars = [];
       let cx = 0;
       for (const ch of w.text) {

@@ -235,7 +235,7 @@ def _smoke_project(w: int, h: int, dur: float) -> dict:
     return {
         "schema": "vidkit.project", "version": 1, "name": "doctor-smoke",
         "settings": {"width": w, "height": h, "fps": 30, "bpm": 120, "subdivision": 1, "beat_offset": 0, "beat_lock": True,
-                     "duration": dur, "background": "paper", "style_pack": "neo-brutal"},
+                     "duration": dur, "background": "paper", "style": "neo-brutal"},
         "tracks": [{"index": 0, "name": "A"}],
         "clips": [
             {"id": "b", "type": "block", "layer": 1, "start": 0, "duration": dur, "x": 0.72, "y": 0.5, "props": {"w": 560, "h": 420, "fill": "lime"}},

@@ -486,8 +486,10 @@ export class TimelineWidget {
       return;
     }
     if (this._dragClip) {
-      this._reflowLayers();
-      if (this._before) this._emit('committed', { before: this._before });
+      // A click without movement is a selection, not an edit: no reflow, no undo step.
+      const moved = this._before && this._before !== JSON.stringify(this.project.toDict());
+      if (moved) this._reflowLayers();
+      if (moved) this._emit('committed', { before: this._before });
       this._before = null; this._group = null; this._dragClip = null; this._dragMode = '';
       this._el.style.cursor = 'default';
       this.resize();

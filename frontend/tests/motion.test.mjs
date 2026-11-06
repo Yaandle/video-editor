@@ -80,3 +80,12 @@ test('exit directions move the element where they say', () => {
   assert.ok(envelope(3.95, 4, null, { to: 'rise', length: 0.4 }, frame).dy < 0);
   assert.ok(envelope(3.95, 4, null, { to: 'left', length: 0.4 }, frame).dx < 0);
 });
+
+test('markup never inserts or removes spaces', async () => {
+  const { layoutText } = await import('../renderer/text.js');
+  // A fake 2D context: every glyph is 10 px wide.
+  const ctx = { measureText: (s) => ({ width: [...s].length * 10, actualBoundingBoxAscent: 7 }), font: '', textBaseline: '', textAlign: '' };
+  const words = (t) => layoutText(ctx, { text: t, font: '10px x', size: 10, maxWidth: Infinity }).lines.flatMap((l) => l.words.map((w) => [w.text, w.x]));
+  assert.deepEqual(words('in {{dots}}.'), [['in', 0], ['dots', 30], ['.', 70]]);
+  assert.deepEqual(words('keeps [[time.]]'), [['keeps', 0], ['time.', 60]]);
+});

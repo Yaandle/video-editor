@@ -250,6 +250,23 @@ def cmd_approve(a) -> int:
     return 0
 
 
+def cmd_voice(a) -> int:
+    from ..audio import tts
+    mpath = Path(a.moments)
+    data = M.load(mpath)
+    m = next((x for x in data.get("moments", []) if x.get("id") == a.moment), None)
+    if not m:
+        print(f"unknown moment {a.moment}")
+        return 2
+    text = a.text or " ".join(c["text"] for c in m.get("captions", {}).get("freeze", []))
+    out = _slug_dir(mpath) / "voice" / f"{m['id']}.wav"
+    secs = tts.synth(text, out, a.voice, a.speed)
+    m["voice"] = _relmedia(out)
+    mpath.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"wrote {_relmedia(out)} ({secs:.2f} s, {a.voice}): \"{text}\"\nset moments[{m['id']}].voice; re-run check (this voids any approval)")
+    return 0
+
+
 def cmd_build(a) -> int:
     from .build import build
     try:
@@ -315,6 +332,13 @@ def main(argv=None) -> int:
     s.add_argument("--by", required=True)
     s.add_argument("--notes")
     s.set_defaults(fn=cmd_approve)
+    s = sub.add_parser("voice", help="speak a moment's freeze captions with local Kokoro TTS and set its voice line")
+    s.add_argument("moments")
+    s.add_argument("--moment", required=True)
+    s.add_argument("--text", help="what to say (default: the freeze captions)")
+    s.add_argument("--voice", default="bm_george")
+    s.add_argument("--speed", type=float, default=0.95)
+    s.set_defaults(fn=cmd_voice)
     s = sub.add_parser("build", help="approved moments → project JSON")
     s.add_argument("moments")
     s.add_argument("--project")

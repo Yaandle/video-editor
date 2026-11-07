@@ -9,3 +9,7 @@ pillow==12.2.0
 pydantic==2.13.4
 httpx==0.28.1
 pytest==9.1.1
+
+# local text-to-speech (studio/audio/tts.py); model files go in models/kokoro/
+kokoro-onnx>=0.4.7
+soundfile>=0.13

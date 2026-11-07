@@ -158,7 +158,8 @@ export async function createRenderer(opts = {}) {
       animating: () => { report.animating = true; },
       warn: (m) => report.warnings.push(`${clip.id}: ${m}`),
       image: (p) => assets.getImage(p),
-      videoFrame: (src, st) => assets.getVideoFrame(src, st, s.fps, mode !== 'export'),
+      // fps: decode rate (default the project's); a scene with mediaFrames() may decode at the source's own rate
+      videoFrame: (src, st, fps) => assets.getVideoFrame(src, st, fps ?? s.fps, mode !== 'export'),
     };
     // A pack's transform (e.g. a beat punch) moves content it does not re-skin itself.
     // (transformAll: the look moves everything, e.g. a screen shake.)
@@ -249,6 +250,15 @@ export async function createRenderer(opts = {}) {
       const jobs = [];
       for (const c of activeClips(project, t)) {
         const def = registry.get(c.type);
+        // A type that maps time to source frames itself (e.g. freezes, slow motion) lists what it needs.
+        if (def?.mediaFrames) {
+          const props = resolved.get(c.id) ?? registry.defaults(c.type);
+          for (const f of def.mediaFrames(c, t - c.start, props, fps) ?? []) {
+            const job = assets.loadVideoFrame(f.src, f.time, f.fps ?? fps);
+            jobs.push(mode === 'export' ? job : job.catch(() => null));
+          }
+          continue;
+        }
         if (def?.media !== 'video' || !c.src) continue;
         const st = (c.source_start ?? 0) + Math.max(0, t - c.start) * (c.speed ?? 1);
         jobs.push(mode === 'export' ? assets.loadVideoFrame(c.src, st, fps) : assets.loadVideoFrame(c.src, st, fps).catch(() => null));

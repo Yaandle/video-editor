@@ -121,6 +121,12 @@ Rules: `renderFrame` reads only (project, t, size, tokens, loaded assets). No
 wall clock, no `Date.now`, no rAF timing, no CSS animation, no stateful tweens.
 Memo caches are allowed only when keyed by their full inputs.
 
+Video frames: a clip type with `media: 'video'` plays its `src` linearly from
+`source_start` at `speed`. A type that maps time to source frames itself (freezes,
+slow motion: `scene.footy-breakdown`) defines `mediaFrames(clip, lt, props, fps)`
+returning `[{src, time, fps}]`; `prepare(t)` decodes those, at the source's own
+rate when `fps` is given, and the scene reads them with `env.videoFrame(src, time, fps)`.
+
 Per frame: active clips sorted by layer → local time `lt = t - start` →
 transform from keyframes and the `enter`/`exit` springs → component `render(ctx, clip, lt, env)`.
 Components draw with `draw.js` primitives (bordered box, hard shadow, sticker,

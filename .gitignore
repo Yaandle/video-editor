@@ -45,6 +45,7 @@ projects/*.json
 !projects/showcase.json
 !projects/math-code-demo.json
 !projects/footy-ml.json
+!projects/afl-breakdown.json
 projects/autosave/
 projects/.trash/
 

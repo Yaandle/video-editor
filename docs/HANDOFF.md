@@ -2,6 +2,30 @@
 
 Running note so work can resume cleanly in a new session. Newest section first.
 
+## Done: footy breakdown pipeline (2026-11-07)
+
+Branch `footy-breakdown` (from `dev`). Real match clip → candidate moments → analysis with
+confidence per claim → review gate → coach-style render. Details: [FOOTY_BREAKDOWN.md](FOOTY_BREAKDOWN.md).
+
+- `studio/footy/`: `ingest` (video-only CFR all-intra proxy + source log), `scan` (cuts,
+  transitions, pan, motion, concentration, crowd → ranked candidates, contact sheets, grid
+  frames, vision brief), `frames`, `check` (honesty rules, `moments.md`, proof stills),
+  `approve` (hash gate), `build` (→ `projects/afl-breakdown.json`), `verify`, `placeholder`.
+- Renderer: `scene.footy-breakdown` (`scenes/breakdown.js`) and `breakdown/` (timing, keys,
+  camera). Shared change: `core.js` `mediaFrames` hook and an optional fps on
+  `env.videoFrame`. Showcase, footy-ml and ac-telemetry ranges re-rendered before/after:
+  every frame and the audio byte-identical.
+- Tests: `frontend/tests/breakdown.test.mjs` (timing, keyframes, camera), `tests/test_footy.py`
+  (honesty rules, approval gate, barcode).
+- Example: placeholder clip (synthetic, labelled), `docs/footy/placeholder.moments.json`,
+  renders in `renders/afl-breakdown/`. The placeholder was approved by Claude for the test
+  render only; real clips need the user's approval.
+- Found, not changed: `studio/render/vframes.py` assumes a video stream starts at t = 0. A file
+  whose video starts later (AAC priming) decodes every frame one late. No existing project is
+  affected (all their videos start at 0); breakdown proxies avoid it.
+- Waiting on the user: a real clip (and its source details), and a decision on whether the
+  vision pass should also get a scripted API backend.
+
 ## Status (2026-10-21)
 
 Branch `dev`, nothing pushed. `npm test` 37/37, motion lint clean.

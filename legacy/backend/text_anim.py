@@ -67,7 +67,7 @@ def load_narration_font(size):
 
 
 # â”€â”€ Layout (ported 1:1 from canvas.js `_layoutNarrationText`) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# âš  SYNC CONTRACT: this function MUST stay behaviourally identical to
+# WARNING - SYNC CONTRACT: this function MUST stay behaviourally identical to
 # `_layoutNarrationText` in frontend/canvas.js. If either side changes, port
 # the change to the other. Parameters that must match: word-wrap threshold
 # (space + word > max_width), per-char x offsets, global word/char indices,

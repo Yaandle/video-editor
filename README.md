@@ -60,7 +60,10 @@ uploads, renders and reports stay local and are git-ignored.
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — modules, schema, renderer, audio, render engine
 - [docs/FOOTY_BREAKDOWN.md](docs/FOOTY_BREAKDOWN.md) — coach-style match-footage breakdowns: clip → moments → review → render
+- [docs/CODE_AUDIT.md](docs/CODE_AUDIT.md) — code structure audit of studio 2.0
+- [docs/AUDIT_2026-10.md](docs/AUDIT_2026-10.md) — audit of the visuals and the mix
 - [docs/AUDIT.md](docs/AUDIT.md) — audit of the previous version
+- [docs/HANDOFF.md](docs/HANDOFF.md) — running note for resuming work in a new session
 - `legacy/` — the retired browser editor, kept for reference
 
 Third-party photos, fonts and icons in `assets/` carry their licences in

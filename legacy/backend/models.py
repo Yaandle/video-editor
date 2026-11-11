@@ -19,7 +19,7 @@ class Clip:
     start: float
     duration: float
     content: str = ""
-    layer: int = 0  
+    layer: int = 0
 
     x: float = 0.5
     y: float = 0.15
@@ -28,7 +28,7 @@ class Clip:
     scale_y: float = 1.0
     animation: str = "typewriter"
     theme: str = "dark"
-    
+
     font_size: Optional[int] = None
     font_color: Optional[str] = None
     font_bold: bool = False

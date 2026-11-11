@@ -135,8 +135,8 @@ ticker, boxed arrow…) and call `env.box(...)` to report what they drew:
 
 **Pass pipeline** (for style packs): the frame is drawn into an offscreen layer,
 then each pass in the active pack's `passes[]` runs `(src, dst, t, params)`.
-The default pack ships with the identity pass; a later agent adds shader/post
-passes and sound profiles by registering a pack — no core changes.
+The default pack ships with the identity pass; shader/post
+passes and sound profiles are added by registering a pack — no core changes.
 
 **Registry**: `registerComponent({ type, kind: 'component'|'scene', label, category,
 schema, defaults, duration, render, cues, editor })`. Adding a scene type is one

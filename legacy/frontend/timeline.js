@@ -172,7 +172,7 @@ export class TimelineWidget {
       overlayStrong: v('--timeline-overlay-strong'),
       waveform: v('--timeline-waveform'),
       playhead: v('--accent-red-dot'),
-      clipMode: v('--timeline-clip-mode'), 
+      clipMode: v('--timeline-clip-mode'),
     };
   }
 

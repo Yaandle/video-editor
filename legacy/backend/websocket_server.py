@@ -241,7 +241,7 @@ class VideoEditorServer:
                 "success": success,
                 "filename": filename,
                 "message": message,
-            }) 
+            })
 
         elif action == "render":
             project_data = msg.get("data") or self.project.to_dict()
@@ -601,7 +601,7 @@ class VideoEditorServer:
                     "detail": traceback.format_exc()[-800:],
                 }))
 
-            
+
     async def handler(self, websocket):
         await websocket.accept()
         await self.register(websocket)

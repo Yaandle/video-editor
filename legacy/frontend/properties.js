@@ -5,7 +5,7 @@ import { createColorPicker } from './colorPicker.js';
 export class PropertiesPanel {
   constructor(containerEl) {
     this._container = containerEl;
-    this._clips = []; 
+    this._clips = [];
     this._updating = false;
     this._dirtySinceCommit = false;
     this._container.addEventListener('change', () => this._commitNow());
@@ -248,7 +248,7 @@ export class PropertiesPanel {
       this._container.appendChild(previewBtn);
     }
 
-    
+
     switch (c.clip_type) {
       case 'narration': {
         this._addSection('Content');
@@ -417,7 +417,7 @@ export class PropertiesPanel {
       advancedBtn.textContent = 'Advanced Text Options';
       advancedBtn.addEventListener('click', () =>
         this._container.dispatchEvent(
-          new CustomEvent('props:advancedtext', { 
+          new CustomEvent('props:advancedtext', {
             bubbles: true,
             detail: { clip: c }
           })

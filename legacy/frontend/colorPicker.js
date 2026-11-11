@@ -161,7 +161,7 @@ export function createColorPicker(containerEl, { initialColor = '#ffffff', onCha
     }
   });
 
-  
+
   // ── Recent / Palette / Saved rows ────────────────────────────────────────
   function addSection(title) {
     const lbl = document.createElement('div');

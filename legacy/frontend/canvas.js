@@ -113,7 +113,7 @@ function resolvePos(clip, playhead) {
 const MIN_SCALE = 0.05;
 const MAX_SCALE = 4.0;
 const HANDLE_SIZE = 10;
-const HANDLE_HIT_SIZE = 16; 
+const HANDLE_HIT_SIZE = 16;
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 4.0;
 
@@ -123,7 +123,7 @@ const SNAP_THRESHOLD = 0.04;
 const SNAP_PX = 10; // #61 â€” constant on-screen px catch radius for object/edge snapping (zoom-corrected at use)
 
 export class CanvasWidget {
-  
+
   constructor(canvasEl, project, selectedIds) {
     this._el = canvasEl;
     this._ctx = canvasEl.getContext('2d');
@@ -300,8 +300,8 @@ export class CanvasWidget {
   setSelectedIds(selectedIds, primaryId = null) {
   this._selectedIds = selectedIds;
   this._selectionPrimaryId = primaryId ?? (
-    this._selectedIds.size === 1 
-      ? this._selectedIds.values().next().value 
+    this._selectedIds.size === 1
+      ? this._selectedIds.values().next().value
       : null
   );
   this.redraw();
@@ -1677,7 +1677,7 @@ export class CanvasWidget {
   }
 
   _onMouseDown(e) {
-    
+
     if (e.button !== 0) return;
     const raw = this._getPos(e);
     const pos = this._toLogical(raw.x, raw.y);

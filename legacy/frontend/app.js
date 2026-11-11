@@ -324,7 +324,7 @@ class App {
     this._audioEls   = {}; // clipId -> HTMLAudioElement
     this._audioTimers = {}; // clipId -> timeout id for scheduled start
     this._audioLoaded = {}; // clipId -> boolean
-    
+
 
     this._init();
   }
@@ -370,7 +370,7 @@ class App {
     this.mediaBin = new MediaBin(document.getElementById('media-bin'));
     this.mediaBin.onAddClip((item) => this._addMediaClip(item));
     this.mediaBin.onDeleteClip(async (item) => {
-      
+
       const filename = item.url.split('/').pop();
 
       const inUse = this.project.clips.some(c => c.code_file === item.url);
@@ -401,7 +401,7 @@ class App {
         this.mediaBin.addItem(item);
       }
     });
-    
+
     this._loadMediaBin();
     this._loadSfxBin();
 
@@ -792,7 +792,7 @@ class App {
       this._updateStatus();
       this._resyncAudioOnSeek(this.playback.playhead);
     });
-    
+
     document.getElementById('timeline-canvas').addEventListener('timeline:deselect', () => {
       this._setSelection([], null);
     });
@@ -1457,7 +1457,7 @@ class App {
           });
 
           row.appendChild(btn);
-          
+
           box.appendChild(row);
           row.appendChild(del);
       });
@@ -1644,7 +1644,7 @@ class App {
     document.getElementById('advtext-modal-overlay').classList.remove('open');
     this._advTextClipId = null;
   }
-  
+
   _clipToAdvancedState(clip) {
     return {
       text: clip.content ?? '',

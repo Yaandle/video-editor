@@ -1,0 +1,578 @@
+{
+  "schema": "vidkit.project",
+  "version": 1,
+  "name": "afl-breakdown",
+  "settings": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "bpm": null,
+    "subdivision": 1,
+    "beat_offset": 0,
+    "beat_lock": false,
+    "duration": 29.433333,
+    "background": "paper",
+    "style": "neo-brutal"
+  },
+  "tracks": [
+    {
+      "index": 0,
+      "name": "Chrome"
+    },
+    {
+      "index": 1,
+      "name": "Breakdown"
+    },
+    {
+      "index": 2,
+      "name": "Audio"
+    }
+  ],
+  "clips": [
+    {
+      "id": "nav",
+      "type": "nav-bar",
+      "layer": 0,
+      "start": 0,
+      "duration": 29.433333,
+      "props": {
+        "brand": "footy/ml",
+        "links": [
+          "Spacing",
+          "Position"
+        ]
+      }
+    },
+    {
+      "id": "footer",
+      "type": "footer-bar",
+      "layer": 0,
+      "start": 0,
+      "duration": 29.433333,
+      "props": {
+        "left": "Placeholder breakdown",
+        "right": "Coach's review"
+      }
+    },
+    {
+      "id": "bd-m1",
+      "type": "scene.footy-breakdown",
+      "name": "Two leads, [[one space.]]",
+      "layer": 1,
+      "start": 0.0,
+      "duration": 15.533333,
+      "src": "media/afl-breakdown/placeholder/clips/c1.mp4",
+      "props": {
+        "clip": {
+          "fps": 25.0,
+          "frames": 300,
+          "width": 1280,
+          "height": 720,
+          "placeholder": true
+        },
+        "moments": [
+          {
+            "id": "m1",
+            "title": "Two leads, [[one space.]]",
+            "category": "spacing",
+            "in_f": 40,
+            "freeze_f": 96,
+            "out_f": 148,
+            "captions": {
+              "watch": "Watch the two forwards on the right.",
+              "freeze": [
+                "Two forwards lead at the same ball.",
+                "Same space, and both defenders come too.",
+                "Better: one leads up, one holds deep."
+              ],
+              "outcome": "The kick lands in a two-on-two contest."
+            },
+            "tracks": {
+              "lead1": {
+                "label": "far forward (white)",
+                "keys": [
+                  {
+                    "f": 76,
+                    "x": 1052.0,
+                    "y": 334.0
+                  },
+                  {
+                    "f": 96,
+                    "x": 917.0,
+                    "y": 362.0
+                  },
+                  {
+                    "f": 120,
+                    "x": 790.0,
+                    "y": 377.0
+                  },
+                  {
+                    "f": 146,
+                    "x": 600.0,
+                    "y": 386.0
+                  }
+                ],
+                "interp": "smooth"
+              },
+              "lead2": {
+                "label": "near forward (white)",
+                "keys": [
+                  {
+                    "f": 76,
+                    "x": 1151.0,
+                    "y": 446.0
+                  },
+                  {
+                    "f": 96,
+                    "x": 960.0,
+                    "y": 412.0
+                  },
+                  {
+                    "f": 120,
+                    "x": 812.0,
+                    "y": 401.0
+                  },
+                  {
+                    "f": 146,
+                    "x": 612.0,
+                    "y": 393.0
+                  }
+                ],
+                "interp": "smooth"
+              },
+              "cam": {
+                "label": "camera focus",
+                "keys": [
+                  {
+                    "f": 40,
+                    "x": 820.0,
+                    "y": 400.0
+                  },
+                  {
+                    "f": 76,
+                    "x": 830.0,
+                    "y": 400.0
+                  },
+                  {
+                    "f": 96,
+                    "x": 760.0,
+                    "y": 400.0
+                  },
+                  {
+                    "f": 120,
+                    "x": 700.0,
+                    "y": 390.0
+                  },
+                  {
+                    "f": 148,
+                    "x": 640.0,
+                    "y": 400.0
+                  }
+                ],
+                "interp": "smooth"
+              }
+            },
+            "annotations": [
+              {
+                "id": "n1",
+                "kind": "ring",
+                "track": "lead1",
+                "points": [],
+                "r": 46.0,
+                "color": "lime",
+                "dash": false,
+                "when": "follow"
+              },
+              {
+                "id": "n2",
+                "kind": "ring",
+                "track": "lead2",
+                "points": [],
+                "r": 46.0,
+                "color": "lime",
+                "dash": false,
+                "when": "follow"
+              },
+              {
+                "id": "n3",
+                "kind": "arrow",
+                "from": {
+                  "track": "lead1",
+                  "dx": -18.0,
+                  "dy": -6.0
+                },
+                "to": {
+                  "x": 820.0,
+                  "y": 380.0,
+                  "dx": 0,
+                  "dy": 0
+                },
+                "points": [],
+                "color": "orange",
+                "dash": false,
+                "when": "freeze"
+              },
+              {
+                "id": "n4",
+                "kind": "arrow",
+                "from": {
+                  "track": "lead2",
+                  "dx": -18.0,
+                  "dy": 0.0
+                },
+                "to": {
+                  "x": 850.0,
+                  "y": 400.0,
+                  "dx": 0,
+                  "dy": 0
+                },
+                "points": [],
+                "color": "orange",
+                "dash": false,
+                "when": "freeze"
+              },
+              {
+                "id": "n5",
+                "kind": "zone",
+                "points": [
+                  {
+                    "x": 1075.0,
+                    "y": 440.0,
+                    "dx": 0,
+                    "dy": 0
+                  },
+                  {
+                    "x": 1270.0,
+                    "y": 430.0,
+                    "dx": 0,
+                    "dy": 0
+                  },
+                  {
+                    "x": 1275.0,
+                    "y": 575.0,
+                    "dx": 0,
+                    "dy": 0
+                  },
+                  {
+                    "x": 1060.0,
+                    "y": 590.0,
+                    "dx": 0,
+                    "dy": 0
+                  }
+                ],
+                "color": "orange",
+                "dash": false,
+                "label": "Open",
+                "when": "freeze"
+              }
+            ],
+            "camera": {
+              "focus": "cam",
+              "zoom": 1,
+              "max_zoom": 1.3,
+              "min_zoom": 1,
+              "margin": 0.2,
+              "freeze": "fit"
+            },
+            "playback": {
+              "resume_rate": 0.5
+            },
+            "slow_until_f": 118
+          }
+        ],
+        "index": 1,
+        "series": "Breakdown",
+        "credit": "Placeholder clip — synthetic, not real footage"
+      }
+    },
+    {
+      "id": "bd-m2",
+      "type": "scene.footy-breakdown",
+      "name": "Nobody at the\n[[fall of the ball.]]",
+      "layer": 1,
+      "start": 15.533333,
+      "duration": 13.9,
+      "src": "media/afl-breakdown/placeholder/clips/c1.mp4",
+      "props": {
+        "clip": {
+          "fps": 25.0,
+          "frames": 300,
+          "width": 1280,
+          "height": 720,
+          "placeholder": true
+        },
+        "moments": [
+          {
+            "id": "m2",
+            "title": "Nobody at the\n[[fall of the ball.]]",
+            "category": "positioning",
+            "in_f": 120,
+            "freeze_f": 146,
+            "out_f": 192,
+            "captions": {
+              "watch": "Watch where the ball comes out.",
+              "freeze": [
+                "Four players go up for the mark.",
+                "No white jumper at ground level on this side.",
+                "One of them has to stay down."
+              ],
+              "outcome": "It spills right, to the unmarked defender."
+            },
+            "tracks": {
+              "pack": {
+                "label": "the contest",
+                "keys": [
+                  {
+                    "f": 146,
+                    "x": 612.0,
+                    "y": 390.0
+                  },
+                  {
+                    "f": 160,
+                    "x": 515.0,
+                    "y": 397.0
+                  },
+                  {
+                    "f": 185,
+                    "x": 398.0,
+                    "y": 407.0
+                  },
+                  {
+                    "f": 192,
+                    "x": 370.0,
+                    "y": 408.0
+                  }
+                ],
+                "interp": "smooth"
+              },
+              "spare": {
+                "label": "defender off the contest (dark)",
+                "keys": [
+                  {
+                    "f": 146,
+                    "x": 845.0,
+                    "y": 475.0
+                  },
+                  {
+                    "f": 160,
+                    "x": 707.0,
+                    "y": 470.0
+                  },
+                  {
+                    "f": 185,
+                    "x": 522.0,
+                    "y": 462.0
+                  },
+                  {
+                    "f": 192,
+                    "x": 556.0,
+                    "y": 472.0
+                  }
+                ],
+                "interp": "smooth"
+              },
+              "cam": {
+                "label": "camera focus",
+                "keys": [
+                  {
+                    "f": 120,
+                    "x": 700.0,
+                    "y": 400.0
+                  },
+                  {
+                    "f": 146,
+                    "x": 720.0,
+                    "y": 420.0
+                  },
+                  {
+                    "f": 160,
+                    "x": 610.0,
+                    "y": 430.0
+                  },
+                  {
+                    "f": 192,
+                    "x": 470.0,
+                    "y": 430.0
+                  }
+                ],
+                "interp": "smooth"
+              }
+            },
+            "annotations": [
+              {
+                "id": "n1",
+                "kind": "spotlight",
+                "track": "pack",
+                "points": [],
+                "r": 64.0,
+                "dash": false,
+                "when": "freeze"
+              },
+              {
+                "id": "n2",
+                "kind": "ring",
+                "track": "spare",
+                "points": [],
+                "r": 48.0,
+                "color": "orange",
+                "dash": false,
+                "label": "Unmarked",
+                "when": "follow"
+              },
+              {
+                "id": "n3",
+                "kind": "line",
+                "from": {
+                  "track": "pack",
+                  "dx": 46.0,
+                  "dy": 8.0
+                },
+                "to": {
+                  "track": "spare",
+                  "dx": -44.0,
+                  "dy": -4.0
+                },
+                "points": [],
+                "color": "paper",
+                "dash": true,
+                "label": "No one here",
+                "when": "freeze"
+              }
+            ],
+            "camera": {
+              "focus": "cam",
+              "zoom": 1,
+              "max_zoom": 1.3,
+              "min_zoom": 1,
+              "margin": 0.2,
+              "freeze": "fit"
+            },
+            "playback": {
+              "resume_rate": 0.5
+            },
+            "slow_until_f": 165
+          }
+        ],
+        "index": 2,
+        "series": "Breakdown",
+        "credit": "Placeholder clip — synthetic, not real footage"
+      }
+    },
+    {
+      "id": "fa-m1-0",
+      "type": "audio",
+      "layer": 2,
+      "start": 0.0,
+      "duration": 2.266667,
+      "src": "media/afl-breakdown/placeholder/clips/c1-audio.wav",
+      "source_start": 1.6,
+      "props": {
+        "gain_db": -12.0,
+        "fade_in": 0.06,
+        "fade_out": 0.12,
+        "duck_music": true
+      }
+    },
+    {
+      "id": "fa-m1-375",
+      "type": "audio",
+      "layer": 2,
+      "start": 12.5,
+      "duration": 1.2,
+      "src": "media/afl-breakdown/placeholder/clips/c1-audio.wav",
+      "source_start": 4.72,
+      "props": {
+        "gain_db": -12.0,
+        "fade_in": 0.06,
+        "fade_out": 0.12,
+        "duck_music": true
+      }
+    },
+    {
+      "id": "fa-m2-0",
+      "type": "audio",
+      "layer": 2,
+      "start": 15.533333,
+      "duration": 1.066667,
+      "src": "media/afl-breakdown/placeholder/clips/c1-audio.wav",
+      "source_start": 4.8,
+      "props": {
+        "gain_db": -12.0,
+        "fade_in": 0.06,
+        "fade_out": 0.12,
+        "duck_music": true
+      }
+    },
+    {
+      "id": "fa-m2-329",
+      "type": "audio",
+      "layer": 2,
+      "start": 26.5,
+      "duration": 1.1,
+      "src": "media/afl-breakdown/placeholder/clips/c1-audio.wav",
+      "source_start": 6.6,
+      "props": {
+        "gain_db": -12.0,
+        "fade_in": 0.06,
+        "fade_out": 0.12,
+        "duck_music": true
+      }
+    }
+  ],
+  "audio": {
+    "music": {
+      "preset": "sketch.lofi",
+      "seed": 3,
+      "gain_db": -20.0,
+      "end_hit": false
+    },
+    "auto_sfx": false,
+    "sfx_gain_db": 0,
+    "target_lufs": -14,
+    "cues": [
+      {
+        "t": 2.266667,
+        "sound": "tick",
+        "gain_db": -16
+      },
+      {
+        "t": 16.6,
+        "sound": "tick",
+        "gain_db": -16
+      }
+    ]
+  },
+  "meta": {
+    "generator": "studio.footy build",
+    "moments_file": "media/afl-breakdown/placeholder/moments.json",
+    "approval": {
+      "status": "approved",
+      "by": "Claude (placeholder test run, not a user approval)",
+      "at": "2026-11-07T17:52:43",
+      "hash": "7c3a12fe950ef154417b08de86c580afb06037d21d20f0252225e818930c4dcc",
+      "notes": "Approved only to render the placeholder example the user asked for. Real clips need the user's own approval."
+    },
+    "sources": [
+      {
+        "clip": "c1",
+        "placeholder": true,
+        "kind": "placeholder",
+        "url": null,
+        "file": "media/afl-breakdown/placeholder/placeholder-source.mp4",
+        "proxy": "media/afl-breakdown/placeholder/clips/c1.mp4",
+        "competition": "PLACEHOLDER (synthetic test clip)",
+        "match": "none — synthetic",
+        "date": null,
+        "broadcaster": null,
+        "time_range": {
+          "in": "00:00:00.000",
+          "out": "00:00:12.000"
+        },
+        "rights": "placeholder",
+        "notes": "Generated by studio/footy/placeholder.py; not real footage."
+      }
+    ],
+    "placeholder": true,
+    "note": "Footage sources and time ranges are logged in meta.sources: check rights before posting."
+  }
+}

@@ -45,6 +45,7 @@ python -m studio.beatgrid projects\showcase.json    # check cuts/hits against th
 python -m studio.lint_motion                        # motion lint over the renderer
 python -m studio.schema migrate "projects\old.vkit" # convert an old .vkit project
 python -m studio.assets_fetch --query "neon sign" --slug neon --count 3
+python -m studio.footy scan media\afl-breakdown\<slug>\moments.json   # footy breakdown pipeline
 npm test                                            # renderer unit tests
 ```
 
@@ -52,12 +53,13 @@ npm test                                            # renderer unit tests
 
 Projects are JSON (`vidkit.project`, schema in `studio/schema.py`): settings, tracks,
 clips with `props`, and an audio block (synthesised music and auto sound effects).
-Only [projects/showcase.json](projects/showcase.json) is tracked; your own projects,
+Only [projects/showcase.json](projects/showcase.json) and a few templates are tracked; your own projects,
 uploads, renders and reports stay local and are git-ignored.
 
 ## Docs
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — modules, schema, renderer, audio, render engine
+- [docs/FOOTY_BREAKDOWN.md](docs/FOOTY_BREAKDOWN.md) — coach-style match-footage breakdowns: clip → moments → review → render
 - [docs/AUDIT.md](docs/AUDIT.md) — audit of the previous version
 - `legacy/` — the retired browser editor, kept for reference
 

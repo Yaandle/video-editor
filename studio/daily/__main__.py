@@ -182,6 +182,19 @@ def cmd_verify(a) -> int:
     return 0 if r["ok"] else 1
 
 
+def cmd_cover(a) -> int:
+    from . import cover
+    p = _ep_path(a.episode)
+    ep = E.load(p)
+    day = a.day if a.day is not None else ep.get("day")
+    if day is None:
+        raise SystemExit("no day number: pass --day or set it with `daily day`")
+    out = Path(a.out) if a.out else p.parent / "covers" / f"day{int(day):03d}.jpg"
+    cover.from_episode(ep, a.moment, int(day), out, at=a.at, frame=a.frame, pos=a.pos, kicker=a.kicker, zoom=a.zoom)
+    print(f"wrote {paths.rel(out)}")
+    return 0
+
+
 def main(argv=None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -262,6 +275,18 @@ def main(argv=None) -> int:
     s = sub.add_parser("verify", help="T5: check a rendered mp4")
     s.add_argument("render")
     s.set_defaults(fn=cmd_verify)
+
+    s = sub.add_parser("cover", help="the post cover: a game frame + Day N (see cover.py for the format)")
+    s.add_argument("episode")
+    s.add_argument("--moment", required=True)
+    s.add_argument("--at", default="event", choices=["event", "kick", "in", "out"], help="which frame of the moment")
+    s.add_argument("--frame", type=int, help="an exact proxy frame instead of --at")
+    s.add_argument("--day", type=int)
+    s.add_argument("--pos", default="auto", choices=["auto", "upper", "middle", "lower"])
+    s.add_argument("--kicker", help="a short line above Day N (only what the day's data shows)")
+    s.add_argument("--zoom", type=float, default=2.1)
+    s.add_argument("--out")
+    s.set_defaults(fn=cmd_cover)
 
     a = ap.parse_args(argv)
     return a.fn(a)

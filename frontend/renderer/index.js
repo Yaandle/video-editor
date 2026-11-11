@@ -17,3 +17,4 @@ import './scenes/track.js';
 import './scenes/screencast.js';
 import './scenes/breakdown.js';
 import './scenes/daily.js';
+import './scenes/bytebin.js';
